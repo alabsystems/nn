@@ -1,0 +1,33 @@
+[package]
+name = "nn-glm5"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GLM-4/5 (ChatGLM) model for nn — backend-agnostic, uses DynTensor + Module API"
+autotests = false
+
+[features]
+test-helpers = ["nn-core/test-helpers"]
+
+[dependencies]
+nn-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+
+[lints]
+workspace = true
+
+# Integration tests that need nn-glm5::test_utils (feature-gated)
+[[test]]
+name = "synthetic_weights"
+path = "tests/synthetic_weights.rs"
+required-features = ["test-helpers"]
+
+# Real-weight tests (gated behind GLM5_WEIGHTS env var, no feature needed)
+[[test]]
+name = "real_weights"
+path = "tests/real_weights.rs"

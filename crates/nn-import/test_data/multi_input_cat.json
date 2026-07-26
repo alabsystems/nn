@@ -1,0 +1,67 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_fc_weight"}},
+                {"as_tensor": {"name": "p_fc_bias"}},
+                {"as_tensor": {"name": "a"}},
+                {"as_tensor": {"name": "b"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "output"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.cat.default",
+                    "inputs": [
+                        {"name": "tensors", "arg": {"as_tensors": [{"name": "a"}, {"name": "b"}]}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "merged"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.relu.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "merged"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "activated"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "activated"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_fc_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_fc_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "output"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "a":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "b":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "p_fc_weight": {"dtype": 7, "sizes": [{"as_int": 4}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_fc_bias":   {"dtype": 7, "sizes": [{"as_int": 4}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "merged":      {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "activated":   {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "output":      {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_fc_weight"}, "parameter_name": "fc.weight"}},
+                {"parameter": {"arg": {"name": "p_fc_bias"}, "parameter_name": "fc.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "a"}}}},
+                {"user_input": {"arg": {"as_tensor": {"name": "b"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "output"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

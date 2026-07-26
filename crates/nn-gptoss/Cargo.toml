@@ -1,0 +1,27 @@
+[package]
+name = "nn-gptoss"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Chroma Context-1 (gpt-oss-20b) MoE decoder-only transformer for nn"
+
+[dependencies]
+nn-core.workspace = true
+thiserror.workspace = true
+tokenizers = { workspace = true, optional = true }
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+ndarray.workspace = true
+memmap2.workspace = true
+safetensors.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+tokenizer = ["dep:tokenizers"]
+
+[lints]
+workspace = true

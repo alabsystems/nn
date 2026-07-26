@@ -1,0 +1,134 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_emb_weight"}},
+                {"as_tensor": {"name": "p_ln_weight"}},
+                {"as_tensor": {"name": "p_ln_bias"}},
+                {"as_tensor": {"name": "p_fc1_weight"}},
+                {"as_tensor": {"name": "p_fc1_bias"}},
+                {"as_tensor": {"name": "p_fc2_weight"}},
+                {"as_tensor": {"name": "p_fc2_bias"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "fc2"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.embedding.default",
+                    "inputs": [
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_emb_weight"}}, "kind": 1},
+                        {"name": "indices", "arg": {"as_tensor": {"name": "x"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "emb"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.layer_norm.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "emb"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_ln_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_ln_bias"}}, "kind": 1},
+                        {"name": "normalized_shape", "arg": {"as_ints": [64]}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-5}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "ln"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "ln"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_fc1_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_fc1_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "fc1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.gelu.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "fc1"}}, "kind": 1},
+                        {"name": "approximate", "arg": {"as_string": "none"}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "act"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.softmax.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "act"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": -1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "attn"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.matmul.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "attn"}}, "kind": 1},
+                        {"name": "other", "arg": {"as_tensor": {"name": "ln"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "attn_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.add.Tensor",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "attn_out"}}, "kind": 1},
+                        {"name": "other", "arg": {"as_tensor": {"name": "emb"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "residual"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "residual"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_fc2_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_fc2_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "fc2"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":              {"dtype": 5, "sizes": [{"as_int": 1}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "p_emb_weight":   {"dtype": 7, "sizes": [{"as_int": 100}, {"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 64}, {"as_int": 1}]},
+                "p_ln_weight":    {"dtype": 7, "sizes": [{"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ln_bias":      {"dtype": 7, "sizes": [{"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_fc1_weight":   {"dtype": 7, "sizes": [{"as_int": 64}, {"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 64}, {"as_int": 1}]},
+                "p_fc1_bias":     {"dtype": 7, "sizes": [{"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_fc2_weight":   {"dtype": 7, "sizes": [{"as_int": 32}, {"as_int": 64}], "requires_grad": true, "strides": [{"as_int": 64}, {"as_int": 1}]},
+                "p_fc2_bias":     {"dtype": 7, "sizes": [{"as_int": 32}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "emb":            {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "ln":             {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "fc1":            {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "act":            {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "attn":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "attn_out":       {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "residual":       {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 64}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 1}]},
+                "fc2":            {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 32}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 32}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_emb_weight"}, "parameter_name": "emb.weight"}},
+                {"parameter": {"arg": {"name": "p_ln_weight"}, "parameter_name": "ln.weight"}},
+                {"parameter": {"arg": {"name": "p_ln_bias"}, "parameter_name": "ln.bias"}},
+                {"parameter": {"arg": {"name": "p_fc1_weight"}, "parameter_name": "fc1.weight"}},
+                {"parameter": {"arg": {"name": "p_fc1_bias"}, "parameter_name": "fc1.bias"}},
+                {"parameter": {"arg": {"name": "p_fc2_weight"}, "parameter_name": "fc2.weight"}},
+                {"parameter": {"arg": {"name": "p_fc2_bias"}, "parameter_name": "fc2.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "fc2"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

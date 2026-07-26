@@ -1,0 +1,259 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nn",
+    "crates/nn-core",
+    "crates/nn-dsl",
+    "crates/nn-macros",
+    "crates/nn-metal",
+    "crates/nn-models",
+    "crates/nn-verify",
+    "crates/nn-reftest",
+    "crates/nn-whisper",
+    "crates/nn-autodiff",
+    "crates/nn-optim",
+    "crates/nn-qwen3",
+    "crates/nn-glm5",
+    "crates/nn-tts-verify",
+    "crates/nn-import",
+    "crates/nn-cuda",
+    "crates/nn-vulkan",
+    "crates/nn-cli",
+    "crates/nn-optimize",
+    "crates/nn-cpu",
+    "crates/nn-gptoss",
+    "crates/nn-gguf",
+]
+# Deferred crates (directories on disk, re-add when implementation starts):
+# nn-ane, nn-swift
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Andrew Yates <andrewyates.name@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/alabsystems/nn"
+
+[workspace.lints.rust]
+# Kani model checker sets the 'kani' cfg flag
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+unused_qualifications = "warn"
+elided_lifetimes_in_paths = "warn"
+trivial_numeric_casts = "warn"
+unused_lifetimes = "warn"
+unused_import_braces = "warn"
+unused_macro_rules = "warn"
+non_ascii_idents = "forbid"
+keyword_idents_2024 = "forbid"
+
+[workspace.lints.clippy]
+# === Group enables (low priority so individual overrides win) ===
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -2 }
+nursery = { level = "warn", priority = -3 }
+
+# === Pedantic allows — too noisy or inapplicable for ML kernel code ===
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"   # e.g., TensorError in tensor module
+must_use_candidate = "allow"
+too_many_lines = "allow"
+similar_names = "allow"             # x, x0, x1 common in ML math
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+too_many_arguments = "allow"
+implicit_hasher = "allow"
+doc_markdown = "allow"
+items_after_statements = "allow"
+single_match_else = "allow"
+wildcard_imports = "allow"
+collapsible_else_if = "allow"
+collapsible_if = "allow"
+needless_continue = "allow"
+if_not_else = "allow"
+needless_raw_string_hashes = "allow"
+used_underscore_binding = "allow"
+return_self_not_must_use = "allow"
+cast_possible_truncation = "allow"  # f64→f32 intentional in ML kernels
+cast_possible_wrap = "allow"        # numeric casts in kernel code
+cast_sign_loss = "allow"            # same rationale
+cast_precision_loss = "allow"       # same rationale
+unreadable_literal = "allow"
+match_bool = "allow"
+inline_always = "allow"
+redundant_else = "allow"
+manual_let_else = "allow"
+match_same_arms = "allow"           # intentional for readability across enum variants
+unused_self = "allow"               # methods may need &self for trait conformance
+single_char_pattern = "allow"
+many_single_char_names = "allow"    # math/ML code uses x, y, z, a, b, c
+trivially_copy_pass_by_ref = "allow"
+needless_pass_by_value = "allow"
+match_wildcard_for_single_variants = "allow"
+semicolon_if_nothing_returned = "allow"
+struct_field_names = "allow"
+unnested_or_patterns = "allow"
+only_used_in_recursion = "allow"
+if_then_some_else_none = "allow"
+comparison_chain = "allow"
+unnecessary_wraps = "allow"
+ref_option = "allow"
+no_effect_underscore_binding = "allow"
+verbose_bit_mask = "allow"
+range_minus_one = "allow"
+assigning_clones = "allow"
+format_push_string = "allow"
+float_cmp = "allow"                 # exact float comparison intentional in verification
+needless_pass_by_ref_mut = "allow"  # nursery lint, false positives
+debug_assert_with_mut_call = "allow"
+type_complexity = "allow"
+bool_to_int_with_if = "allow"
+map_unwrap_or = "allow"
+needless_collect = "allow"
+from_iter_instead_of_collect = "allow"
+default_trait_access = "allow"
+unnecessary_map_or = "allow"
+iter_on_single_items = "allow"
+explicit_iter_loop = "allow"
+suboptimal_flops = "allow"          # mul_add obscures ML kernel math: x + (1/a) * sin(ax)^2
+collection_is_never_read = "warn"   # dead code: fix individual instances
+
+# === Nursery allows — unstable or too noisy ===
+missing_const_for_fn = "allow"
+option_if_let_else = "allow"
+cognitive_complexity = "allow"
+significant_drop_tightening = "allow"
+branches_sharing_code = "allow"
+fallible_impl_from = "allow"
+useless_let_if_seq = "allow"
+or_fun_call = "allow"
+redundant_pub_crate = "allow"       # conflicts with unreachable_pub
+
+# === Restriction lints — cherry-picked for real bugs ===
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stdout = "allow"              # println! used in tests and CLI output
+print_stderr = "allow"              # eprintln! used in tests and diagnostics
+clone_on_ref_ptr = "allow"
+rc_buffer = "warn"
+rc_mutex = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+empty_drop = "warn"
+empty_structs_with_brackets = "warn"
+
+[workspace.dependencies]
+# Core numerical
+ndarray = "0.17"
+num-traits = "0.2"
+half = { version = "2.7", features = ["num-traits", "bytemuck"] }
+
+# BLAS — Apple Accelerate on macOS for hardware-accelerated matmul.
+# ndarray's `blas` feature makes dot() use cblas_sgemm via Accelerate.
+blas-src = { version = "0.14", features = ["accelerate"] }
+accelerate-src = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "1"
+safetensors = "0.8"
+memmap2 = "0.9"
+
+# Cryptographic hashing and MAC
+sha2 = "0.11"
+hmac = "0.13"
+
+# GPU - Metal
+metal = "0.33"
+bytemuck = "1.25"
+# Apple Objective-C FFI for raw Metal interop (nn-metal, nn-dsl). Pinned to the
+# objc 0.2 / block 0.1 line to match the `metal` crate's foreign-types; the
+# objc2/block2 successors require a metal crate that has migrated, which 0.33
+# has not.
+objc = "0.2"
+block = "0.1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# CLI argument parsing (nn-cli, nn-optimize)
+clap = { version = "4", features = ["derive"] }
+
+# Tokenizer (HuggingFace BPE, used by nn-gptoss)
+tokenizers = "0.23"
+
+# Temp files (HIP compilation pipeline, test isolation)
+tempfile = "3"
+
+# Structured debug logging (nn-verify `ny` feature member; already in the
+# dependency graph transitively via the ny sibling)
+tracing = "0.1"
+
+# Build-script tooling (nn-models build.rs probes system libs)
+pkg-config = "0.3"
+
+# Proc-macro / AST
+syn = { version = "2", features = ["full", "parsing"] }
+quote = "1"
+proc-macro2 = "1"
+
+# FFT (spectral comparison in nn-reftest)
+rustfft = "6"
+
+# Random (training feature: DynTensor::randn, Kaiming init)
+rand = "0.10"
+rand_distr = "0.6"
+
+# Benchmarking
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# Audio I/O
+hound = "3.5"
+
+# Verification (ny — neural-network verifier, local sibling path dep at ../ny).
+# Successor to the deprecated gamma-crown; ny-{api,build,core,propagate} are the
+# direct analogs of the former gamma-{api,build,core,propagate} crates.
+ny-api = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+ny-build = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+ny-core = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+ny-propagate = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+ny-trace-bridge = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+
+# Verification (ay SMT solver — local sibling path dep at ../ay).
+# `direct` feature enables in-process solving for non-UF programs;
+# UF programs (transcendental kernels using sin_approx, etc.) return Unexecuted.
+ay-bindings = { git = "https://github.com/alabsystems/ay", tag = "v0.3.0", features = ["direct"] }
+
+# Internal crates
+nn-core = { path = "crates/nn-core" }
+nn-dsl = { path = "crates/nn-dsl" }
+nn-macros = { path = "crates/nn-macros" }
+nn-metal = { path = "crates/nn-metal" }
+nn-models = { path = "crates/nn-models" }
+nn-verify = { path = "crates/nn-verify" }
+nn-reftest = { path = "crates/nn-reftest" }
+nn-whisper = { path = "crates/nn-whisper" }
+nn-autodiff = { path = "crates/nn-autodiff" }
+nn-optim = { path = "crates/nn-optim" }
+nn-qwen3 = { path = "crates/nn-qwen3" }
+nn-glm5 = { path = "crates/nn-glm5" }
+nn-tts-verify = { path = "crates/nn-tts-verify" }
+nn-import = { path = "crates/nn-import" }
+nn-vulkan = { path = "crates/nn-vulkan" }
+nn-gguf = { path = "crates/nn-gguf" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+overflow-checks = true
+
+[profile.bench]
+lto = true
+codegen-units = 1
+
+# Local sibling overrides: redirect GitHub URLs to ../ny and ../ay.

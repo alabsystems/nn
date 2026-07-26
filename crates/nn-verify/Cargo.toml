@@ -1,0 +1,75 @@
+[package]
+name = "nn-verify"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Verification integration for nn — ny bounds + Kani harnesses"
+
+[lints]
+workspace = true
+
+[dependencies]
+nn-core = { workspace = true }
+nn-dsl = { workspace = true }
+ny-api = { workspace = true, optional = true }
+ny-build = { workspace = true, optional = true }
+ny-core = { workspace = true, optional = true }
+ny-propagate = { workspace = true, optional = true }
+# NY-owned trace→GraphModel translator: since the legacy in-crate translator
+# was deleted (post-INC-FINAL), ny_trace_bridge::translate IS nn-verify's
+# trace translation path. Part of the `ny` feature.
+ny-trace-bridge = { workspace = true, optional = true }
+# Structured logging for the NY-owned translation path. Part of the `ny`
+# feature (kept a member so downstream feature selections stay stable).
+tracing = { workspace = true, optional = true }
+thiserror = { workspace = true }
+ndarray = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+safetensors = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+ay-bindings = { workspace = true, optional = true }
+# Converts ay's exact-rational model values (BigRational) to f64 in ay_synthesize.
+num-traits = { workspace = true, optional = true }
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+nn-dsl = { path = "../nn-dsl", features = ["test-utils"] }
+nn-metal = { workspace = true }
+nn-models = { workspace = true }
+nn-reftest = { workspace = true }
+nn-tts-verify = { workspace = true, features = ["ny"] }
+syn = { workspace = true }
+
+[[bin]]
+name = "nn_verify_cert"
+path = "src/bin/nn_verify_cert.rs"
+
+[features]
+default = ["ny"]
+ny = [
+    "dep:ny-api",
+    "dep:ny-build",
+    "dep:ny-core",
+    "dep:ny-propagate",
+    "ny-api/propagate",
+    "dep:ny-trace-bridge",
+    "dep:tracing",
+]
+# DEPRECATED alias for `ny`. The nn-verify→ny-trace-bridge migration is
+# complete: the legacy in-crate trace translator is deleted and
+# ny_trace_bridge::translate is the unconditional translation path of the
+# `ny` feature (full-corpus gate recorded in ny/docs/TRACE_BRIDGE_MIGRATION.md).
+# Kept one release so downstream `--features bridge` selections keep resolving.
+bridge = ["ny"]
+# Consume ny's proof-carrying certificate surface (pulls ny-cert + exact-rational
+# bignum deps; opt-in so the default `ny` build stays lean).
+ny-cert = ["ny", "ny-api/cert"]
+# Consume ny's complete MIP verification terminal (pulls ny-mip + HiGHS).
+ny-complete = ["ny", "ny-api/complete"]
+ay-smt = ["dep:ay-bindings", "dep:num-traits"]
+kani-stubbing = []
+production-weights = []

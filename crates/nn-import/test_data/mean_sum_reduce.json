@@ -1,0 +1,50 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "output"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.mean.dim",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_ints": [2]}, "kind": 1},
+                        {"name": "keepdim", "arg": {"as_bool": true}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "mean_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.sum.dim_IntList",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "mean_out"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "keepdim", "arg": {"as_bool": false}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "output"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":          {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 8}, {"as_int": 1}]},
+                "mean_out":   {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 1}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 1}, {"as_int": 1}]},
+                "output":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 1}], "requires_grad": false, "strides": [{"as_int": 1}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "output"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

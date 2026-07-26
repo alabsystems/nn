@@ -1,0 +1,78 @@
+# Granite-Docling-258M model configuration
+# SigLIP2-base-patch16 (vision) + Granite-165M (language)
+# Reference: ibm-granite/granite-vision-docling-258m-preview
+
+[model]
+name = "granite-docling-258m"
+input_rank = 4    # [B, C, H, W]
+output_rank = 3   # [B, SeqLen, VocabSize]
+param_count_bound = 300_000_000
+
+# Layer chain definitions: layers within a chain are sequential.
+# The validator checks that output_dim[i] == input_dim[i+1] WITHIN
+# each chain. Cross-chain connections are not validated (separate
+# branches like vision encoder and language decoder connect via
+# cross-attention, not sequential feeding).
+
+[[layers]]
+name = "vision.patch_embed"
+chain = "vision"
+input_dim = 3        # RGB channels
+output_dim = 768     # hidden_dim
+dtype = "f32"
+
+[[layers]]
+name = "vision.encoder"
+chain = "vision"
+input_dim = 768
+output_dim = 768
+dtype = "f32"
+num_heads = 12
+
+[[layers]]
+name = "vision.post_layernorm"
+chain = "vision"
+input_dim = 768
+output_dim = 768
+dtype = "f32"
+
+[[layers]]
+name = "language.embed_tokens"
+chain = "language"
+input_dim = 49152    # vocab_size
+output_dim = 768     # hidden_dim
+dtype = "f32"
+
+[[layers]]
+name = "language.encoder"
+chain = "language"
+input_dim = 768
+output_dim = 768
+dtype = "f32"
+num_heads = 12
+
+[[layers]]
+name = "language.lm_head"
+chain = "language"
+input_dim = 768
+output_dim = 49152   # vocab_size
+dtype = "f32"
+
+# Cross-chain constraint: vision output feeds language cross-attention.
+# vision.post_layernorm.output_dim must equal language.encoder.input_dim.
+[[cross_chain_constraints]]
+from_layer = "vision.post_layernorm"
+to_layer = "language.encoder"
+description = "vision encoder output feeds language cross-attention"
+
+# Weight naming convention: dot-separated, prefix matches layer name
+[weight_convention]
+separator = "."
+prefixes = [
+    "vision_model.embeddings",
+    "vision_model.encoder",
+    "vision_model.post_layernorm",
+    "language_model.model.embed_tokens",
+    "language_model.model.layers",
+    "language_model.lm_head",
+]

@@ -1,0 +1,21 @@
+# Author: Andrew Yates
+[package]
+name = "nn-cuda"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CUDA/HIP GPU backend for nn: NVIDIA PTX and AMD HIP code generation from TensorOpKind IR"
+
+[lints]
+workspace = true
+
+[dependencies]
+nn-core = { path = "../nn-core" }
+nn-dsl = { path = "../nn-dsl" }
+thiserror.workspace = true
+tempfile.workspace = true
+ndarray.workspace = true
+
+[dev-dependencies]

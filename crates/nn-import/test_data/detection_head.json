@@ -1,0 +1,82 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_bbox_weight"}},
+                {"as_tensor": {"name": "p_bbox_bias"}},
+                {"as_tensor": {"name": "p_cls_weight"}},
+                {"as_tensor": {"name": "p_cls_bias"}},
+                {"as_tensor": {"name": "features"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "cls_probs"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "features"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_bbox_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_bbox_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "bbox_logits"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.sigmoid.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "bbox_logits"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "bbox_preds"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "features"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_cls_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_cls_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "cls_logits"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.softmax.int",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "cls_logits"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": -1}, "kind": 1},
+                        {"name": "dtype", "arg": {"as_none": true}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "cls_probs"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "features":      {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 32}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 1}]},
+                "p_bbox_weight": {"dtype": 7, "sizes": [{"as_int": 4}, {"as_int": 32}], "requires_grad": true, "strides": [{"as_int": 32}, {"as_int": 1}]},
+                "p_bbox_bias":   {"dtype": 7, "sizes": [{"as_int": 4}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_cls_weight":  {"dtype": 7, "sizes": [{"as_int": 5}, {"as_int": 32}], "requires_grad": true, "strides": [{"as_int": 32}, {"as_int": 1}]},
+                "p_cls_bias":    {"dtype": 7, "sizes": [{"as_int": 5}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "bbox_logits":   {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 1}]},
+                "bbox_preds":    {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 1}]},
+                "cls_logits":    {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 5}], "requires_grad": false, "strides": [{"as_int": 5}, {"as_int": 1}]},
+                "cls_probs":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 5}], "requires_grad": false, "strides": [{"as_int": 5}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_bbox_weight"}, "parameter_name": "bbox_head.weight"}},
+                {"parameter": {"arg": {"name": "p_bbox_bias"}, "parameter_name": "bbox_head.bias"}},
+                {"parameter": {"arg": {"name": "p_cls_weight"}, "parameter_name": "cls_head.weight"}},
+                {"parameter": {"arg": {"name": "p_cls_bias"}, "parameter_name": "cls_head.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "features"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "cls_probs"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

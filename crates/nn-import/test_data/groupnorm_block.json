@@ -1,0 +1,56 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_gn_weight"}},
+                {"as_tensor": {"name": "p_gn_bias"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "relu"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.group_norm.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "num_groups", "arg": {"as_int": 4}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_gn_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_gn_bias"}}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-6}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "group_norm"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.relu.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "group_norm"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "relu"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "p_gn_weight": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_gn_bias":   {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "group_norm":  {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "relu":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_gn_weight"}, "parameter_name": "gn.weight"}},
+                {"parameter": {"arg": {"name": "p_gn_bias"}, "parameter_name": "gn.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "relu"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

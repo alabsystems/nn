@@ -1,0 +1,1044 @@
+// Copyright 2026 Andrew Yates
+// Author: Andrew Yates
+// SPDX-License-Identifier: Apache-2.0
+
+//! SPIR-V binary generation for softmax compute shaders.
+//!
+//! Generates a SPIR-V 1.0 binary module for row-wise softmax:
+//!
+//!   softmax(x_i) = exp(x_i - max(x)) / sum(exp(x_j - max(x)))
+//!
+//! The kernel uses three phases with workgroup shared memory:
+//!
+//! 1. **Max reduction**: Each thread accumulates a partial max over a stripe
+//!    of the row, then a tree reduction in shared memory finds the global max.
+//! 2. **Exp + sum reduction**: Each thread computes exp(x_i - max) for its
+//!    stripe elements and accumulates a partial sum. A tree reduction finds
+//!    the global sum.
+//! 3. **Normalize**: Each thread divides its exp values by the global sum and
+//!    writes to the output buffer.
+//!
+//! Unlike the in-place softmax in [`super::spirv_reduction`], this module uses
+//! **separate input and output buffers** (binding 0 = input, binding 1 = output),
+//! matching the pattern used by layernorm and other non-in-place kernels.
+//!
+//! The kernel handles arbitrary last-dimension sizes (cols > workgroup_size)
+//! via strided loops within each phase.
+//!
+//! All shaders use SPIR-V 1.0 for maximum Vulkan compatibility, `StorageBuffer`
+//! storage class with `std430` layout, and push constants for dimensions.
+
+use crate::spirv_emit::SPIRV_MAGIC;
+
+/// Default workgroup size for softmax kernels (1D dispatch).
+pub const SOFTMAX_WORKGROUP_SIZE: u32 = 256;
+
+// ---- SPIR-V constants ----
+
+const SPIRV_VERSION_1_0: u32 = 0x0001_0000;
+const GENERATOR_MAGIC: u32 = 0x4E4E_0000;
+
+const fn op(word_count: u16, opcode: u16) -> u32 {
+    (word_count as u32) << 16 | opcode as u32
+}
+
+// Opcodes.
+const OP_CAPABILITY: u16 = 17;
+const OP_EXT_INST_IMPORT: u16 = 11;
+const OP_MEMORY_MODEL: u16 = 14;
+const OP_ENTRY_POINT: u16 = 15;
+const OP_EXECUTION_MODE: u16 = 16;
+const OP_DECORATE: u16 = 71;
+const OP_MEMBER_DECORATE: u16 = 72;
+const OP_TYPE_VOID: u16 = 19;
+const OP_TYPE_BOOL: u16 = 20;
+const OP_TYPE_INT: u16 = 21;
+const OP_TYPE_FLOAT: u16 = 22;
+const OP_TYPE_VECTOR: u16 = 23;
+const OP_TYPE_ARRAY: u16 = 28;
+const OP_TYPE_RUNTIME_ARRAY: u16 = 29;
+const OP_TYPE_STRUCT: u16 = 30;
+const OP_TYPE_POINTER: u16 = 32;
+const OP_TYPE_FUNCTION: u16 = 33;
+const OP_CONSTANT: u16 = 43;
+const OP_VARIABLE: u16 = 59;
+const OP_LOAD: u16 = 61;
+const OP_STORE: u16 = 62;
+const OP_ACCESS_CHAIN: u16 = 65;
+const OP_FUNCTION: u16 = 54;
+const OP_FUNCTION_END: u16 = 56;
+const OP_LABEL: u16 = 248;
+const OP_RETURN: u16 = 253;
+const OP_BRANCH: u16 = 249;
+const OP_BRANCH_CONDITIONAL: u16 = 250;
+const OP_SELECTION_MERGE: u16 = 247;
+const OP_LOOP_MERGE: u16 = 246;
+const OP_PHI: u16 = 245;
+const OP_COMPOSITE_EXTRACT: u16 = 81;
+const OP_FADD: u16 = 129;
+const OP_FDIV: u16 = 136;
+const OP_FSUB: u16 = 131;
+const OP_U_LESS_THAN: u16 = 176;
+const OP_IADD: u16 = 128;
+const OP_IMUL: u16 = 132;
+const OP_SHIFT_RIGHT_LOGICAL: u16 = 194;
+const OP_CONTROL_BARRIER: u16 = 224;
+const OP_EXT_INST: u16 = 12;
+
+// Decorations.
+const DECORATION_BUILTIN: u32 = 11;
+const DECORATION_BINDING: u32 = 33;
+const DECORATION_DESCRIPTOR_SET: u32 = 34;
+const DECORATION_OFFSET: u32 = 35;
+const DECORATION_ARRAY_STRIDE: u32 = 6;
+const DECORATION_BLOCK: u32 = 2;
+const DECORATION_NON_WRITABLE: u32 = 24;
+
+// Built-ins.
+const BUILTIN_GLOBAL_INVOCATION_ID: u32 = 28;
+const BUILTIN_LOCAL_INVOCATION_ID: u32 = 27;
+
+// Storage classes.
+const STORAGE_CLASS_INPUT: u32 = 1;
+const STORAGE_CLASS_PUSH_CONSTANT: u32 = 9;
+const STORAGE_CLASS_WORKGROUP: u32 = 4;
+const STORAGE_CLASS_STORAGE_BUFFER: u32 = 12;
+
+// Execution model / mode.
+const EXECUTION_MODEL_GL_COMPUTE: u32 = 5;
+const EXECUTION_MODE_LOCAL_SIZE: u32 = 17;
+
+// Capability.
+const CAPABILITY_SHADER: u32 = 1;
+
+// Memory model.
+const ADDRESSING_LOGICAL: u32 = 0;
+const MEMORY_MODEL_GLSL450: u32 = 1;
+
+// Function control.
+const FUNCTION_CONTROL_NONE: u32 = 0;
+
+// Memory semantics for barriers.
+const SCOPE_WORKGROUP: u32 = 2;
+const MEMORY_SEMANTICS_WORKGROUP: u32 = 0x100;
+const MEMORY_SEMANTICS_ACQUIRE_RELEASE: u32 = 0x8;
+
+// GLSL.std.450 extended instruction set opcodes.
+const GLSL_STD_450_FMAX: u32 = 40;
+const GLSL_STD_450_EXP: u32 = 27;
+
+/// Encode a string as SPIR-V literal words (null-terminated, padded to 4-byte boundary).
+fn encode_string(s: &str) -> Vec<u32> {
+    let bytes = s.as_bytes();
+    let word_count = (bytes.len() + 1).div_ceil(4);
+    let mut words = vec![0u32; word_count];
+    for (i, &b) in bytes.iter().enumerate() {
+        let word_idx = i / 4;
+        let byte_idx = i % 4;
+        words[word_idx] |= u32::from(b) << (byte_idx * 8);
+    }
+    words
+}
+
+/// Convert a `Vec<u32>` SPIR-V module to `Vec<u8>` (little-endian).
+fn words_to_bytes(words: &[u32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(words.len() * 4);
+    for &w in words {
+        bytes.extend_from_slice(&w.to_le_bytes());
+    }
+    bytes
+}
+
+/// SPIR-V module builder.
+struct SpirVBuilder {
+    bound: u32,
+    capabilities: Vec<u32>,
+    extensions: Vec<u32>,
+    memory_model: Vec<u32>,
+    entry_points: Vec<u32>,
+    execution_modes: Vec<u32>,
+    annotations: Vec<u32>,
+    type_declarations: Vec<u32>,
+    functions: Vec<u32>,
+}
+
+impl SpirVBuilder {
+    fn new() -> Self {
+        Self {
+            bound: 1,
+            capabilities: Vec::new(),
+            extensions: Vec::new(),
+            memory_model: Vec::new(),
+            entry_points: Vec::new(),
+            execution_modes: Vec::new(),
+            annotations: Vec::new(),
+            type_declarations: Vec::new(),
+            functions: Vec::new(),
+        }
+    }
+
+    fn id(&mut self) -> u32 {
+        let id = self.bound;
+        self.bound += 1;
+        id
+    }
+
+    fn capability(&mut self, cap: u32) {
+        self.capabilities.push(op(2, OP_CAPABILITY));
+        self.capabilities.push(cap);
+    }
+
+    fn ext_inst_import(&mut self, name: &str) -> u32 {
+        let result = self.id();
+        let name_words = encode_string(name);
+        let wc = 2 + name_words.len() as u16;
+        self.extensions.push(op(wc, OP_EXT_INST_IMPORT));
+        self.extensions.push(result);
+        self.extensions.extend_from_slice(&name_words);
+        result
+    }
+
+    fn memory_model_decl(&mut self, addressing: u32, model: u32) {
+        self.memory_model.push(op(3, OP_MEMORY_MODEL));
+        self.memory_model.push(addressing);
+        self.memory_model.push(model);
+    }
+
+    fn entry_point_compute(&mut self, func_id: u32, name: &str, interface_ids: &[u32]) {
+        let name_words = encode_string(name);
+        let wc = 3 + name_words.len() as u16 + interface_ids.len() as u16;
+        self.entry_points.push(op(wc, OP_ENTRY_POINT));
+        self.entry_points.push(EXECUTION_MODEL_GL_COMPUTE);
+        self.entry_points.push(func_id);
+        self.entry_points.extend_from_slice(&name_words);
+        self.entry_points.extend_from_slice(interface_ids);
+    }
+
+    fn execution_mode_local_size(&mut self, func_id: u32, x: u32, y: u32, z: u32) {
+        self.execution_modes.push(op(6, OP_EXECUTION_MODE));
+        self.execution_modes.push(func_id);
+        self.execution_modes.push(EXECUTION_MODE_LOCAL_SIZE);
+        self.execution_modes.push(x);
+        self.execution_modes.push(y);
+        self.execution_modes.push(z);
+    }
+
+    fn decorate(&mut self, target: u32, decoration: u32, operands: &[u32]) {
+        let wc = 3 + operands.len() as u16;
+        self.annotations.push(op(wc, OP_DECORATE));
+        self.annotations.push(target);
+        self.annotations.push(decoration);
+        self.annotations.extend_from_slice(operands);
+    }
+
+    fn member_decorate(
+        &mut self,
+        struct_type: u32,
+        member: u32,
+        decoration: u32,
+        operands: &[u32],
+    ) {
+        let wc = 4 + operands.len() as u16;
+        self.annotations.push(op(wc, OP_MEMBER_DECORATE));
+        self.annotations.push(struct_type);
+        self.annotations.push(member);
+        self.annotations.push(decoration);
+        self.annotations.extend_from_slice(operands);
+    }
+
+    // ---- Type declarations ----
+
+    fn type_void(&mut self) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(2, OP_TYPE_VOID));
+        self.type_declarations.push(result);
+        result
+    }
+
+    fn type_bool(&mut self) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(2, OP_TYPE_BOOL));
+        self.type_declarations.push(result);
+        result
+    }
+
+    fn type_int(&mut self, width: u32, signedness: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_TYPE_INT));
+        self.type_declarations.push(result);
+        self.type_declarations.push(width);
+        self.type_declarations.push(signedness);
+        result
+    }
+
+    fn type_float(&mut self, width: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(3, OP_TYPE_FLOAT));
+        self.type_declarations.push(result);
+        self.type_declarations.push(width);
+        result
+    }
+
+    fn type_vector(&mut self, component_type: u32, count: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_TYPE_VECTOR));
+        self.type_declarations.push(result);
+        self.type_declarations.push(component_type);
+        self.type_declarations.push(count);
+        result
+    }
+
+    fn type_array(&mut self, element_type: u32, length_id: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_TYPE_ARRAY));
+        self.type_declarations.push(result);
+        self.type_declarations.push(element_type);
+        self.type_declarations.push(length_id);
+        result
+    }
+
+    fn type_runtime_array(&mut self, element_type: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(3, OP_TYPE_RUNTIME_ARRAY));
+        self.type_declarations.push(result);
+        self.type_declarations.push(element_type);
+        result
+    }
+
+    fn type_struct(&mut self, member_types: &[u32]) -> u32 {
+        let result = self.id();
+        let wc = 2 + member_types.len() as u16;
+        self.type_declarations.push(op(wc, OP_TYPE_STRUCT));
+        self.type_declarations.push(result);
+        self.type_declarations.extend_from_slice(member_types);
+        result
+    }
+
+    fn type_pointer(&mut self, storage_class: u32, pointee_type: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_TYPE_POINTER));
+        self.type_declarations.push(result);
+        self.type_declarations.push(storage_class);
+        self.type_declarations.push(pointee_type);
+        result
+    }
+
+    fn type_function(&mut self, return_type: u32, param_types: &[u32]) -> u32 {
+        let result = self.id();
+        let wc = 3 + param_types.len() as u16;
+        self.type_declarations.push(op(wc, OP_TYPE_FUNCTION));
+        self.type_declarations.push(result);
+        self.type_declarations.push(return_type);
+        self.type_declarations.extend_from_slice(param_types);
+        result
+    }
+
+    fn constant_u32(&mut self, type_id: u32, value: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_CONSTANT));
+        self.type_declarations.push(type_id);
+        self.type_declarations.push(result);
+        self.type_declarations.push(value);
+        result
+    }
+
+    fn constant_f32(&mut self, type_id: u32, value: f32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_CONSTANT));
+        self.type_declarations.push(type_id);
+        self.type_declarations.push(result);
+        self.type_declarations.push(value.to_bits());
+        result
+    }
+
+    fn variable_global(&mut self, ptr_type: u32, storage_class: u32) -> u32 {
+        let result = self.id();
+        self.type_declarations.push(op(4, OP_VARIABLE));
+        self.type_declarations.push(ptr_type);
+        self.type_declarations.push(result);
+        self.type_declarations.push(storage_class);
+        result
+    }
+
+    // ---- Function body instructions ----
+
+    fn func_begin(&mut self, result_type: u32, func_id: u32, control: u32, func_type: u32) {
+        self.functions.push(op(5, OP_FUNCTION));
+        self.functions.push(result_type);
+        self.functions.push(func_id);
+        self.functions.push(control);
+        self.functions.push(func_type);
+    }
+
+    fn func_end(&mut self) {
+        self.functions.push(op(1, OP_FUNCTION_END));
+    }
+
+    fn label(&mut self) -> u32 {
+        let result = self.id();
+        self.functions.push(op(2, OP_LABEL));
+        self.functions.push(result);
+        result
+    }
+
+    fn label_with_id(&mut self, id: u32) {
+        self.functions.push(op(2, OP_LABEL));
+        self.functions.push(id);
+    }
+
+    fn op_return(&mut self) {
+        self.functions.push(op(1, OP_RETURN));
+    }
+
+    fn branch(&mut self, target_label: u32) {
+        self.functions.push(op(2, OP_BRANCH));
+        self.functions.push(target_label);
+    }
+
+    fn branch_conditional(&mut self, condition: u32, true_label: u32, false_label: u32) {
+        self.functions.push(op(4, OP_BRANCH_CONDITIONAL));
+        self.functions.push(condition);
+        self.functions.push(true_label);
+        self.functions.push(false_label);
+    }
+
+    fn selection_merge(&mut self, merge_label: u32) {
+        self.functions.push(op(3, OP_SELECTION_MERGE));
+        self.functions.push(merge_label);
+        self.functions.push(0);
+    }
+
+    fn loop_merge(&mut self, merge_label: u32, continue_label: u32) {
+        self.functions.push(op(4, OP_LOOP_MERGE));
+        self.functions.push(merge_label);
+        self.functions.push(continue_label);
+        self.functions.push(0);
+    }
+
+    fn phi(&mut self, result_type: u32, operands: &[(u32, u32)]) -> u32 {
+        let result = self.id();
+        let wc = 3 + (operands.len() as u16) * 2;
+        self.functions.push(op(wc, OP_PHI));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        for &(val, parent) in operands {
+            self.functions.push(val);
+            self.functions.push(parent);
+        }
+        result
+    }
+
+    fn load(&mut self, result_type: u32, pointer: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(4, OP_LOAD));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(pointer);
+        result
+    }
+
+    fn store(&mut self, pointer: u32, object: u32) {
+        self.functions.push(op(3, OP_STORE));
+        self.functions.push(pointer);
+        self.functions.push(object);
+    }
+
+    fn access_chain(&mut self, result_type: u32, base: u32, indices: &[u32]) -> u32 {
+        let result = self.id();
+        let wc = 4 + indices.len() as u16;
+        self.functions.push(op(wc, OP_ACCESS_CHAIN));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(base);
+        self.functions.extend_from_slice(indices);
+        result
+    }
+
+    fn composite_extract(&mut self, result_type: u32, composite: u32, index: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_COMPOSITE_EXTRACT));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(composite);
+        self.functions.push(index);
+        result
+    }
+
+    fn fadd(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_FADD));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn fdiv(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_FDIV));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn fsub(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_FSUB));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn u_less_than(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_U_LESS_THAN));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn iadd(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_IADD));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn imul(&mut self, result_type: u32, a: u32, b: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_IMUL));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(a);
+        self.functions.push(b);
+        result
+    }
+
+    fn shift_right_logical(&mut self, result_type: u32, base: u32, shift: u32) -> u32 {
+        let result = self.id();
+        self.functions.push(op(5, OP_SHIFT_RIGHT_LOGICAL));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(base);
+        self.functions.push(shift);
+        result
+    }
+
+    fn control_barrier(&mut self, execution: u32, memory: u32, semantics: u32) {
+        self.functions.push(op(4, OP_CONTROL_BARRIER));
+        self.functions.push(execution);
+        self.functions.push(memory);
+        self.functions.push(semantics);
+    }
+
+    fn ext_inst(
+        &mut self,
+        result_type: u32,
+        ext_set: u32,
+        instruction: u32,
+        operands: &[u32],
+    ) -> u32 {
+        let result = self.id();
+        let wc = 5 + operands.len() as u16;
+        self.functions.push(op(wc, OP_EXT_INST));
+        self.functions.push(result_type);
+        self.functions.push(result);
+        self.functions.push(ext_set);
+        self.functions.push(instruction);
+        self.functions.extend_from_slice(operands);
+        result
+    }
+
+    fn build(self) -> Vec<u32> {
+        let mut module = Vec::with_capacity(512);
+        module.push(SPIRV_MAGIC);
+        module.push(SPIRV_VERSION_1_0);
+        module.push(GENERATOR_MAGIC);
+        module.push(self.bound);
+        module.push(0);
+        module.extend_from_slice(&self.capabilities);
+        module.extend_from_slice(&self.extensions);
+        module.extend_from_slice(&self.memory_model);
+        module.extend_from_slice(&self.entry_points);
+        module.extend_from_slice(&self.execution_modes);
+        module.extend_from_slice(&self.annotations);
+        module.extend_from_slice(&self.type_declarations);
+        module.extend_from_slice(&self.functions);
+        module
+    }
+}
+
+/// Fixup a phi instruction to add an additional (value, parent) operand.
+fn fixup_phi(functions: &mut Vec<u32>, phi_id: u32, value: u32, parent: u32) {
+    let mut pos = 0;
+    while pos < functions.len() {
+        let word = functions[pos];
+        let word_count = (word >> 16) as usize;
+        let opcode_val = (word & 0xFFFF) as u16;
+        if word_count == 0 {
+            break;
+        }
+        if opcode_val == OP_PHI && pos + 2 < functions.len() && functions[pos + 2] == phi_id {
+            let insert_pos = pos + word_count;
+            functions.insert(insert_pos, parent);
+            functions.insert(insert_pos, value);
+            let new_wc = word_count + 2;
+            functions[pos] = op(new_wc as u16, OP_PHI);
+            return;
+        }
+        pos += word_count;
+    }
+}
+
+/// Generate a SPIR-V 1.0 binary module for row-wise softmax with separate I/O buffers.
+///
+/// The kernel computes `softmax(x)` along the last axis of a `[rows, cols]` matrix.
+/// Each workgroup handles one row. The dispatch should be `(rows, 1, 1)` workgroups.
+///
+/// # Layout
+///
+/// - **Binding 0** (set 0): Input buffer `float[]` (readonly).
+/// - **Binding 1** (set 0): Output buffer `float[]` (writeonly).
+/// - **Push constants**: `{ uint rows; uint cols; }`.
+/// - **Shared memory**: `float[SOFTMAX_WORKGROUP_SIZE]` for reductions.
+///
+/// # Arguments
+///
+/// * `rows` — Number of rows (hint only; actual value from push constants).
+/// * `cols` — Number of columns per row (hint only; actual value from push constants).
+///
+/// # Example
+///
+/// ```
+/// use nn_vulkan::spirv_softmax::generate_softmax_separate_io_spirv;
+/// let spirv = generate_softmax_separate_io_spirv(32, 128);
+/// assert_eq!(spirv.len() % 4, 0);
+/// let magic = u32::from_le_bytes([spirv[0], spirv[1], spirv[2], spirv[3]]);
+/// assert_eq!(magic, 0x07230203);
+/// ```
+pub fn generate_softmax_separate_io_spirv(rows: u32, cols: u32) -> Vec<u8> {
+    let _ = (rows, cols); // hints; actual dims from push constants.
+
+    let mut b = SpirVBuilder::new();
+    let func_id = b.id();
+
+    b.capability(CAPABILITY_SHADER);
+    let glsl_ext = b.ext_inst_import("GLSL.std.450");
+    b.memory_model_decl(ADDRESSING_LOGICAL, MEMORY_MODEL_GLSL450);
+
+    // Types.
+    let ty_void = b.type_void();
+    let ty_float = b.type_float(32);
+    let ty_uint = b.type_int(32, 0);
+    let ty_bool = b.type_bool();
+    let ty_uvec3 = b.type_vector(ty_uint, 3);
+    let ty_fn_void = b.type_function(ty_void, &[]);
+
+    // Runtime arrays for input and output buffers.
+    let ty_rtarr_float = b.type_runtime_array(ty_float);
+    b.decorate(ty_rtarr_float, DECORATION_ARRAY_STRIDE, &[4]);
+
+    // Input buffer struct (readonly).
+    let ty_struct_input = b.type_struct(&[ty_rtarr_float]);
+    b.decorate(ty_struct_input, DECORATION_BLOCK, &[]);
+    b.member_decorate(ty_struct_input, 0, DECORATION_OFFSET, &[0]);
+
+    // Output buffer struct (writeonly).
+    let ty_struct_output = b.type_struct(&[ty_rtarr_float]);
+    b.decorate(ty_struct_output, DECORATION_BLOCK, &[]);
+    b.member_decorate(ty_struct_output, 0, DECORATION_OFFSET, &[0]);
+
+    // Push constant struct: { uint rows; uint cols; }
+    let ty_struct_pc = b.type_struct(&[ty_uint, ty_uint]);
+    b.decorate(ty_struct_pc, DECORATION_BLOCK, &[]);
+    b.member_decorate(ty_struct_pc, 0, DECORATION_OFFSET, &[0]);
+    b.member_decorate(ty_struct_pc, 1, DECORATION_OFFSET, &[4]);
+
+    // Shared memory: float[SOFTMAX_WORKGROUP_SIZE]
+    let const_wg_size = b.constant_u32(ty_uint, SOFTMAX_WORKGROUP_SIZE);
+    let ty_shared_arr = b.type_array(ty_float, const_wg_size);
+    b.decorate(ty_shared_arr, DECORATION_ARRAY_STRIDE, &[4]);
+
+    // Pointer types.
+    let ptr_sb_input = b.type_pointer(STORAGE_CLASS_STORAGE_BUFFER, ty_struct_input);
+    let ptr_sb_output = b.type_pointer(STORAGE_CLASS_STORAGE_BUFFER, ty_struct_output);
+    let ptr_pc = b.type_pointer(STORAGE_CLASS_PUSH_CONSTANT, ty_struct_pc);
+    let ptr_input_uvec3 = b.type_pointer(STORAGE_CLASS_INPUT, ty_uvec3);
+    let ptr_sb_float = b.type_pointer(STORAGE_CLASS_STORAGE_BUFFER, ty_float);
+    let ptr_pc_uint = b.type_pointer(STORAGE_CLASS_PUSH_CONSTANT, ty_uint);
+    let ptr_wg_shared = b.type_pointer(STORAGE_CLASS_WORKGROUP, ty_shared_arr);
+    let ptr_wg_float = b.type_pointer(STORAGE_CLASS_WORKGROUP, ty_float);
+
+    // Constants.
+    let const_0u = b.constant_u32(ty_uint, 0);
+    let const_1u = b.constant_u32(ty_uint, 1);
+    let const_neg_inf = b.constant_f32(ty_float, f32::NEG_INFINITY);
+    let const_f0 = b.constant_f32(ty_float, 0.0);
+    let const_half_wg = b.constant_u32(ty_uint, SOFTMAX_WORKGROUP_SIZE / 2);
+    let const_scope_wg = b.constant_u32(ty_uint, SCOPE_WORKGROUP);
+    let const_mem_sem = b.constant_u32(
+        ty_uint,
+        MEMORY_SEMANTICS_WORKGROUP | MEMORY_SEMANTICS_ACQUIRE_RELEASE,
+    );
+
+    // Global variables.
+    let var_input = b.variable_global(ptr_sb_input, STORAGE_CLASS_STORAGE_BUFFER);
+    b.decorate(var_input, DECORATION_DESCRIPTOR_SET, &[0]);
+    b.decorate(var_input, DECORATION_BINDING, &[0]);
+    b.decorate(var_input, DECORATION_NON_WRITABLE, &[]);
+
+    let var_output = b.variable_global(ptr_sb_output, STORAGE_CLASS_STORAGE_BUFFER);
+    b.decorate(var_output, DECORATION_DESCRIPTOR_SET, &[0]);
+    b.decorate(var_output, DECORATION_BINDING, &[1]);
+
+    let var_pc = b.variable_global(ptr_pc, STORAGE_CLASS_PUSH_CONSTANT);
+
+    let var_gid = b.variable_global(ptr_input_uvec3, STORAGE_CLASS_INPUT);
+    b.decorate(var_gid, DECORATION_BUILTIN, &[BUILTIN_GLOBAL_INVOCATION_ID]);
+
+    let var_lid = b.variable_global(ptr_input_uvec3, STORAGE_CLASS_INPUT);
+    b.decorate(var_lid, DECORATION_BUILTIN, &[BUILTIN_LOCAL_INVOCATION_ID]);
+
+    let var_shared = b.variable_global(ptr_wg_shared, STORAGE_CLASS_WORKGROUP);
+
+    // Entry point.
+    b.entry_point_compute(func_id, "main", &[var_gid, var_lid]);
+    b.execution_mode_local_size(func_id, SOFTMAX_WORKGROUP_SIZE, 1, 1);
+
+    // ---- Function body ----
+    b.func_begin(ty_void, func_id, FUNCTION_CONTROL_NONE, ty_fn_void);
+    let entry_label = b.label();
+
+    // Load invocation IDs.
+    let loaded_gid = b.load(ty_uvec3, var_gid);
+    let gid_x = b.composite_extract(ty_uint, loaded_gid, 0);
+    let loaded_lid = b.load(ty_uvec3, var_lid);
+    let lid_x = b.composite_extract(ty_uint, loaded_lid, 0);
+
+    // Load rows, cols from push constants.
+    let pc_rows_ptr = b.access_chain(ptr_pc_uint, var_pc, &[const_0u]);
+    let _dim_rows = b.load(ty_uint, pc_rows_ptr);
+    let pc_cols_ptr = b.access_chain(ptr_pc_uint, var_pc, &[const_1u]);
+    let dim_cols = b.load(ty_uint, pc_cols_ptr);
+
+    // Row index: row = (gid_x - lid_x) >> 8 (since WG_SIZE = 256 = 2^8).
+    // Each workgroup handles one row, dispatched as (rows, 1, 1) workgroups.
+    let gid_minus_lid = {
+        let result = b.id();
+        let op_isub: u16 = 130;
+        b.functions.push(op(5, op_isub));
+        b.functions.push(ty_uint);
+        b.functions.push(result);
+        b.functions.push(gid_x);
+        b.functions.push(lid_x);
+        result
+    };
+    let const_8u = b.constant_u32(ty_uint, 8); // log2(256) = 8
+    let row = b.shift_right_logical(ty_uint, gid_minus_lid, const_8u);
+
+    // Base offset for this row: row_base = row * cols.
+    let row_base = b.imul(ty_uint, row, dim_cols);
+
+    // ========================================================
+    // Phase 1: Find max of this row using shared memory reduction.
+    // ========================================================
+    let phase1_loop_header = b.id();
+    let phase1_loop_body = b.id();
+    let phase1_loop_continue = b.id();
+    let phase1_loop_merge = b.id();
+
+    b.branch(phase1_loop_header);
+    b.label_with_id(phase1_loop_header);
+    b.loop_merge(phase1_loop_merge, phase1_loop_continue);
+
+    let phi_col_idx = b.phi(ty_uint, &[(lid_x, entry_label)]);
+    let phi_max_accum = b.phi(ty_float, &[(const_neg_inf, entry_label)]);
+
+    let cmp_col = b.u_less_than(ty_bool, phi_col_idx, dim_cols);
+    b.branch_conditional(cmp_col, phase1_loop_body, phase1_loop_merge);
+
+    b.label_with_id(phase1_loop_body);
+    let elem_idx = b.iadd(ty_uint, row_base, phi_col_idx);
+    let ptr_elem = b.access_chain(ptr_sb_float, var_input, &[const_0u, elem_idx]);
+    let val_elem = b.load(ty_float, ptr_elem);
+    let new_max = b.ext_inst(
+        ty_float,
+        glsl_ext,
+        GLSL_STD_450_FMAX,
+        &[phi_max_accum, val_elem],
+    );
+    let next_col_idx = b.iadd(ty_uint, phi_col_idx, const_wg_size);
+    b.branch(phase1_loop_continue);
+
+    b.label_with_id(phase1_loop_continue);
+    b.branch(phase1_loop_header);
+
+    fixup_phi(
+        &mut b.functions,
+        phi_col_idx,
+        next_col_idx,
+        phase1_loop_continue,
+    );
+    fixup_phi(
+        &mut b.functions,
+        phi_max_accum,
+        new_max,
+        phase1_loop_continue,
+    );
+
+    b.label_with_id(phase1_loop_merge);
+
+    // Store thread's partial max into shared memory.
+    let ptr_s_lid = b.access_chain(ptr_wg_float, var_shared, &[lid_x]);
+    b.store(ptr_s_lid, phi_max_accum);
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+
+    // Tree reduction for max.
+    let max_tree_header = b.id();
+    let max_tree_body = b.id();
+    let max_tree_continue = b.id();
+    let max_tree_merge = b.id();
+
+    b.branch(max_tree_header);
+    b.label_with_id(max_tree_header);
+    b.loop_merge(max_tree_merge, max_tree_continue);
+
+    let phi_max_stride = b.phi(ty_uint, &[(const_half_wg, phase1_loop_merge)]);
+    let cmp_max_stride = b.u_less_than(ty_bool, const_0u, phi_max_stride);
+    b.branch_conditional(cmp_max_stride, max_tree_body, max_tree_merge);
+
+    b.label_with_id(max_tree_body);
+    let cmp_max_lid = b.u_less_than(ty_bool, lid_x, phi_max_stride);
+    let max_reduce_label = b.id();
+    let max_skip_label = b.id();
+    b.selection_merge(max_skip_label);
+    b.branch_conditional(cmp_max_lid, max_reduce_label, max_skip_label);
+
+    b.label_with_id(max_reduce_label);
+    let ptr_max_a = b.access_chain(ptr_wg_float, var_shared, &[lid_x]);
+    let val_max_a = b.load(ty_float, ptr_max_a);
+    let lid_plus_max_stride = b.iadd(ty_uint, lid_x, phi_max_stride);
+    let ptr_max_b = b.access_chain(ptr_wg_float, var_shared, &[lid_plus_max_stride]);
+    let val_max_b = b.load(ty_float, ptr_max_b);
+    let reduced_max = b.ext_inst(
+        ty_float,
+        glsl_ext,
+        GLSL_STD_450_FMAX,
+        &[val_max_a, val_max_b],
+    );
+    b.store(ptr_max_a, reduced_max);
+    b.branch(max_skip_label);
+
+    b.label_with_id(max_skip_label);
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+    b.branch(max_tree_continue);
+
+    b.label_with_id(max_tree_continue);
+    let max_stride_next = b.shift_right_logical(ty_uint, phi_max_stride, const_1u);
+    b.branch(max_tree_header);
+
+    fixup_phi(
+        &mut b.functions,
+        phi_max_stride,
+        max_stride_next,
+        max_tree_continue,
+    );
+
+    b.label_with_id(max_tree_merge);
+
+    // Load row_max from shared[0].
+    let ptr_s0 = b.access_chain(ptr_wg_float, var_shared, &[const_0u]);
+    let row_max = b.load(ty_float, ptr_s0);
+
+    // Barrier before reusing shared memory.
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+
+    // ========================================================
+    // Phase 2: Compute exp(x - max) and accumulate partial sums.
+    // ========================================================
+    let phase2_loop_header = b.id();
+    let phase2_loop_body = b.id();
+    let phase2_loop_continue = b.id();
+    let phase2_loop_merge = b.id();
+
+    b.branch(phase2_loop_header);
+    b.label_with_id(phase2_loop_header);
+    b.loop_merge(phase2_loop_merge, phase2_loop_continue);
+
+    let phi_col2 = b.phi(ty_uint, &[(lid_x, max_tree_merge)]);
+    let phi_sum_accum = b.phi(ty_float, &[(const_f0, max_tree_merge)]);
+
+    let cmp_col2 = b.u_less_than(ty_bool, phi_col2, dim_cols);
+    b.branch_conditional(cmp_col2, phase2_loop_body, phase2_loop_merge);
+
+    b.label_with_id(phase2_loop_body);
+    let elem_idx2 = b.iadd(ty_uint, row_base, phi_col2);
+    let ptr_elem2 = b.access_chain(ptr_sb_float, var_input, &[const_0u, elem_idx2]);
+    let val_elem2 = b.load(ty_float, ptr_elem2);
+    let shifted = b.fsub(ty_float, val_elem2, row_max);
+    let exp_val = b.ext_inst(ty_float, glsl_ext, GLSL_STD_450_EXP, &[shifted]);
+    let new_sum = b.fadd(ty_float, phi_sum_accum, exp_val);
+    let next_col2 = b.iadd(ty_uint, phi_col2, const_wg_size);
+    b.branch(phase2_loop_continue);
+
+    b.label_with_id(phase2_loop_continue);
+    b.branch(phase2_loop_header);
+
+    fixup_phi(&mut b.functions, phi_col2, next_col2, phase2_loop_continue);
+    fixup_phi(
+        &mut b.functions,
+        phi_sum_accum,
+        new_sum,
+        phase2_loop_continue,
+    );
+
+    b.label_with_id(phase2_loop_merge);
+
+    // Store partial sum to shared memory.
+    let ptr_s_lid2 = b.access_chain(ptr_wg_float, var_shared, &[lid_x]);
+    b.store(ptr_s_lid2, phi_sum_accum);
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+
+    // Tree reduction for sum.
+    let sum_tree_header = b.id();
+    let sum_tree_body = b.id();
+    let sum_tree_continue = b.id();
+    let sum_tree_merge = b.id();
+
+    b.branch(sum_tree_header);
+    b.label_with_id(sum_tree_header);
+    b.loop_merge(sum_tree_merge, sum_tree_continue);
+
+    let phi_sum_stride = b.phi(ty_uint, &[(const_half_wg, phase2_loop_merge)]);
+    let cmp_sum_stride = b.u_less_than(ty_bool, const_0u, phi_sum_stride);
+    b.branch_conditional(cmp_sum_stride, sum_tree_body, sum_tree_merge);
+
+    b.label_with_id(sum_tree_body);
+    let cmp_sum_lid = b.u_less_than(ty_bool, lid_x, phi_sum_stride);
+    let sum_reduce_label = b.id();
+    let sum_skip_label = b.id();
+    b.selection_merge(sum_skip_label);
+    b.branch_conditional(cmp_sum_lid, sum_reduce_label, sum_skip_label);
+
+    b.label_with_id(sum_reduce_label);
+    let ptr_sum_a = b.access_chain(ptr_wg_float, var_shared, &[lid_x]);
+    let val_sum_a = b.load(ty_float, ptr_sum_a);
+    let lid_plus_sum_stride = b.iadd(ty_uint, lid_x, phi_sum_stride);
+    let ptr_sum_b = b.access_chain(ptr_wg_float, var_shared, &[lid_plus_sum_stride]);
+    let val_sum_b = b.load(ty_float, ptr_sum_b);
+    let reduced_sum = b.fadd(ty_float, val_sum_a, val_sum_b);
+    b.store(ptr_sum_a, reduced_sum);
+    b.branch(sum_skip_label);
+
+    b.label_with_id(sum_skip_label);
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+    b.branch(sum_tree_continue);
+
+    b.label_with_id(sum_tree_continue);
+    let sum_stride_next = b.shift_right_logical(ty_uint, phi_sum_stride, const_1u);
+    b.branch(sum_tree_header);
+
+    fixup_phi(
+        &mut b.functions,
+        phi_sum_stride,
+        sum_stride_next,
+        sum_tree_continue,
+    );
+
+    b.label_with_id(sum_tree_merge);
+
+    // Load row_sum from shared[0].
+    let ptr_s0_sum = b.access_chain(ptr_wg_float, var_shared, &[const_0u]);
+    let row_sum = b.load(ty_float, ptr_s0_sum);
+
+    // Barrier before phase 3.
+    b.control_barrier(const_scope_wg, const_scope_wg, const_mem_sem);
+
+    // ========================================================
+    // Phase 3: Normalize — write exp(x - max) / sum to output buffer.
+    // ========================================================
+    let phase3_loop_header = b.id();
+    let phase3_loop_body = b.id();
+    let phase3_loop_continue = b.id();
+    let phase3_loop_merge = b.id();
+
+    b.branch(phase3_loop_header);
+    b.label_with_id(phase3_loop_header);
+    b.loop_merge(phase3_loop_merge, phase3_loop_continue);
+
+    let phi_col3 = b.phi(ty_uint, &[(lid_x, sum_tree_merge)]);
+    let cmp_col3 = b.u_less_than(ty_bool, phi_col3, dim_cols);
+    b.branch_conditional(cmp_col3, phase3_loop_body, phase3_loop_merge);
+
+    b.label_with_id(phase3_loop_body);
+    let elem_idx3 = b.iadd(ty_uint, row_base, phi_col3);
+    // Read from input.
+    let ptr_in3 = b.access_chain(ptr_sb_float, var_input, &[const_0u, elem_idx3]);
+    let val_in3 = b.load(ty_float, ptr_in3);
+    let shifted3 = b.fsub(ty_float, val_in3, row_max);
+    let exp_val3 = b.ext_inst(ty_float, glsl_ext, GLSL_STD_450_EXP, &[shifted3]);
+    let normed = b.fdiv(ty_float, exp_val3, row_sum);
+    // Write to output.
+    let ptr_out3 = b.access_chain(ptr_sb_float, var_output, &[const_0u, elem_idx3]);
+    b.store(ptr_out3, normed);
+    let next_col3 = b.iadd(ty_uint, phi_col3, const_wg_size);
+    b.branch(phase3_loop_continue);
+
+    b.label_with_id(phase3_loop_continue);
+    b.branch(phase3_loop_header);
+
+    fixup_phi(&mut b.functions, phi_col3, next_col3, phase3_loop_continue);
+
+    b.label_with_id(phase3_loop_merge);
+
+    // Return.
+    b.op_return();
+    b.func_end();
+
+    let words = b.build();
+    words_to_bytes(&words)
+}
+
+/// Compute reference softmax on CPU for testing.
+///
+/// Computes row-wise softmax: `softmax(x_i) = exp(x_i - max) / sum(exp(x_j - max))`.
+/// Returns a flat `Vec<f32>` with the same layout as input.
+pub fn reference_softmax(input: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    assert_eq!(input.len(), rows * cols, "input length must be rows * cols");
+    let mut output = vec![0.0f32; rows * cols];
+    for row in 0..rows {
+        let base = row * cols;
+        let row_slice = &input[base..base + cols];
+
+        // Find max for numerical stability.
+        let row_max = row_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+
+        // Compute exp(x - max) and sum.
+        let mut sum = 0.0f32;
+        for j in 0..cols {
+            let e = (row_slice[j] - row_max).exp();
+            output[base + j] = e;
+            sum += e;
+        }
+
+        // Normalize.
+        for j in 0..cols {
+            output[base + j] /= sum;
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+#[path = "spirv_softmax_tests.rs"]
+mod spirv_softmax_tests;

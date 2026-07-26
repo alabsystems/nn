@@ -1,0 +1,20 @@
+# Author: Andrew Yates
+[package]
+name = "nn-autodiff"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reverse-mode automatic differentiation for nn with verified gradients"
+
+[lints]
+workspace = true
+
+[dependencies]
+nn-core = { workspace = true, features = ["training"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+nn-optim = { workspace = true }

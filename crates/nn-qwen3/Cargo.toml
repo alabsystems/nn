@@ -1,0 +1,46 @@
+[package]
+name = "nn-qwen3"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Qwen3 LLM model for nn — backend-agnostic, uses DynTensor + Module API"
+autotests = false
+
+[features]
+test-helpers = ["nn-core/test-helpers"]
+
+[dependencies]
+nn-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+
+[lints]
+workspace = true
+
+# Integration tests that need nn-qwen3::test_utils (feature-gated)
+[[test]]
+name = "synthetic_weights"
+path = "tests/synthetic_weights.rs"
+required-features = ["test-helpers"]
+
+[[test]]
+name = "moe_integration"
+path = "tests/moe_integration.rs"
+required-features = ["test-helpers"]
+
+[[test]]
+name = "generation_integration"
+path = "tests/generation_integration.rs"
+required-features = ["test-helpers"]
+
+[[test]]
+name = "real_weights"
+path = "tests/real_weights.rs"
+
+[[test]]
+name = "generation_e2e"
+path = "tests/generation_e2e.rs"

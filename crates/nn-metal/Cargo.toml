@@ -1,0 +1,152 @@
+[package]
+name = "nn-metal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Metal GPU backend for nn"
+autotests = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "nn_report"
+path = "src/bin/nn_report.rs"
+
+[[bin]]
+name = "rss_measure"
+path = "src/bin/rss_measure.rs"
+
+[[bin]]
+name = "kokoro_synth"
+path = "src/bin/kokoro_synth.rs"
+
+[dependencies]
+nn-core = { workspace = true }
+nn-dsl = { workspace = true }
+nn-models = { workspace = true }
+nn-tts-verify = { workspace = true }
+metal = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }
+block = { workspace = true }
+objc = { workspace = true }
+half = { workspace = true }
+safetensors = { workspace = true }
+memmap2 = { workspace = true }
+ndarray = { workspace = true }
+nn-verify = { workspace = true, optional = true }
+
+[features]
+default = []
+verify = ["dep:nn-verify"]
+bench = []
+plan-serde = ["nn-dsl/plan-serde"]
+# Future: NativeEncoding plan for 3-dispatch sequence (#3472 D3 S3).
+_native_encoding = []
+# ICB replay: pre-encode GPU dispatch sequences into Metal Indirect Command
+# Buffers and replay them on subsequent forward passes with the same shape.
+# Requires deterministic arena offsets. Part of #4264.
+icb-replay = []
+
+[dev-dependencies]
+criterion = { workspace = true }
+nn-core = { workspace = true, features = ["test-helpers"] }
+nn-glm5 = { workspace = true }
+nn-macros = { workspace = true }
+nn-qwen3 = { workspace = true, features = ["test-helpers"] }
+nn-reftest = { workspace = true }
+nn-whisper = { workspace = true, features = ["test-helpers"] }
+syn = { workspace = true }
+
+[[test]]
+name = "compiled_model_all"
+path = "tests/compiled_model_all.rs"
+
+[[test]]
+name = "contract_all"
+path = "tests/contract_all.rs"
+
+[[test]]
+name = "demucs_all"
+path = "tests/demucs_all.rs"
+
+[[test]]
+name = "dispatch_all"
+path = "tests/dispatch_all.rs"
+
+[[test]]
+name = "gpu_ops_all"
+path = "tests/gpu_ops_all.rs"
+
+[[test]]
+name = "kokoro_all"
+path = "tests/kokoro_all.rs"
+
+[[test]]
+name = "model_forward_all"
+path = "tests/model_forward_all.rs"
+
+[[test]]
+name = "pipeline_all"
+path = "tests/pipeline_all.rs"
+
+[[test]]
+name = "tensor_dispatch_all"
+path = "tests/tensor_dispatch_all.rs"
+
+[[test]]
+name = "whisper_compiled"
+path = "tests/whisper_compiled.rs"
+
+[[test]]
+name = "int8_gemm_parity"
+path = "tests/int8_gemm_parity.rs"
+
+[[test]]
+name = "convert_vit_integration"
+path = "tests/convert_vit_integration.rs"
+
+[[test]]
+name = "cross_backend_parity_all"
+path = "tests/cross_backend_parity_all.rs"
+
+[[test]]
+name = "gpu_benchmarks"
+path = "tests/gpu_benchmarks.rs"
+
+[[test]]
+name = "real_model_gpu_parity"
+path = "tests/real_model_gpu_parity.rs"
+
+[[test]]
+name = "model_verify_all"
+path = "tests/model_verify_all.rs"
+
+[[bench]]
+name = "matmul"
+harness = false
+
+[[bench]]
+name = "compiled_dispatch"
+harness = false
+
+[[bench]]
+name = "tiled_gemm"
+harness = false
+
+[[bench]]
+name = "conv1d"
+harness = false
+
+[[bench]]
+name = "fused_norm"
+harness = false
+
+[[bench]]
+name = "model_inference"
+harness = false

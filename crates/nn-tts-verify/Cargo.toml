@@ -1,0 +1,36 @@
+[package]
+name = "nn-tts-verify"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Audio-domain quality verification for TTS/SVS pipelines — hard bounds and quality metrics on PCM output"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+ny = ["dep:nn-verify", "dep:ndarray", "dep:ny-propagate"]
+
+[dependencies]
+nn-core = { workspace = true }
+nn-dsl = { workspace = true }
+rustfft = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+nn-verify = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+ny-propagate = { workspace = true, optional = true }
+
+[dev-dependencies]
+nn-dsl = { workspace = true }
+nn-models = { workspace = true }
+nn-verify = { workspace = true }
+ndarray = { workspace = true }
+ny-api = { workspace = true }
+ny-propagate = { workspace = true }
+serde_json = { workspace = true }

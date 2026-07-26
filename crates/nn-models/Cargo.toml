@@ -1,0 +1,41 @@
+[package]
+name = "nn-models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Backend-agnostic model definitions, builders, and signal processing for nn"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+espeak = []
+training = ["nn-core/training"]
+
+[dependencies]
+half = { workspace = true }
+nn-core = { workspace = true }
+nn-dsl = { workspace = true }
+rustfft = { workspace = true }
+safetensors = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+pkg-config = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+nn-core = { workspace = true, features = ["test-helpers"] }
+nn-import = { workspace = true }
+nn-reftest = { workspace = true, features = ["spectral"] }
+nn-whisper = { workspace = true }
+
+[[bench]]
+name = "dpdf_bench"
+harness = false

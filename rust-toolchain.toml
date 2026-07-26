@@ -1,0 +1,12 @@
+# Pin the toolchain for the public snapshot.
+#
+# The publication engine runs its public-clone gate with a SCRUBBED environment,
+# so a clone with no rust-toolchain.toml inherits whatever `rustup default` is on
+# the machine cutting the release. On the maintainer machine that is the custom
+# `trust` verifying compiler, which fails compiling ordinary third-party build
+# scripts (libc, unicode-ident) on proof obligations unrelated to this repo.
+#
+# Pinning here makes the gate a property of the candidate rather than of ambient
+# workstation state, and matches ny, clean and aterm.
+[toolchain]
+channel = "stable"

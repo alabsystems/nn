@@ -1,0 +1,21 @@
+[package]
+name = "nn-optimize"
+description = "CLI for the self-optimizing ML compiler pipeline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nn-optimize"
+path = "src/main.rs"
+
+[dependencies]
+nn-dsl = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true

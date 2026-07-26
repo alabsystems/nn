@@ -1,0 +1,49 @@
+[package]
+name = "nn-whisper"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Whisper STT model for nn — backend-agnostic, uses DynTensor + Module API"
+autotests = false
+
+[features]
+test-helpers = ["nn-core/test-helpers"]
+
+[dependencies]
+half.workspace = true
+nn-core.workspace = true
+rand.workspace = true
+safetensors.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }
+nn-metal.workspace = true
+nn-reftest = { path = "../nn-reftest" }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "whisper_all"
+path = "tests/whisper_all.rs"
+required-features = ["test-helpers"]
+
+[[test]]
+name = "real_weights"
+path = "tests/real_weights.rs"
+
+[[test]]
+name = "metal_parity"
+path = "tests/metal_parity.rs"
+
+[[test]]
+name = "transcription_e2e"
+path = "tests/transcription_e2e.rs"
+
+[[test]]
+name = "tokenizer_integration"
+path = "tests/tokenizer_integration.rs"

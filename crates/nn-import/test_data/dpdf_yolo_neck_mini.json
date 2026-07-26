@@ -1,0 +1,120 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_conv_weight"}},
+                {"as_tensor": {"name": "p_conv_bias"}},
+                {"as_tensor": {"name": "p_bn_weight"}},
+                {"as_tensor": {"name": "p_bn_bias"}},
+                {"as_tensor": {"name": "p_bn_mean"}},
+                {"as_tensor": {"name": "p_bn_var"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "cat_out"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.convolution.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_conv_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_conv_bias"}}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "dilation", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "transposed", "arg": {"as_bool": false}, "kind": 1},
+                        {"name": "output_padding", "arg": {"as_ints": [0, 0]}, "kind": 1},
+                        {"name": "groups", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "conv"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten._native_batch_norm_legit_no_training.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "conv"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_bn_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_bn_bias"}}, "kind": 1},
+                        {"name": "running_mean", "arg": {"as_tensor": {"name": "p_bn_mean"}}, "kind": 1},
+                        {"name": "running_var", "arg": {"as_tensor": {"name": "p_bn_var"}}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-5}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "bn"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.hardswish.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "bn"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "act"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.max_pool2d_with_indices.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "act"}}, "kind": 1},
+                        {"name": "kernel_size", "arg": {"as_ints": [2, 2]}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [2, 2]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [0, 0]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "pool"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.upsample_nearest2d.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "pool"}}, "kind": 1},
+                        {"name": "output_size", "arg": {"as_ints": [8, 8]}, "kind": 1},
+                        {"name": "scales_h", "arg": {"as_float": 2.0}, "kind": 1},
+                        {"name": "scales_w", "arg": {"as_float": 2.0}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "up"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.cat.default",
+                    "inputs": [
+                        {"name": "tensors", "arg": {"as_tensors": [{"name": "act"}, {"name": "up"}]}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "cat_out"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":              {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 3}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 192}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "p_conv_weight":  {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 3}, {"as_int": 3}, {"as_int": 3}], "requires_grad": true, "strides": [{"as_int": 27}, {"as_int": 9}, {"as_int": 3}, {"as_int": 1}]},
+                "p_conv_bias":    {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_bn_weight":    {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_bn_bias":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_bn_mean":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 1}]},
+                "p_bn_var":       {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 1}]},
+                "conv":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "bn":             {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "act":            {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "pool":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 4}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 4}, {"as_int": 1}]},
+                "up":             {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1024}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "cat_out":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 32}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 2048}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_conv_weight"}, "parameter_name": "conv.weight"}},
+                {"parameter": {"arg": {"name": "p_conv_bias"}, "parameter_name": "conv.bias"}},
+                {"parameter": {"arg": {"name": "p_bn_weight"}, "parameter_name": "bn.weight"}},
+                {"parameter": {"arg": {"name": "p_bn_bias"}, "parameter_name": "bn.bias"}},
+                {"buffer": {"arg": {"name": "p_bn_mean"}, "buffer_name": "bn.running_mean", "persistent": true}},
+                {"buffer": {"arg": {"name": "p_bn_var"}, "buffer_name": "bn.running_var", "persistent": true}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "cat_out"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

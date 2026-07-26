@@ -1,0 +1,145 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_lstm_w_ih_l0"}},
+                {"as_tensor": {"name": "p_lstm_w_hh_l0"}},
+                {"as_tensor": {"name": "p_lstm_b_ih_l0"}},
+                {"as_tensor": {"name": "p_lstm_b_hh_l0"}},
+                {"as_tensor": {"name": "p_lstm_w_ih_l0_reverse"}},
+                {"as_tensor": {"name": "p_lstm_w_hh_l0_reverse"}},
+                {"as_tensor": {"name": "p_lstm_b_ih_l0_reverse"}},
+                {"as_tensor": {"name": "p_lstm_b_hh_l0_reverse"}},
+                {"as_tensor": {"name": "p_linear_weight"}},
+                {"as_tensor": {"name": "p_linear_bias"}},
+                {"as_tensor": {"name": "h_0"}},
+                {"as_tensor": {"name": "c_0"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "output"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "t1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "t1"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 0}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "t2"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.lstm.input",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "t2"}}, "kind": 1},
+                        {"name": "hx", "arg": {"as_tensors": [{"name": "h_0"}, {"name": "c_0"}]}, "kind": 1},
+                        {"name": "params", "arg": {"as_tensors": [
+                            {"name": "p_lstm_w_ih_l0"},
+                            {"name": "p_lstm_w_hh_l0"},
+                            {"name": "p_lstm_b_ih_l0"},
+                            {"name": "p_lstm_b_hh_l0"},
+                            {"name": "p_lstm_w_ih_l0_reverse"},
+                            {"name": "p_lstm_w_hh_l0_reverse"},
+                            {"name": "p_lstm_b_ih_l0_reverse"},
+                            {"name": "p_lstm_b_hh_l0_reverse"}
+                        ]}, "kind": 1},
+                        {"name": "has_biases", "arg": {"as_bool": true}, "kind": 1},
+                        {"name": "num_layers", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dropout", "arg": {"as_float": 0.0}, "kind": 1},
+                        {"name": "train", "arg": {"as_bool": false}, "kind": 1},
+                        {"name": "bidirectional", "arg": {"as_bool": true}, "kind": 1},
+                        {"name": "batch_first", "arg": {"as_bool": false}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "lstm_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "lstm_out"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 0}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "t3"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "t3"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_linear_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_linear_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "lin_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "lin_out"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "output"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 4}, {"as_int": 1}]},
+                "p_lstm_w_ih_l0": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "p_lstm_w_hh_l0": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 4}], "requires_grad": true, "strides": [{"as_int": 4}, {"as_int": 1}]},
+                "p_lstm_b_ih_l0": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_lstm_b_hh_l0": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_lstm_w_ih_l0_reverse": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "p_lstm_w_hh_l0_reverse": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 4}], "requires_grad": true, "strides": [{"as_int": 4}, {"as_int": 1}]},
+                "p_lstm_b_ih_l0_reverse": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_lstm_b_hh_l0_reverse": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_linear_weight": {"dtype": 7, "sizes": [{"as_int": 8}, {"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "p_linear_bias": {"dtype": 7, "sizes": [{"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "h_0": {"dtype": 7, "sizes": [{"as_int": 2}, {"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 4}, {"as_int": 1}]},
+                "c_0": {"dtype": 7, "sizes": [{"as_int": 2}, {"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 4}, {"as_int": 1}]},
+                "t1": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 1}, {"as_int": 4}]},
+                "t2": {"dtype": 7, "sizes": [{"as_int": 4}, {"as_int": 1}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1}, {"as_int": 32}, {"as_int": 4}]},
+                "lstm_out": {"dtype": 7, "sizes": [{"as_int": 4}, {"as_int": 1}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 8}, {"as_int": 8}, {"as_int": 1}]},
+                "t3": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 8}, {"as_int": 8}, {"as_int": 1}]},
+                "lin_out": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 8}, {"as_int": 1}]},
+                "output": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 1}, {"as_int": 8}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_lstm_w_ih_l0"}, "parameter_name": "lstm.weight_ih_l0"}},
+                {"parameter": {"arg": {"name": "p_lstm_w_hh_l0"}, "parameter_name": "lstm.weight_hh_l0"}},
+                {"parameter": {"arg": {"name": "p_lstm_b_ih_l0"}, "parameter_name": "lstm.bias_ih_l0"}},
+                {"parameter": {"arg": {"name": "p_lstm_b_hh_l0"}, "parameter_name": "lstm.bias_hh_l0"}},
+                {"parameter": {"arg": {"name": "p_lstm_w_ih_l0_reverse"}, "parameter_name": "lstm.weight_ih_l0_reverse"}},
+                {"parameter": {"arg": {"name": "p_lstm_w_hh_l0_reverse"}, "parameter_name": "lstm.weight_hh_l0_reverse"}},
+                {"parameter": {"arg": {"name": "p_lstm_b_ih_l0_reverse"}, "parameter_name": "lstm.bias_ih_l0_reverse"}},
+                {"parameter": {"arg": {"name": "p_lstm_b_hh_l0_reverse"}, "parameter_name": "lstm.bias_hh_l0_reverse"}},
+                {"parameter": {"arg": {"name": "p_linear_weight"}, "parameter_name": "linear.weight"}},
+                {"parameter": {"arg": {"name": "p_linear_bias"}, "parameter_name": "linear.bias"}},
+                {"buffer": {"arg": {"name": "h_0"}, "buffer_name": "h_0", "persistent": false}},
+                {"buffer": {"arg": {"name": "c_0"}, "buffer_name": "c_0", "persistent": false}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "output"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

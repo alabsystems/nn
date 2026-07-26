@@ -1,0 +1,73 @@
+[package]
+name = "nn"
+description = "Verified Rust ML framework — write models and kernels in Rust, verify with Kani + ny + ay, compile to Metal + CUDA + Vulkan + CPU."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+dsl = ["dep:nn-dsl", "dep:nn-macros"]
+metal = ["dep:nn-metal", "nn-import?/metal"]
+reftest = ["dep:nn-reftest"]
+spectral = ["reftest", "nn-reftest/spectral"]
+# Enables nn-core training infrastructure (DynTensor::rand, training-mode ops).
+# Use `training` feature for full autodiff + optimizers.
+training-core = ["nn-core/training"]
+# Backward-compat alias for training-core (was misleadingly named "random").
+random = ["training-core"]
+training = ["dep:nn-autodiff", "dep:nn-optim", "training-core"]
+whisper = ["dep:nn-whisper"]
+qwen3 = ["dep:nn-qwen3"]
+glm5 = ["dep:nn-glm5"]
+models = ["dep:nn-models"]
+espeak = ["models", "nn-models/espeak"]
+tts-verify = ["dep:nn-tts-verify"]
+tts-verify-crown = ["tts-verify", "nn-tts-verify/ny"]
+import = ["dep:nn-import", "nn-import/reftest"]
+import-verify = ["import", "nn-import/verify"]
+import-metal = ["import", "metal", "nn-import/metal"]
+import-full = ["import-metal", "import-verify"]
+gguf = ["dep:nn-gguf"]
+# Full auto-converter: nn-import (graph parse + build) + nn-models (ConvertedModel).
+# Bridges the dependency gap between nn-import and nn-models.
+convert-model = ["import", "models", "dep:safetensors"]
+# Serializable dispatch plan and optimizer configs (peephole, optimal configs).
+plan-serde = ["metal", "nn-metal/plan-serde"]
+# Auto-verification: CompiledModel::from_trace_verified() / from_trace_certified().
+# Requires `metal` feature. Pulls in ny for IBP/CROWN bound propagation.
+verify = ["metal", "dep:nn-verify", "nn-metal/verify"]
+
+[dependencies]
+nn-macros = { workspace = true, optional = true }
+nn-core.workspace = true
+nn-dsl = { workspace = true, optional = true }
+nn-whisper = { workspace = true, optional = true }
+nn-qwen3 = { workspace = true, optional = true }
+nn-autodiff = { workspace = true, optional = true }
+nn-optim = { workspace = true, optional = true }
+nn-metal = { workspace = true, optional = true }
+nn-reftest = { workspace = true, optional = true }
+nn-glm5 = { workspace = true, optional = true }
+nn-models = { workspace = true, optional = true }
+nn-tts-verify = { workspace = true, optional = true }
+nn-import = { workspace = true, optional = true }
+nn-verify = { workspace = true, optional = true }
+nn-gguf = { workspace = true, optional = true }
+safetensors = { workspace = true, optional = true }
+
+[dev-dependencies]
+nn-macros.workspace = true
+nn-dsl.workspace = true
+nn-metal.workspace = true
+nn-reftest.workspace = true
+serde_json.workspace = true
+
+[[test]]
+name = "training_all"
+required-features = ["training"]
+
+[lints]
+workspace = true

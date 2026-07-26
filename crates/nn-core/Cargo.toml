@@ -1,0 +1,66 @@
+[package]
+name = "nn-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core tensor types for nn — verified ML framework"
+autotests = false
+autobenches = false
+
+[lints]
+workspace = true
+
+[features]
+training = ["rand", "rand_distr"]
+test-helpers = []
+serde = ["dep:serde"]
+lstm-f64-accumulation = []
+
+[dependencies]
+half = { workspace = true }
+ndarray = { workspace = true }
+num-traits = { workspace = true }
+safetensors = { workspace = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+# BLAS linker symbols — when workspace feature unification enables ndarray/blas
+# (ny activates this), the Accelerate framework must be linked.
+blas-src = { workspace = true }
+accelerate-src = { workspace = true }
+
+# Optional: random tensor constructors (randn, rand_like)
+rand = { workspace = true, optional = true }
+rand_distr = { workspace = true, optional = true }
+
+[[test]]
+name = "core_all"
+path = "tests/core_all.rs"
+
+[[test]]
+name = "nn_layer_tests"
+path = "tests/nn_layer_tests.rs"
+
+[[test]]
+name = "serialization_roundtrip"
+path = "tests/serialization_roundtrip.rs"
+
+[[test]]
+name = "performance_benchmarks"
+path = "tests/performance_benchmarks.rs"
+
+[[bench]]
+name = "dyn_tensor_ops"
+harness = false
+
+[[bench]]
+name = "dyn_tensor_ops_extended"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }
+serde_json = { workspace = true }
+# Benchmarks need random tensor constructors
+rand = { workspace = true }
+rand_distr = { workspace = true }

@@ -1,0 +1,26 @@
+[package]
+name = "nn-cli"
+description = "nn command-line interface — convert PyTorch models to verified GPU inference"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nn"
+path = "src/main.rs"
+
+[dependencies]
+nn-core = { workspace = true }
+nn-dsl = { workspace = true, features = ["plan-serde"] }
+nn-import = { workspace = true, features = ["metal"] }
+nn-metal = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+safetensors = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

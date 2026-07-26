@@ -1,0 +1,293 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_ln1_weight"}},
+                {"as_tensor": {"name": "p_ln1_bias"}},
+                {"as_tensor": {"name": "p_q_weight"}},
+                {"as_tensor": {"name": "p_q_bias"}},
+                {"as_tensor": {"name": "p_k_weight"}},
+                {"as_tensor": {"name": "p_k_bias"}},
+                {"as_tensor": {"name": "p_v_weight"}},
+                {"as_tensor": {"name": "p_v_bias"}},
+                {"as_tensor": {"name": "p_o_weight"}},
+                {"as_tensor": {"name": "p_o_bias"}},
+                {"as_tensor": {"name": "p_ln2_weight"}},
+                {"as_tensor": {"name": "p_ln2_bias"}},
+                {"as_tensor": {"name": "p_ff1_weight"}},
+                {"as_tensor": {"name": "p_ff1_bias"}},
+                {"as_tensor": {"name": "p_ff2_weight"}},
+                {"as_tensor": {"name": "p_ff2_bias"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "residual2"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.layer_norm.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "normalized_shape", "arg": {"as_ints": [16]}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_ln1_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_ln1_bias"}}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-5}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "ln1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "ln1"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_q_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_q_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "q_proj"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "ln1"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_k_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_k_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "k_proj"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "ln1"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_v_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_v_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "v_proj"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.view.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "q_proj"}}, "kind": 1},
+                        {"name": "size", "arg": {"as_ints": [1, 4, 2, 8]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "q_reshape"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.view.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "k_proj"}}, "kind": 1},
+                        {"name": "size", "arg": {"as_ints": [1, 4, 2, 8]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "k_reshape"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.view.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "v_proj"}}, "kind": 1},
+                        {"name": "size", "arg": {"as_ints": [1, 4, 2, 8]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "v_reshape"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "q_reshape"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "q_t"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "k_reshape"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "k_t"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "v_reshape"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "v_t"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.scaled_dot_product_attention.default",
+                    "inputs": [
+                        {"name": "query", "arg": {"as_tensor": {"name": "q_t"}}, "kind": 1},
+                        {"name": "key", "arg": {"as_tensor": {"name": "k_t"}}, "kind": 1},
+                        {"name": "value", "arg": {"as_tensor": {"name": "v_t"}}, "kind": 1},
+                        {"name": "scale", "arg": {"as_float": 0.35355339059327373}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "attn_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.transpose.int",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "attn_out"}}, "kind": 1},
+                        {"name": "dim0", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "dim1", "arg": {"as_int": 2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "attn_t"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.view.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "attn_t"}}, "kind": 1},
+                        {"name": "size", "arg": {"as_ints": [1, 4, 16]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "attn_flat"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "attn_flat"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_o_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_o_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "o_proj"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.add.Tensor",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "o_proj"}}, "kind": 1},
+                        {"name": "other", "arg": {"as_tensor": {"name": "x"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "residual1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.layer_norm.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "residual1"}}, "kind": 1},
+                        {"name": "normalized_shape", "arg": {"as_ints": [16]}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_ln2_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_ln2_bias"}}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-5}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "ln2"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "ln2"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_ff1_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_ff1_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "ff1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.gelu.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "ff1"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "gelu"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.linear.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "gelu"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_ff2_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_ff2_bias"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "ff2"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.add.Tensor",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "ff2"}}, "kind": 1},
+                        {"name": "other", "arg": {"as_tensor": {"name": "residual1"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "residual2"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":             {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "p_ln1_weight":  {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ln1_bias":    {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_q_weight":    {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_q_bias":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_k_weight":    {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_k_bias":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_v_weight":    {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_v_bias":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_o_weight":    {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_o_bias":      {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ln2_weight":  {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ln2_bias":    {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ff1_weight":  {"dtype": 7, "sizes": [{"as_int": 32}, {"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 16}, {"as_int": 1}]},
+                "p_ff1_bias":    {"dtype": 7, "sizes": [{"as_int": 32}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_ff2_weight":  {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 32}], "requires_grad": true, "strides": [{"as_int": 32}, {"as_int": 1}]},
+                "p_ff2_bias":    {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "ln1":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "q_proj":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "k_proj":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "v_proj":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "q_reshape":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 2}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 8}, {"as_int": 1}]},
+                "k_reshape":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 2}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 8}, {"as_int": 1}]},
+                "v_reshape":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 2}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 8}, {"as_int": 1}]},
+                "q_t":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 2}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 8}, {"as_int": 16}, {"as_int": 1}]},
+                "k_t":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 2}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 8}, {"as_int": 16}, {"as_int": 1}]},
+                "v_t":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 2}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 8}, {"as_int": 16}, {"as_int": 1}]},
+                "attn_out":      {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 2}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 32}, {"as_int": 8}, {"as_int": 1}]},
+                "attn_t":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 2}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 8}, {"as_int": 32}, {"as_int": 1}]},
+                "attn_flat":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "o_proj":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "residual1":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "ln2":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "ff1":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 32}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 32}, {"as_int": 1}]},
+                "gelu":          {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 32}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 32}, {"as_int": 1}]},
+                "ff2":           {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]},
+                "residual2":     {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 64}, {"as_int": 16}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_ln1_weight"}, "parameter_name": "ln1.weight"}},
+                {"parameter": {"arg": {"name": "p_ln1_bias"}, "parameter_name": "ln1.bias"}},
+                {"parameter": {"arg": {"name": "p_q_weight"}, "parameter_name": "attn.q_proj.weight"}},
+                {"parameter": {"arg": {"name": "p_q_bias"}, "parameter_name": "attn.q_proj.bias"}},
+                {"parameter": {"arg": {"name": "p_k_weight"}, "parameter_name": "attn.k_proj.weight"}},
+                {"parameter": {"arg": {"name": "p_k_bias"}, "parameter_name": "attn.k_proj.bias"}},
+                {"parameter": {"arg": {"name": "p_v_weight"}, "parameter_name": "attn.v_proj.weight"}},
+                {"parameter": {"arg": {"name": "p_v_bias"}, "parameter_name": "attn.v_proj.bias"}},
+                {"parameter": {"arg": {"name": "p_o_weight"}, "parameter_name": "attn.out_proj.weight"}},
+                {"parameter": {"arg": {"name": "p_o_bias"}, "parameter_name": "attn.out_proj.bias"}},
+                {"parameter": {"arg": {"name": "p_ln2_weight"}, "parameter_name": "ln2.weight"}},
+                {"parameter": {"arg": {"name": "p_ln2_bias"}, "parameter_name": "ln2.bias"}},
+                {"parameter": {"arg": {"name": "p_ff1_weight"}, "parameter_name": "ff.fc1.weight"}},
+                {"parameter": {"arg": {"name": "p_ff1_bias"}, "parameter_name": "ff.fc1.bias"}},
+                {"parameter": {"arg": {"name": "p_ff2_weight"}, "parameter_name": "ff.fc2.weight"}},
+                {"parameter": {"arg": {"name": "p_ff2_bias"}, "parameter_name": "ff.fc2.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "residual2"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

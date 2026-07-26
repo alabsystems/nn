@@ -1,0 +1,42 @@
+[package]
+name = "nn-import"
+description = "Import PyTorch torch.export graphs into nn ComputationGraph"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+metal = ["dep:nn-metal", "dep:nn-dsl"]
+reftest = ["dep:nn-reftest"]
+verify = ["dep:nn-verify", "dep:ndarray"]
+
+[dependencies]
+nn-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+safetensors = { workspace = true }
+thiserror = { workspace = true }
+half = { workspace = true }
+nn-metal = { workspace = true, optional = true }
+nn-dsl = { workspace = true, optional = true }
+nn-reftest = { workspace = true, optional = true }
+nn-verify = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+nn-dsl = { workspace = true }
+nn-gguf = { workspace = true }
+nn-metal = { workspace = true }
+nn-models = { workspace = true }
+nn-reftest = { workspace = true }
+nn-verify = { workspace = true }
+nn-whisper = { workspace = true, features = ["test-helpers"] }
+ndarray = { workspace = true }
+hound = { workspace = true }
+
+[lints]
+workspace = true

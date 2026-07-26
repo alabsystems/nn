@@ -1,0 +1,27 @@
+# nn test policy — OOM prevention (added after the 2026-06-15 kernel panic).
+#
+# Background: a bare `cargo test` over the workspace ran many memory-heavy test
+# binaries concurrently — gpu_ops_all (~98GB), nn_models lib tests (~13GB x3),
+# and compose_*_all — and over-committed a 128GB machine, tripping the kernel
+# memory watchdog. (The nn-dsl peephole tests used to build a 1<<28-element Vec
+# (~13GB); they now enumerate configs lazily, so they no longer need the heavy
+# group — see enumerate_peephole_configs() in optimize_plan.rs.)
+#
+# This config serializes the known-heavy binaries/tests into a single-threaded
+# "heavy" group so at most ONE of them is resident at any time. Use nextest, not
+# bare `cargo test` (see CLAUDE.md):  cargo nextest run
+
+[test-groups]
+# At most one heavy test runs at a time across the whole run.
+heavy = { max-threads = 1 }
+
+[[profile.default.overrides]]
+# GPU/model integration binaries that each peak in the GBs, plus the specific
+# document-scale flash-attention parity tests. Serializing these prevents the
+# concurrent-allocation OOM.
+filter = 'binary(gpu_ops_all) | binary(nn_models) | binary(/compose_.*_all/) | test(/flash_attn_dpdf_s(8192|16384)/)'
+test-group = 'heavy'
+
+[profile.ci]
+# CI inherits the heavy group; keep retries off so a real OOM is not masked.
+retries = 0

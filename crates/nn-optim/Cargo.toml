@@ -1,0 +1,22 @@
+# Author: Andrew Yates
+[package]
+name = "nn-optim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Verified optimizers for nn: Adam, AdaFactor, SGD with proved update bounds"
+
+[lints]
+workspace = true
+
+[dependencies]
+nn-core = { workspace = true, features = ["training"] }
+nn-autodiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+nn-core = { workspace = true, features = ["test-helpers"] }

@@ -1,0 +1,27 @@
+[package]
+name = "nn-macros"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Proc-macro crate providing #[kernel] and #[model] attributes for nn"
+
+[lints]
+workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+nn-dsl = { workspace = true }
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nn-core = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+nn-metal = { workspace = true }

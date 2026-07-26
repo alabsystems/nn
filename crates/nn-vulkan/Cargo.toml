@@ -1,0 +1,18 @@
+# Author: Andrew Yates
+[package]
+name = "nn-vulkan"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Vulkan GPU backend for nn: SPIR-V compute pipeline for cross-platform inference"
+
+[lints]
+workspace = true
+
+[dependencies]
+nn-dsl = { path = "../nn-dsl" }
+thiserror.workspace = true
+
+[dev-dependencies]

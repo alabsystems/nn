@@ -1,0 +1,163 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_conv1_weight"}},
+                {"as_tensor": {"name": "p_conv1_bias"}},
+                {"as_tensor": {"name": "p_conv2_weight"}},
+                {"as_tensor": {"name": "p_conv2_bias"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "output"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.convolution.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_conv1_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_conv1_bias"}}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "dilation", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "transposed", "arg": {"as_bool": false}, "kind": 1},
+                        {"name": "output_padding", "arg": {"as_ints": [0]}, "kind": 1},
+                        {"name": "groups", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "conv_0"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.instance_norm.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "conv_0"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_none": true}, "kind": 1},
+                        {"name": "bias", "arg": {"as_none": true}, "kind": 1},
+                        {"name": "running_mean", "arg": {"as_none": true}, "kind": 1},
+                        {"name": "running_var", "arg": {"as_none": true}, "kind": 1},
+                        {"name": "use_input_stats", "arg": {"as_bool": true}, "kind": 1},
+                        {"name": "momentum", "arg": {"as_float": 0.1}, "kind": 1},
+                        {"name": "eps", "arg": {"as_float": 1e-5}, "kind": 1},
+                        {"name": "cudnn_enabled", "arg": {"as_bool": false}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "norm_0"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.leaky_relu.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "norm_0"}}, "kind": 1},
+                        {"name": "negative_slope", "arg": {"as_float": 0.2}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "lrelu"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.convolution.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "lrelu"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_conv2_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_conv2_bias"}}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "dilation", "arg": {"as_ints": [1]}, "kind": 1},
+                        {"name": "transposed", "arg": {"as_bool": false}, "kind": 1},
+                        {"name": "output_padding", "arg": {"as_ints": [0]}, "kind": 1},
+                        {"name": "groups", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "conv_1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.add.Tensor",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "norm_0"}}, "kind": 1},
+                        {"name": "other", "arg": {"as_tensor": {"name": "conv_1"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "residual"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.slice.Tensor",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "residual"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "start", "arg": {"as_int": 0}, "kind": 1},
+                        {"name": "end", "arg": {"as_int": 8}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "log_mag"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.exp.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "log_mag"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "magnitude"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.slice.Tensor",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "residual"}}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1},
+                        {"name": "start", "arg": {"as_int": 8}, "kind": 1},
+                        {"name": "end", "arg": {"as_int": 16}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "phase_raw"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.sin.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "phase_raw"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "phase"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.cat.default",
+                    "inputs": [
+                        {"name": "tensors", "arg": {"as_tensors": [{"name": "magnitude"}, {"name": "phase"}]}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "output"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 16}, {"as_int": 1}]},
+                "p_conv1_weight": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 8}, {"as_int": 3}], "requires_grad": true, "strides": [{"as_int": 24}, {"as_int": 3}, {"as_int": 1}]},
+                "p_conv1_bias": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "p_conv2_weight": {"dtype": 7, "sizes": [{"as_int": 16}, {"as_int": 16}, {"as_int": 3}], "requires_grad": true, "strides": [{"as_int": 48}, {"as_int": 3}, {"as_int": 1}]},
+                "p_conv2_bias": {"dtype": 7, "sizes": [{"as_int": 16}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "conv_0": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]},
+                "norm_0": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]},
+                "lrelu": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]},
+                "conv_1": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]},
+                "residual": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]},
+                "log_mag": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 16}, {"as_int": 1}]},
+                "magnitude": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 16}, {"as_int": 1}]},
+                "phase_raw": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 16}, {"as_int": 1}]},
+                "phase": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 128}, {"as_int": 16}, {"as_int": 1}]},
+                "output": {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 16}, {"as_int": 16}], "requires_grad": false, "strides": [{"as_int": 256}, {"as_int": 16}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_conv1_weight"}, "parameter_name": "conv1.weight"}},
+                {"parameter": {"arg": {"name": "p_conv1_bias"}, "parameter_name": "conv1.bias"}},
+                {"parameter": {"arg": {"name": "p_conv2_weight"}, "parameter_name": "conv2.weight"}},
+                {"parameter": {"arg": {"name": "p_conv2_bias"}, "parameter_name": "conv2.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "output"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

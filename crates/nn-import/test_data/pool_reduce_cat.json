@@ -1,0 +1,101 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_conv_weight"}},
+                {"as_tensor": {"name": "p_conv_bias"}},
+                {"as_tensor": {"name": "x"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "output"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.conv2d.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "x"}}, "kind": 1},
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_conv_weight"}}, "kind": 1},
+                        {"name": "bias", "arg": {"as_tensor": {"name": "p_conv_bias"}}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1, 1]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "conv_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.max_pool2d_with_indices.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "conv_out"}}, "kind": 1},
+                        {"name": "kernel_size", "arg": {"as_ints": [3, 3]}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1, 1]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "pool1"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.max_pool2d_with_indices.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "pool1"}}, "kind": 1},
+                        {"name": "kernel_size", "arg": {"as_ints": [3, 3]}, "kind": 1},
+                        {"name": "stride", "arg": {"as_ints": [1, 1]}, "kind": 1},
+                        {"name": "padding", "arg": {"as_ints": [1, 1]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "pool2"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.cat.default",
+                    "inputs": [
+                        {"name": "tensors", "arg": {"as_tensors": [{"name": "conv_out"}, {"name": "pool1"}, {"name": "pool2"}]}, "kind": 1},
+                        {"name": "dim", "arg": {"as_int": 1}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "cat_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.adaptive_avg_pool2d.default",
+                    "inputs": [
+                        {"name": "self", "arg": {"as_tensor": {"name": "cat_out"}}, "kind": 1},
+                        {"name": "output_size", "arg": {"as_ints": [1, 1]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "gap_out"}}],
+                    "metadata": {}
+                },
+                {
+                    "target": "torch.ops.aten.view.default",
+                    "inputs": [
+                        {"name": "input", "arg": {"as_tensor": {"name": "gap_out"}}, "kind": 1},
+                        {"name": "size", "arg": {"as_ints": [1, 24]}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "output"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "x":              {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 3}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 192}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "p_conv_weight":  {"dtype": 7, "sizes": [{"as_int": 8}, {"as_int": 3}, {"as_int": 3}, {"as_int": 3}], "requires_grad": true, "strides": [{"as_int": 27}, {"as_int": 9}, {"as_int": 3}, {"as_int": 1}]},
+                "p_conv_bias":    {"dtype": 7, "sizes": [{"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 1}]},
+                "conv_out":       {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "pool1":          {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "pool2":          {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 8}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 512}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "cat_out":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 24}, {"as_int": 8}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 1536}, {"as_int": 64}, {"as_int": 8}, {"as_int": 1}]},
+                "gap_out":        {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 24}, {"as_int": 1}, {"as_int": 1}], "requires_grad": false, "strides": [{"as_int": 24}, {"as_int": 1}, {"as_int": 1}, {"as_int": 1}]},
+                "output":         {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 24}], "requires_grad": false, "strides": [{"as_int": 24}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_conv_weight"}, "parameter_name": "conv.weight"}},
+                {"parameter": {"arg": {"name": "p_conv_bias"}, "parameter_name": "conv.bias"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "x"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "output"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}

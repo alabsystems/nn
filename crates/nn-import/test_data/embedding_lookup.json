@@ -1,0 +1,41 @@
+{
+    "graph_module": {
+        "graph": {
+            "inputs": [
+                {"as_tensor": {"name": "p_embed_weight"}},
+                {"as_tensor": {"name": "indices"}}
+            ],
+            "outputs": [{"as_tensor": {"name": "embedding"}}],
+            "nodes": [
+                {
+                    "target": "torch.ops.aten.embedding.default",
+                    "inputs": [
+                        {"name": "weight", "arg": {"as_tensor": {"name": "p_embed_weight"}}, "kind": 1},
+                        {"name": "indices", "arg": {"as_tensor": {"name": "indices"}}, "kind": 1}
+                    ],
+                    "outputs": [{"as_tensor": {"name": "embedding"}}],
+                    "metadata": {}
+                }
+            ],
+            "tensor_values": {
+                "indices":        {"dtype": 4, "sizes": [{"as_int": 1}, {"as_int": 4}], "requires_grad": false, "strides": [{"as_int": 4}, {"as_int": 1}]},
+                "p_embed_weight": {"dtype": 7, "sizes": [{"as_int": 10}, {"as_int": 8}], "requires_grad": true, "strides": [{"as_int": 8}, {"as_int": 1}]},
+                "embedding":      {"dtype": 7, "sizes": [{"as_int": 1}, {"as_int": 4}, {"as_int": 8}], "requires_grad": false, "strides": [{"as_int": 32}, {"as_int": 8}, {"as_int": 1}]}
+            },
+            "is_single_tensor_return": true
+        },
+        "signature": {
+            "input_specs": [
+                {"parameter": {"arg": {"name": "p_embed_weight"}, "parameter_name": "embed.weight"}},
+                {"user_input": {"arg": {"as_tensor": {"name": "indices"}}}}
+            ],
+            "output_specs": [
+                {"user_output": {"arg": {"as_tensor": {"name": "embedding"}}}}
+            ]
+        },
+        "module_call_graph": []
+    },
+    "schema_version": {"major": 8, "minor": 15},
+    "opset_version": {"aten": 10},
+    "range_constraints": {}
+}
