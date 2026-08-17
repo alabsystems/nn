@@ -257,3 +257,22 @@ lto = true
 codegen-units = 1
 
 # Local sibling overrides: redirect GitHub URLs to ../ny and ../ay.
+[workspace.metadata.atpkg]
+# The user-facing command for `nn` is the single `nn` bin (crate nn-cli):
+# convert / compile / run / optimize over torch.export artifacts. Every other
+# workspace bin is internal tooling — nn-optimize (tiers 2-3 bail as "not yet
+# implemented"; tier 2's real implementation IS `nn optimize`), nn_report /
+# rss_measure / kokoro_synth (nn-metal dev, perf and demo harnesses; the last
+# two need an unshipped $KOKORO_WEIGHTS), and nn_verify_cert / tighten
+# (nn-verify proof tooling, which drags the ../ny and ../ay sibling path deps
+# into the build).
+#
+# This block is not optional decoration: without it aterm's atpkg-pack.sh falls
+# back to a LOUD name-token heuristic and ships that junk set onto the user's
+# PATH. The declaration is authoritative and versioned with the code that
+# defines the commands.
+expose = ["nn"]
+# Scope the release build to the one shipped bin. A bare `cargo build --release`
+# builds all 22 workspace members — including nn-verify (ny + ay), nn-cuda and
+# nn-vulkan — under this workspace's lto = true / codegen-units = 1 profile.
+build-args = ["-p", "nn-cli"]

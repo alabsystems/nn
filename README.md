@@ -11,6 +11,16 @@ A Rust-native ML framework where model code, GPU kernels, and proof tooling live
 
 ## Install
 
+The `nn` CLI ships as a signed package through `atpkg` (the
+[aterm](https://github.com/alabsystems/aterm) package manager):
+
+```sh
+atpkg install nn
+```
+
+To use nn as a library, depend on the public snapshot — its manifest pins the
+published `ny`/`ay` releases, so it resolves standalone:
+
 ```toml
 nn = { git = "https://github.com/alabsystems/nn", features = ["metal"] }
 ```

@@ -35,6 +35,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 ///
 /// Compile exported `torch.export` artifacts to optimized Metal inference
 /// pipelines, or shell out to the helper export script for PyTorch checkpoints.
+/// Start with `nn device`, the one subcommand that needs no input files.
 #[derive(Debug, Parser)]
 #[command(name = "nn", version, about, long_about = None)]
 struct Cli {
@@ -44,6 +45,20 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Report the Metal device and pipeline-cache status. Takes no input files.
+    ///
+    /// This is the zero-input first run: every other subcommand needs a
+    /// `graph.json` + `weights.safetensors` pair you must already have, so
+    /// `nn device` is the one command that shows whether this build can talk to
+    /// the GPU at all. It initializes the same global Metal backend the other
+    /// subcommands use and prints what that initialization found; it compiles
+    /// nothing and runs no model.
+    Device {
+        /// Print the device report as JSON instead of the human-readable format.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Compile exported `torch.export` artifacts (`graph.json` +
     /// `weights.safetensors`) to a Metal-ready model plus a structured report.
     ///
@@ -317,6 +332,7 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Commands::Device { json } => cmd_device(json),
         Commands::Convert {
             graph,
             weights,
@@ -388,6 +404,99 @@ fn run(cli: Cli) -> Result<()> {
             persist,
         } => cmd_optimize(plan, graph, weights, budget, cost_model, output, persist),
     }
+}
+
+/// `nn device` — report the Metal device and pipeline-cache status.
+///
+/// A thin wrapper, and deliberately nothing more. Every number it prints is
+/// read straight back out of an existing nn-metal entry point:
+///
+/// - [`nn_metal::MetalBackend::init`] brings up the global context (and loads
+///   the embedded metallib, which is what populates the precompiled store),
+/// - `MetalContext::device()` supplies the device name,
+/// - [`nn_metal::precompiled_pipeline_count`] reports the embedded metallib's
+///   preloaded pipelines,
+/// - [`nn_metal::PipelineCache::new_global`] plus `len` / `max_entries` /
+///   `shared_cache_len` report the L1 and L2 JIT cache state,
+/// - [`nn_metal::metal_budget_bytes`] and [`nn_metal::metal_allocated_bytes`]
+///   report the GPU memory budget and current allocation.
+///
+/// It compiles no kernels, imports no graph and dispatches no work.
+fn cmd_device(json: bool) -> Result<()> {
+    let backend = nn_metal::MetalBackend::init().map_err(|e| {
+        anyhow::anyhow!(
+            "Metal backend initialization failed: {e}\n\
+             \n\
+             `nn` runs inference on the Apple Metal GPU, so it needs macOS on \
+             Apple silicon with a working Metal device.\n\
+             - On non-Apple hardware there is no supported path today; the \
+             other backends (nn-cuda, nn-vulkan) are not wired into this CLI.\n\
+             - Over SSH or in a sandbox without GPU access, run `nn device` \
+             from a local login session instead.\n\
+             - To confirm the host sees a GPU at all, run: \
+             system_profiler SPDisplaysDataType"
+        )
+    })?;
+
+    let device_name = backend.context().device().name().to_string();
+    let precompiled = nn_metal::precompiled_pipeline_count();
+
+    // The global cache handle is available only because init() succeeded above.
+    let cache = nn_metal::PipelineCache::new_global()
+        .context("Metal backend initialized but the global pipeline cache was unavailable")?;
+    let cache_len = cache.len();
+    let cache_capacity = cache.max_entries();
+    let shared_cache_len = nn_metal::PipelineCache::shared_cache_len();
+
+    let budget_bytes = nn_metal::metal_budget_bytes();
+    let allocated_bytes = nn_metal::metal_allocated_bytes();
+
+    if json {
+        let report = serde_json::json!({
+            "device": device_name,
+            "backend": "metal",
+            "precompiled_pipelines": precompiled,
+            "pipeline_cache": {
+                "l1_entries": cache_len,
+                "l1_capacity": cache_capacity,
+                "l2_entries": shared_cache_len,
+            },
+            "memory": {
+                "budget_bytes": budget_bytes,
+                "allocated_bytes": allocated_bytes,
+            },
+        });
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("Metal device:          {device_name}");
+    println!("Backend:               metal (initialized)");
+    println!("Precompiled pipelines: {precompiled} (from the embedded metallib)");
+    println!("Pipeline cache:        {cache_len}/{cache_capacity} L1, {shared_cache_len} L2");
+    match budget_bytes {
+        Some(b) => println!("GPU memory budget:     {:.1} GiB", gib(b)),
+        None => println!("GPU memory budget:     unavailable"),
+    }
+    match allocated_bytes {
+        Some(b) => println!("GPU memory allocated:  {:.1} MiB", mib(b as u64)),
+        None => println!("GPU memory allocated:  unavailable"),
+    }
+    println!();
+    println!("Next: `nn convert graph.json weights.safetensors` compiles exported");
+    println!("torch.export artifacts; `nn convert --help` lists the export options.");
+
+    Ok(())
+}
+
+/// Bytes as gibibytes, for the human-readable `nn device` report.
+fn gib(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+}
+
+/// Bytes as mebibytes, for the human-readable `nn device` report.
+fn mib(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
 }
 
 /// Locate the `nn_export.py` script.
@@ -1125,6 +1234,56 @@ mod tests {
             .write_long_help(&mut help)
             .expect("subcommand help should render");
         String::from_utf8(help).expect("help should be valid UTF-8")
+    }
+
+    // ---- Argument Parsing: Device subcommand ----
+
+    #[test]
+    fn test_device_subcommand_parses_with_no_arguments() {
+        let cli = Cli::try_parse_from(["nn", "device"]);
+        assert!(
+            cli.is_ok(),
+            "device should parse with no arguments: {cli:?}"
+        );
+        match cli.unwrap().command {
+            Commands::Device { json } => assert!(!json, "json should default to false"),
+            other => panic!("expected Device, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_device_subcommand_accepts_json_flag() {
+        let cli =
+            Cli::try_parse_from(["nn", "device", "--json"]).expect("device --json should parse");
+        match cli.command {
+            Commands::Device { json } => assert!(json, "--json should set json"),
+            other => panic!("expected Device, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_device_subcommand_rejects_unknown_flag() {
+        // Rule: unsupported flags fail loudly rather than being ignored.
+        let cli = Cli::try_parse_from(["nn", "device", "--target", "metal"]);
+        assert!(cli.is_err(), "device should reject --target: {cli:?}");
+    }
+
+    #[test]
+    fn test_device_subcommand_rejects_positional_arguments() {
+        let cli = Cli::try_parse_from(["nn", "device", "graph.json"]);
+        assert!(
+            cli.is_err(),
+            "device takes no positional arguments: {cli:?}"
+        );
+    }
+
+    #[test]
+    fn test_device_help_documents_the_zero_input_contract() {
+        let help = render_subcommand_help("device");
+        assert!(
+            help.contains("no input files") || help.contains("zero-input"),
+            "device help should say it needs no input files: {help}"
+        );
     }
 
     // ---- Argument Parsing: Convert subcommand ----

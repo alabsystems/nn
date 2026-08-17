@@ -1,12 +1,23 @@
-# Pin the toolchain for the public snapshot.
+# The PUBLIC snapshot's toolchain pin. Copied over the export's
+# rust-toolchain.toml by transforms.sh; the private repo keeps channel = "trust".
 #
-# The publication engine runs its public-clone gate with a SCRUBBED environment,
-# so a clone with no rust-toolchain.toml inherits whatever `rustup default` is on
-# the machine cutting the release. On the maintainer machine that is the custom
-# `trust` verifying compiler, which fails compiling ordinary third-party build
-# scripts (libc, unicode-ident) on proof obligations unrelated to this repo.
+# WHY THIS FILE EXISTS. The private repo pins the Trust toolchain, whose
+# in-compilation verifier is FAIL-CLOSED, and pairs it with the `-Ztrust-verify=off`
+# opt-out in .cargo/config.toml — which that file itself calls "the other half of
+# the pin". The publish boundary deliberately does not export .cargo/config.toml
+# (it also carries a private rustc wrapper), so a snapshot that shipped
+# channel = "trust" would pin the verifying compiler and drop the opt-out.
 #
-# Pinning here makes the gate a property of the candidate rather than of ambient
-# workstation state, and matches ny, clean and aterm.
+# That combination is unbuildable for anyone. The public-clone gate proved it on
+# 2026-08-16: `cargo check --workspace` died with 584 errors inside third-party
+# `memchr-2.8.3`, on fail-closed panic-freedom obligations for absent callees —
+# before reaching a single first-party crate. A public clone also has no rustup
+# toolchain named `trust` to resolve in the first place.
+#
+# Same shape aterm uses (publish/public-rust-toolchain.toml there, copied at
+# transforms.sh:81). Stock upstream, pinned rather than floating so the snapshot
+# is reproducible.
 [toolchain]
-channel = "stable"
+channel = "1.97.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
