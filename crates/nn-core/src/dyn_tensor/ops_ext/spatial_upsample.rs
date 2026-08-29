@@ -130,6 +130,9 @@ impl DynTensor {
                     mode: TraceUpsampleMode::Nearest,
                     scale_h: scale_h as f64,
                     scale_w: scale_w as f64,
+                    // Nearest's `src = dst / scale` mapping does not depend on
+                    // corner alignment; recorded as `false` by convention.
+                    align_corners: false,
                 })
             },
             || {
@@ -247,6 +250,7 @@ impl DynTensor {
                     mode: TraceUpsampleMode::Bilinear,
                     scale_h,
                     scale_w,
+                    align_corners,
                 })
             },
             || self.upsample_bilinear_2d_compute(scale_h, scale_w, align_corners),
@@ -296,6 +300,7 @@ impl DynTensor {
                     mode: TraceUpsampleMode::Bilinear,
                     scale_h,
                     scale_w,
+                    align_corners,
                 })
             },
             || self.bilinear_2d_core(out_h, out_w, align_corners),

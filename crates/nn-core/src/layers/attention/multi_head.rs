@@ -13,7 +13,7 @@
 //!
 //! Design: `designs/2026-03-04-multi-head-attention.md`
 
-use crate::dyn_tensor::trace::{self, TraceOp};
+use crate::dyn_tensor::trace::{self, TraceMhaRope, TraceOp};
 use crate::dyn_tensor::DynTensor;
 use crate::layers::kv_cache::KvCacheLayer;
 use crate::layers::{
@@ -228,12 +228,57 @@ impl MultiHeadAttention {
             if let Some(kv) = kv_input {
                 inputs.push(kv);
             }
+            if let Some(m) = mask {
+                // The mask is a real dataflow edge (always the LAST input):
+                // `trace_input_ids` auto-registers it as a `ConstantWeight`
+                // node when it carries no trace id. It is never frozen into
+                // the op — `has_mask` below is what disambiguates `[x, mask]`
+                // from `[x, kv]` on a 2-input node.
+                inputs.push(m);
+            }
             let input_ids = DynTensor::trace_input_ids(&inputs)?;
+
+            // Capture the RoPE windows the compute body actually applied:
+            // Q was rotated over S_q and K over S_kv at the same offset (they
+            // differ under cross-attention).
+            let rope_capture = match rope {
+                Some(r) => {
+                    let s_q = x.dim(1)?;
+                    let s_kv = kv_input.unwrap_or(x).dim(1)?;
+                    let (q_cos, q_sin) = r.window_weight_refs(rope_offset, s_q)?;
+                    let (k_cos, k_sin) = r.window_weight_refs(rope_offset, s_kv)?;
+                    Some(Box::new(TraceMhaRope {
+                        head_dim: self.head_dim,
+                        offset: rope_offset,
+                        q_cos_cache: q_cos,
+                        q_sin_cache: q_sin,
+                        k_cos_cache: k_cos,
+                        k_sin_cache: k_sin,
+                    }))
+                }
+                None => None,
+            };
+
+            // Record the projections and scale from the SAME layer state the
+            // compute body used — a verifier consuming this trace must see
+            // the operation that ran, not a parameter-free marker.
             if let Some(id) = trace::record_op(
                 TraceOp::MultiHeadAttention {
                     num_heads: self.num_heads,
                     num_kv_heads: self.num_kv_heads,
                     head_dim: self.head_dim,
+                    scale: self.scale,
+                    q_weight: self.q_proj.weight().to_weight_ref()?,
+                    q_bias: self.q_proj.bias().map(DynTensor::to_weight_ref).transpose()?,
+                    k_weight: self.k_proj.weight().to_weight_ref()?,
+                    k_bias: self.k_proj.bias().map(DynTensor::to_weight_ref).transpose()?,
+                    v_weight: self.v_proj.weight().to_weight_ref()?,
+                    v_bias: self.v_proj.bias().map(DynTensor::to_weight_ref).transpose()?,
+                    out_weight: self.out_proj.weight().to_weight_ref()?,
+                    out_bias: self.out_proj.bias().map(DynTensor::to_weight_ref).transpose()?,
+                    rope: rope_capture,
+                    cross_attention: kv_input.is_some(),
+                    has_mask: mask.is_some(),
                 },
                 &input_ids,
                 result.dims(),

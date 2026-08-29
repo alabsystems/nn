@@ -4,9 +4,11 @@
 
 //! Snake1d POC for issue #18.
 //!
-//! Intended final shape once the proc-macro crate lands:
+//! The proc-macro has since landed in `nn-macros`, re-exported as `#[nn::kernel]`
+//! by the `nn` facade under the `dsl` feature. This example still calls the
+//! library helpers directly because `nn-macros` depends on `nn-dsl`, so `nn-dsl`'s
+//! own examples cannot use the macro. Its shape:
 //! ```ignore
-//! // NOTE: ignore — #[nn::kernel] proc-macro not yet implemented
 //! #[nn::kernel]
 //! fn snake(x: f32, alpha: f32) -> f32 {
 //!     x + (1.0 / alpha) * (alpha * x).sin().powi(2)

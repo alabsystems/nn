@@ -1489,7 +1489,16 @@ fn test_map_topk() {
         ],
     );
     let (op, _) = map_node_to_trace_op(&node, &ctx, 0).unwrap();
-    assert!(matches!(op, TraceOp::Topk { k: 5, dim: 1 }));
+    // largest/sorted absent from the node → aten defaults (True, True).
+    assert!(matches!(
+        op,
+        TraceOp::Topk {
+            k: 5,
+            dim: 1,
+            largest: true,
+            sorted: true,
+        }
+    ));
 }
 
 #[test]

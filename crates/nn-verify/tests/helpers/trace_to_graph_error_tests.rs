@@ -136,7 +136,9 @@ fn test_custom_op_accepted_as_opaque_skip() {
     // [2,4] input is bounded in [-1, 1]; the unknown op's output must be much
     // wider (a sound superset of any possible custom-op output).
     let input_bounds = super::common::uniform_bounds(&[2, 4], 1.0);
-    let output = gn.propagate_ibp(&input_bounds).expect("IBP over OpaqueSkip");
+    let output = gn
+        .propagate_ibp(&input_bounds)
+        .expect("IBP over OpaqueSkip");
     let (lo, hi) = output.lower_upper();
     for (&l, &u) in lo.iter().zip(hi.iter()) {
         assert!(l <= u, "OpaqueSkip lower <= upper: [{l}, {u}]");
@@ -151,9 +153,49 @@ fn test_custom_op_accepted_as_opaque_skip() {
 
 #[test]
 fn test_powf_general_accepted() {
-    // Powf(3.0) is now supported via Exp(n*Log(Abs(x))) decomposition (#3557).
+    // General integer exponents translate again (restored with the ny
+    // 25dee0c5e hardening follow-up): every finite exponent with
+    // |p| <= 2^24 lowers to the x^2 layer shape (LayerType::Pow with a scalar
+    // constant exponent) -> ny-propagate's parity-aware PowConstantLayer.
+    // 2^24 is the largest range where f64 -> f32 exponent narrowing cannot
+    // flip integrality or parity. (Replaced the former unsound
+    // Exp(n*Log(Abs(x))) decomposition, #3557.)
     let graph = graph_with_unary_op(TraceOp::Powf { exponent: 3.0 }, vec![2, 4]);
     trace_to_graph_model(&graph).expect("Powf(3.0) should be accepted");
+
+    // The whitelist boundary itself is admitted…
+    let graph = graph_with_unary_op(
+        TraceOp::Powf {
+            exponent: 16_777_216.0, // 2^24
+        },
+        vec![2, 4],
+    );
+    trace_to_graph_model(&graph).expect("Powf(2^24) should be accepted (whitelist boundary)");
+}
+
+/// Exponents beyond the |p| <= 2^24 whitelist stay refused fail-closed:
+/// above 2^24 the f64 -> f32 exponent narrowing can silently flip the
+/// integrality/parity properties PowConstantLayer's sign-aware IBP keys on.
+#[test]
+fn test_powf_beyond_whitelist_refused_fail_closed() {
+    let graph = graph_with_unary_op(
+        TraceOp::Powf {
+            exponent: 16_777_218.0, // 2^24 + 2, exactly representable in f64
+        },
+        vec![2, 4],
+    );
+    let err = trace_to_graph_model(&graph)
+        .expect_err("Powf beyond 2^24 must be refused fail-closed (ny 25dee0c5e)");
+    match err {
+        nn_verify::VerifyError::Ny(ny_api::NyError::UnsupportedOp(msg)) => {
+            assert!(
+                msg.contains("Powf exponent")
+                    && msg.contains("no sound lowering outside the supported special cases"),
+                "refusal must name Powf and the whitelist rationale, got: {msg}"
+            );
+        }
+        other => panic!("expected VerifyError::Ny(UnsupportedOp), got: {other:?}"),
+    }
 }
 
 #[test]
@@ -221,37 +263,96 @@ fn where_cond_graph() -> ComputationGraph {
     ])
 }
 
-/// INC-FINAL soundness fix: WhereCond is REFUSED.
+/// WhereCond LOWERS to ny's native 3-input `Where` layer (ny 3f91a42f2).
 ///
-/// The deleted legacy `m·x + (1−m)·y` decomposition was UNSOUND whenever a
-/// realizable mask value is not in {0, 1}: a constant 0.5 "mask" makes the
-/// true output exactly `x`, but the decomposition yields the x/y midpoint —
-/// bounds that can exclude the real output (a false "holds"). The bridge
-/// classifies WhereCond `Unsupported` and refuses fail-closed.
+/// The old refusal argued against a `m·x + (1−m)·y` mask-arithmetic
+/// decomposition, which is indeed unsound for a non-binary mask — but ny does
+/// not use it. `WhereLayer` never evaluates the mask numerically: its IBP rule
+/// is the per-element UNION `[min(x_l, y_l), max(x_u, y_u)]`, which encloses
+/// the select for ANY realizable condition value, binary or not.
+///
+/// This test proves the union rather than merely that translation succeeds:
+/// the two branches get DISJOINT bounds, so a lowering that returned only one
+/// branch, or an over-eager mask fold, would miss the expected interval.
 #[test]
-fn test_where_cond_refused_sound() {
+fn test_where_cond_lowers_to_native_where_union() {
     // WhereCond has 3 inputs (cond, true_branch, false_branch) — needs multi-input mode.
-    let err = trace_to_graph_model_multi_input(&where_cond_graph())
-        .expect_err("WhereCond must be refused (unsound legacy decomposition)");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("WhereCond") && msg.contains("not supported"),
-        "refusal should name WhereCond, got: {msg}"
+    let gn = trace_to_graph_model_multi_input(&where_cond_graph())
+        .expect("WhereCond must lower to the native Where layer")
+        .graph;
+
+    let where_nodes = gn
+        .node_names()
+        .iter()
+        .filter(|name| {
+            gn.node(name)
+                .is_some_and(|n| n.layer().layer_type() == "Where")
+        })
+        .count();
+    assert_eq!(
+        where_nodes, 1,
+        "WhereCond must lower to exactly one native Where layer"
     );
+
+    // Multi-input stacking is trace order: [cond (8) | on_true (8) | on_false (8)].
+    // Disjoint branch boxes make the union assertion load-bearing.
+    const COND: (f32, f32) = (0.0, 1.0);
+    const ON_TRUE: (f32, f32) = (2.0, 3.5);
+    const ON_FALSE: (f32, f32) = (-6.0, -4.0);
+    let bounds_at = |i: usize| {
+        if i < 8 {
+            COND
+        } else if i < 16 {
+            ON_TRUE
+        } else {
+            ON_FALSE
+        }
+    };
+    let input_bounds = nn_verify::BoundedTensor::new(
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[24]), |ix| bounds_at(ix[0]).0),
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[24]), |ix| bounds_at(ix[0]).1),
+    )
+    .expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
+    let (lo, hi) = output.lower_upper();
+    assert_eq!(lo.len(), 8, "Where output keeps the branch shape [2, 4]");
+
+    // Union of the two branch boxes, computed independently in f64.
+    let want_lo = f64::from(ON_TRUE.0).min(f64::from(ON_FALSE.0));
+    let want_hi = f64::from(ON_TRUE.1).max(f64::from(ON_FALSE.1));
+    for (i, (&l, &u)) in lo.iter().zip(hi.iter()).enumerate() {
+        assert!(
+            l.is_finite() && u.is_finite() && l <= u,
+            "Where[{i}] bounds must be finite and ordered, got [{l}, {u}]"
+        );
+        assert!(
+            (f64::from(l) - want_lo).abs() < 1e-6 && (f64::from(u) - want_hi).abs() < 1e-6,
+            "Where[{i}] must be the branch union [{want_lo}, {want_hi}], got [{l}, {u}]"
+        );
+        // Every realizable output is one branch's value, so both branch boxes
+        // must sit inside the result.
+        assert!(
+            l <= ON_TRUE.0 && ON_TRUE.1 <= u && l <= ON_FALSE.0 && ON_FALSE.1 <= u,
+            "Where[{i}] bounds [{l}, {u}] must enclose BOTH branches"
+        );
+    }
 }
 
+/// F32 -> F32 is the ONE lowerable ToDtype (an Add(x, 0) identity — a cast
+/// between identical dtypes provably changes no value). Every non-F32 cast is
+/// refused fail-closed per the ny 25dee0c5e hardening; the former version of
+/// this test asserted the deleted BF16 downcast-Clamp surrogate.
 #[test]
-fn test_to_dtype_translated_as_identity() {
-    // ToDtype downcasts (F16/BF16) use Clamp; upcasts (F32/F64) use CastLayer.
-    // BF16 downcast: Clamp to representable range.
+fn test_to_dtype_f32_identity_translates() {
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
-            target_dtype: DType::BF16,
+            target_dtype: DType::F32,
         },
         vec![2, 4],
     );
     let gn = trace_to_graph_model(&graph)
-        .expect("ToDtype should translate as identity")
+        .expect("F32 -> F32 ToDtype should translate as identity")
         .graph;
     assert!(
         gn.num_nodes() >= 1,
@@ -260,41 +361,54 @@ fn test_to_dtype_translated_as_identity() {
 }
 
 // ---------------------------------------------------------------------------
-// dtype_cast_count integration (Part of #3023)
+// dtype_cast_count integration (Part of #3023; posture flipped by ny
+// 25dee0c5e — a successful translation now always reports cast_count == 0,
+// because every precision-changing cast is refused upstream)
 // ---------------------------------------------------------------------------
 
+/// ToDtype(F16) is refused fail-closed instead of translating with
+/// `dtype_cast_count == 1` (the pre-hardening behavior this test asserted):
+/// F16 rounding semantics are unmodeled, so the former downcast-Clamp
+/// surrogate could emit bounds excluding the true cast output (ny 25dee0c5e).
+/// The fixture's cast node records an F32 output dtype, so the refusal is
+/// `translate_to_dtype`'s resolved-source check, not the graph-wide F32 gate.
 #[test]
-fn test_trace_translate_result_f16_cast_count() {
-    // Graph: Input -> ToDtype(F16) -> output
-    // Should report dtype_cast_count == 1
+fn test_trace_translate_f16_cast_refused_fail_closed() {
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
             target_dtype: DType::F16,
         },
         vec![2, 4],
     );
-    let result = trace_to_graph_model(&graph).expect("F16 cast should translate");
-    assert_eq!(
-        result.dtype_cast_count, 1,
-        "F16 downcast should report cast_count=1"
-    );
-    assert!(result.graph.num_nodes() >= 1);
+    let err = trace_to_graph_model(&graph)
+        .expect_err("F16 cast must be refused fail-closed (ny 25dee0c5e)");
+    match err {
+        nn_verify::VerifyError::Ny(ny_api::NyError::UnsupportedOp(msg)) => {
+            assert!(
+                msg.contains("ToDtype F32 -> F16 is refused")
+                    && msg.contains("rounding semantics of the F16 target are not modeled"),
+                "refusal must name both dtypes and the unmodeled rounding, got: {msg}"
+            );
+        }
+        other => panic!("expected VerifyError::Ny(UnsupportedOp), got: {other:?}"),
+    }
 }
 
 #[test]
 fn test_trace_translate_result_f32_cast_count_zero() {
     // Graph: Input -> ToDtype(F32) -> output
-    // Should report dtype_cast_count == 0 (upcast is identity)
+    // Should report dtype_cast_count == 0 (the identity cast is not counted;
+    // since ny 25dee0c5e a successful translation always reports 0).
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
             target_dtype: DType::F32,
         },
         vec![2, 4],
     );
-    let result = trace_to_graph_model(&graph).expect("F32 upcast should translate");
+    let result = trace_to_graph_model(&graph).expect("F32 identity cast should translate");
     assert_eq!(
         result.dtype_cast_count, 0,
-        "F32 upcast should report cast_count=0"
+        "F32 identity cast should report cast_count=0"
     );
 }
 

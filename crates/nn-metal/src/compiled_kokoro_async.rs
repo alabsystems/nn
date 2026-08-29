@@ -17,7 +17,7 @@
 //! # use nn_metal::compiled_kokoro::CompiledKokoro;
 //! # use nn_metal::PipelineCache;
 //! // let mut kokoro = CompiledKokoro::new(model)?;
-//! // let cache = PipelineCache::new();
+//! // let cache = PipelineCache::new_global()?;
 //! //
 //! // Submit synthesis — GPU starts immediately, CPU continues.
 //! // let (fence, handle, cert) = kokoro.synthesize_async(&ids, &style, 1.0, &cache)?;

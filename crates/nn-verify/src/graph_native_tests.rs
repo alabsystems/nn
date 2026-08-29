@@ -6,9 +6,9 @@
 
 use super::*;
 use crate::graph::ParamBinding;
-use ny_propagate::Layer;
 use nn_dsl::ir::KernelDef;
 use nn_dsl::test_kernels::{parse_kernel, snake_kernel};
+use ny_propagate::Layer;
 
 /// Build a minimal silu_mul kernel for testing (name matching only).
 fn silu_mul_kernel() -> KernelDef {
@@ -82,26 +82,30 @@ fn test_snake_native_small_alpha() {
 }
 
 #[test]
-fn test_snake_native_zero_alpha_falls_through() {
-    // alpha=0.0 should cause SnakeLayer::new to fail, falling through to decomposition
+fn test_snake_native_zero_alpha_verifies_the_runtime_clamped_function() {
+    // nn's runtime clamp maps 0.0 -> 1e-8, so that is the function nn
+    // evaluates and therefore the one verification must model.
     let kernel = snake_kernel();
     let bindings = [ParamBinding::Variable, ParamBinding::Constant(0.0)];
-    let result = try_native_layer(&kernel, &bindings).unwrap();
-    assert!(
-        result.is_none(),
-        "snake with alpha=0.0 should fall through to decomposition"
-    );
+    let graph = try_native_layer(&kernel, &bindings)
+        .unwrap()
+        .expect("alpha=0 takes the native path at the runtime-clamped value");
+    assert_snake_graph(&graph, 1e-8);
 }
 
 #[test]
-fn test_snake_native_negative_alpha_falls_through() {
+fn test_snake_native_negative_alpha_verifies_the_runtime_clamped_function() {
+    // nn's runtime clamps alpha to [1e-8, 1e6] (`DynTensor::snake`, matching
+    // GPU/DSL SNAKE_MIN_ALPHA), so a negative alpha is NEVER what nn computes.
+    // Verification must model the clamped function: ny gained certified
+    // negative-alpha Snake (ny 7dea51cce), so handing it the authored -1.0
+    // would silently verify a DIFFERENT function than nn runs — a false proof.
     let kernel = snake_kernel();
     let bindings = [ParamBinding::Variable, ParamBinding::Constant(-1.0)];
-    let result = try_native_layer(&kernel, &bindings).unwrap();
-    assert!(
-        result.is_none(),
-        "snake with negative alpha should fall through to decomposition"
-    );
+    let graph = try_native_layer(&kernel, &bindings)
+        .unwrap()
+        .expect("negative alpha takes the native path at the runtime-clamped value");
+    assert_snake_graph(&graph, 1e-8);
 }
 
 #[test]
@@ -116,17 +120,17 @@ fn test_snake_native_nan_alpha_falls_through() {
 }
 
 #[test]
-fn test_snake_native_inf_alpha_falls_through() {
+fn test_snake_native_inf_alpha_verifies_the_runtime_clamped_function() {
+    // nn's runtime clamp maps +inf -> 1e6 (the upper SNAKE_MIN_ALPHA bound).
     let kernel = snake_kernel();
     let bindings = [
         ParamBinding::Variable,
         ParamBinding::Constant(f32::INFINITY),
     ];
-    let result = try_native_layer(&kernel, &bindings).unwrap();
-    assert!(
-        result.is_none(),
-        "snake with Inf alpha should fall through to decomposition"
-    );
+    let graph = try_native_layer(&kernel, &bindings)
+        .unwrap()
+        .expect("+inf alpha takes the native path at the runtime-clamped value");
+    assert_snake_graph(&graph, 1e6);
 }
 
 #[test]

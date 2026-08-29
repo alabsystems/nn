@@ -377,7 +377,10 @@ impl TraceOp {
             // SdpaCausal: always exactly 3 inputs (Q, K, V), no mask tensor.
             Self::SdpaCausal { .. } => Some(3),
             Self::RotaryEmbedding { .. } => Some(1),
-            Self::MultiHeadAttention { .. } => Some(3),
+            // MultiHeadAttention: x (+ optional kv_input + optional mask) —
+            // variable arity (1 to 3), discriminated by the variant's
+            // `cross_attention`/`has_mask` flags.
+            Self::MultiHeadAttention { .. } => None,
 
             // Variable arity
             Self::Cat { num_inputs, .. } => Some(*num_inputs),

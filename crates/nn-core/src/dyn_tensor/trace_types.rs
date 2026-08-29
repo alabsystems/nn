@@ -228,11 +228,49 @@ pub enum TraceOp {
         /// Narrowed sin frequencies: shape `[seq_len, head_dim/2]`.
         sin_cache: WeightRef,
     },
-    /// Multi-head attention composite: Q/K/V proj -> SDPA -> output proj.
+    /// Multi-head attention composite: Q/K/V proj -> optional RoPE -> GQA
+    /// repeat -> SDPA -> output proj.
+    ///
+    /// Inputs, in fixed order: `x` (always), `kv_input` (when
+    /// `cross_attention`), attention mask (when `has_mask`, always last).
+    /// The mask is a real dataflow edge — auto-registered as a
+    /// `ConstantWeight` node when the tensor carries no trace id — never
+    /// frozen into the op. `cross_attention`/`has_mask` disambiguate a
+    /// 2-input node: without them `[x, kv]` and `[x, mask]` are
+    /// indistinguishable on the wire.
+    ///
+    /// The four projections are captured as data exactly as `Linear` does;
+    /// `scale` is the multiplier actually applied to `Q @ K^T` before the
+    /// softmax, recorded rather than re-derived. `rope` is `Some` exactly
+    /// when RoPE was applied to Q and K inside the fused kernel.
     MultiHeadAttention {
         num_heads: usize,
         num_kv_heads: usize,
         head_dim: usize,
+        /// Softmax scale actually applied to `Q @ K^T` (`1/sqrt(head_dim)`).
+        scale: f64,
+        /// Q projection weight `[num_heads * head_dim, D]`.
+        q_weight: WeightRef,
+        /// Q projection bias `[num_heads * head_dim]`, or `None`.
+        q_bias: Option<WeightRef>,
+        /// K projection weight `[num_kv_heads * head_dim, D]`.
+        k_weight: WeightRef,
+        /// K projection bias `[num_kv_heads * head_dim]`, or `None`.
+        k_bias: Option<WeightRef>,
+        /// V projection weight `[num_kv_heads * head_dim, D]`.
+        v_weight: WeightRef,
+        /// V projection bias `[num_kv_heads * head_dim]`, or `None`.
+        v_bias: Option<WeightRef>,
+        /// Output projection weight `[D_out, num_heads * head_dim]`.
+        out_weight: WeightRef,
+        /// Output projection bias `[D_out]`, or `None`.
+        out_bias: Option<WeightRef>,
+        /// RoPE applied to Q and K inside the fused kernel; `None` = no RoPE.
+        rope: Option<Box<TraceMhaRope>>,
+        /// `true` when input 1 is a separate K/V source (cross-attention).
+        cross_attention: bool,
+        /// `true` when the last input is an additive attention mask.
+        has_mask: bool,
     },
     Embedding {
         weight: WeightRef,
@@ -348,10 +386,24 @@ pub enum TraceOp {
         factor: usize,
     },
     /// 2-D upsampling (nearest or bilinear).
+    ///
+    /// `align_corners` selects the coordinate mapping used by the
+    /// interpolating modes, and is what makes two otherwise identical
+    /// `Bilinear` nodes compute different functions:
+    ///
+    /// * `true` — `src = dst * (in_size - 1) / (out_size - 1)`
+    /// * `false` — `src = (dst + 0.5) * in_size / out_size - 0.5`
+    ///
+    /// For [`TraceUpsampleMode::Nearest`] the mapping is `src = dst / scale`
+    /// regardless, so the flag carries no semantics there; the nearest
+    /// record site always records `false`.
     Upsample2d {
         mode: TraceUpsampleMode,
         scale_h: f64,
         scale_w: f64,
+        /// Corner-alignment convention. Meaningful for `Bilinear`; always
+        /// `false` for `Nearest`, whose mapping does not depend on it.
+        align_corners: bool,
     },
     /// Bilinear interpolation resize to absolute target dimensions.
     ResizeBilinear {
@@ -381,9 +433,20 @@ pub enum TraceOp {
 
     // -- Selection / indexing --
     /// Select the top-k values and their indices along a dimension.
+    ///
+    /// `largest` and `sorted` are not presentation details — together with
+    /// `k`/`dim` they pick out one of four different functions, and bounds
+    /// derived for one do not enclose another (the k largest and the k
+    /// smallest of a lane share no value in general).
     Topk {
         k: usize,
         dim: usize,
+        /// `true` selects the k largest values, `false` the k smallest.
+        largest: bool,
+        /// `true` when output order along `dim` follows the selection order
+        /// (descending for `largest`, ascending otherwise); `false` leaves
+        /// the order of the selected set unspecified.
+        sorted: bool,
     },
     /// Index of the maximum value along a dimension.
     Argmax {
@@ -554,4 +617,28 @@ pub enum TraceOp {
     Custom {
         name: String,
     },
+}
+
+/// RoPE capture fused inside a [`TraceOp::MultiHeadAttention`] node.
+///
+/// Q is rotated over `S_q` and K over `S_kv` at the same `offset`; in
+/// cross-attention those lengths differ, which is why BOTH windows are
+/// captured rather than one shared pair.
+///
+/// Like every frozen capture in [`TraceOp`], the windows are valid only for
+/// the traced sequence length and position offset.
+#[derive(Debug, Clone)]
+pub struct TraceMhaRope {
+    /// Head dimension the rotation was applied over (even).
+    pub head_dim: usize,
+    /// Starting position of the rotation (0 for prefill).
+    pub offset: usize,
+    /// Cos window applied to Q: shape `[S_q, head_dim / 2]`.
+    pub q_cos_cache: WeightRef,
+    /// Sin window applied to Q: shape `[S_q, head_dim / 2]`.
+    pub q_sin_cache: WeightRef,
+    /// Cos window applied to K: shape `[S_kv, head_dim / 2]`.
+    pub k_cos_cache: WeightRef,
+    /// Sin window applied to K: shape `[S_kv, head_dim / 2]`.
+    pub k_sin_cache: WeightRef,
 }

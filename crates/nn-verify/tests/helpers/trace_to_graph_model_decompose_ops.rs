@@ -9,6 +9,12 @@
 //!   Flip, WhereCond, Cumsum, PixelShuffle, PixelUnshuffle, Upsample2d,
 //!   Expand (in shape_softmax), RepeatInterleave (in shape_softmax).
 //!
+//! Posture note (ny 3f91a42f2): RepeatInterleave and WhereCond BOTH translate.
+//! The counts a RepeatInterleave lowering needs do ride the wire (input 1, a
+//! captured constant), and WhereCond lowers to the native 3-input `Where`
+//! layer whose union IBP never evaluates the mask. The tests here assert the
+//! lowerings, not the retired refusals.
+//!
 //! PixelShuffle/PixelUnshuffle/WhereCond use programmatic `ComputationGraph`
 //! construction because their DynTensor implementations decompose into
 //! primitives at trace time (no single `TraceOp` recorded).
@@ -16,15 +22,26 @@
 //! Part of #2329 acceptance criterion 2: round-trip compile+verify agreement.
 
 use super::common::{assert_bounds_valid, uniform_bounds};
-use nn_core::dyn_tensor::trace::{
-    record_input, trace_graph, ComputationGraph, TraceNode, TraceOp,
-};
+use nn_core::dyn_tensor::trace::{record_input, trace_graph, ComputationGraph, TraceNode, TraceOp};
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::{DType, Device};
 use nn_verify::{trace_to_graph_model, trace_to_graph_model_multi_input};
 
 fn cpu() -> Device {
     Device::Cpu
+}
+
+/// Count nodes carrying a given NY layer type.
+fn count_layer_type(graph: &nn_verify::GraphNetwork, layer_type: &str) -> usize {
+    graph
+        .node_names()
+        .iter()
+        .filter(|name| {
+            graph
+                .node(name)
+                .is_some_and(|n| n.layer().layer_type() == layer_type)
+        })
+        .count()
 }
 
 // -- Flip: verify + compile round-trip ----------------------------------------
@@ -278,14 +295,16 @@ fn test_model_trace_upsample2d_both_paths_accept() {
     assert!(!steps.is_empty());
 }
 
-// -- WhereCond: programmatic graph (3-input decomposition) --------------------
+// -- WhereCond: programmatic graph (3-input native Where) ---------------------
 //
-// INC-FINAL soundness fix: WhereCond is REFUSED. The deleted legacy
-// `m·x + (1−m)·y` decomposition was unsound whenever a realizable mask value
-// is not in {0, 1} (a constant 0.5 "mask" makes the true output exactly `x`,
-// but the decomposition yields the x/y midpoint — bounds that can exclude
-// the real output, i.e. a false "holds").
+// WhereCond lowers to ny's native 3-input `Where` layer (ny 3f91a42f2). The
+// old refusal argued against a `m·x + (1−m)·y` mask-arithmetic decomposition —
+// genuinely unsound for a non-binary mask — but ny never used it. `WhereLayer`
+// takes the per-element UNION of the two branch boxes and never reads the
+// condition's VALUE, so the enclosure holds for any realizable mask.
 
+/// WhereCond translates to one `Where` layer whose IBP is the branch union,
+/// asserted here against a masked select evaluated independently in f64.
 #[test]
 fn test_model_trace_where_cond_ibp() {
     let graph = ComputationGraph::from_nodes(vec![
@@ -323,30 +342,74 @@ fn test_model_trace_where_cond_ibp() {
         ),
     ]);
 
-    // Sound refusal: WhereCond is Unsupported in the bridge's coverage
-    // taxonomy — non-binary masks break the decomposition.
-    {
-        let err = trace_to_graph_model_multi_input(&graph)
-            .expect_err("WhereCond must be refused (unsound legacy decomposition)");
-        let msg = err.to_string();
+    let gn = trace_to_graph_model_multi_input(&graph)
+        .expect("WhereCond must lower to the native Where layer")
+        .graph;
+    assert_eq!(
+        count_layer_type(&gn, "Where"),
+        1,
+        "WhereCond must lower to exactly one native Where layer"
+    );
+
+    // Multi-input stacking follows trace order: [cond (8) | a (8) | b (8)].
+    // Per-element branch values keep the union from collapsing to one constant.
+    let a_at = |i: usize| 1.0 + i as f64; // a in 1.0 ..= 8.0
+    let b_at = |i: usize| -2.0 * (i as f64) - 1.0; // b in -1.0 ..= -15.0
+    let cond_at = |i: usize| f64::from(u8::from(i.is_multiple_of(2))); // exact 0/1 mask
+    let point = |i: usize| {
+        if i < 8 {
+            cond_at(i)
+        } else if i < 16 {
+            a_at(i - 8)
+        } else {
+            b_at(i - 16)
+        }
+    };
+    // Degenerate box at a single realizable point: the true output is then a
+    // definite masked select, and the union must still contain it.
+    let input_bounds = nn_verify::BoundedTensor::new(
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[24]), |ix| point(ix[0]) as f32),
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[24]), |ix| point(ix[0]) as f32),
+    )
+    .expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
+    assert_bounds_valid(&output);
+
+    let (lo, hi) = output.lower_upper();
+    assert_eq!(lo.len(), 8, "Where output keeps the branch shape [2, 4]");
+    for (i, (&l, &u)) in lo.iter().zip(hi.iter()).enumerate() {
+        // Union of the two (degenerate) branch intervals.
+        let want_lo = a_at(i).min(b_at(i));
+        let want_hi = a_at(i).max(b_at(i));
         assert!(
-            msg.contains("WhereCond") && msg.contains("not supported"),
-            "refusal should name WhereCond, got: {msg}"
+            (f64::from(l) - want_lo).abs() < 1e-5 && (f64::from(u) - want_hi).abs() < 1e-5,
+            "Where[{i}] must be the branch union [{want_lo}, {want_hi}], got [{l}, {u}]"
+        );
+        // The true masked select at this point, computed independently.
+        let truth = if cond_at(i) != 0.0 { a_at(i) } else { b_at(i) };
+        assert!(
+            f64::from(l) <= truth && truth <= f64::from(u),
+            "Where[{i}] bounds [{l}, {u}] must enclose the true select {truth}"
         );
     }
-
 }
 
-// -- RepeatInterleave: verify-path IBP (unblocked by #2399 Constant fix) ------
+// -- RepeatInterleave: lowered (uniform counts → Reshape + Tile) --------------
 
-/// Verifies that RepeatInterleave works through the full verify path now that
-/// Constant nodes are correctly translated as weight tensors.
+/// RepeatInterleave TRANSLATES (ny 3f91a42f2). The old refusal claimed the
+/// per-element repeat counts were not serialized; they are — they ride input 1
+/// as a captured constant, which the bridge reads at translate time. Uniform
+/// counts take the `Reshape` + `Tile` + `Reshape` decomposition (general counts
+/// take Slice-per-run + Concat); only an absent or non-constant counts operand
+/// is still refused.
 ///
-/// The RepeatInterleave decomposition creates Constant nodes (from
-/// `DynTensor::full()`) which previously caused dangling tensor references.
-/// Part of #2399 acceptance criterion 2.
+/// The IBP check uses a DEGENERATE input box at the traced point, so the graph
+/// output must reproduce nn's own eager `repeat_interleave` result element for
+/// element — which is what pins the interleave ORDER (`[a a b b c c]`, not the
+/// tile order `[a b c a b c]`) rather than merely the output shape.
 #[test]
-fn test_repeat_interleave_verify_path_ibp() {
+fn test_repeat_interleave_uniform_counts_ibp() {
     let x = DynTensor::new(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], &cpu()).unwrap();
 
     let (result, graph) = trace_graph(|| {
@@ -360,33 +423,63 @@ fn test_repeat_interleave_verify_path_ibp() {
     .unwrap();
 
     assert_eq!(result.dims(), &[2, 6]);
+    let eager = result.to_flat_vec::<f32>().unwrap();
+    assert_eq!(
+        eager,
+        vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0],
+        "eager repeat_interleave interleaves rather than tiles"
+    );
 
-    // Verify path: trace_to_graph_model (previously failed with dangling ref).
     let gn = trace_to_graph_model(&graph)
-        .expect("RepeatInterleave verify path should succeed after Constant fix")
+        .expect("RepeatInterleave with constant counts must translate")
         .graph;
-    assert!(gn.num_nodes() > 0);
+    assert_eq!(
+        count_layer_type(&gn, "Tile"),
+        1,
+        "uniform counts take the Reshape + Tile decomposition"
+    );
+    assert!(
+        count_layer_type(&gn, "Reshape") >= 2,
+        "the Tile is bracketed by an unsqueeze and a flatten Reshape"
+    );
 
-    // IBP propagation: x in [-1, 1].
-    let input_bounds = uniform_bounds(&[2, 3], 1.0);
-    let output = gn
-        .propagate_ibp(&input_bounds)
-        .expect("IBP should propagate through RepeatInterleave");
+    // Degenerate box on the traced point: the IBP output must reproduce the
+    // eager result exactly, element for element.
+    let src = [1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let input_bounds = nn_verify::BoundedTensor::new(
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[2, 3]), |ix| src[ix[0] * 3 + ix[1]]),
+        ndarray::ArrayD::from_shape_fn(ndarray::IxDyn(&[2, 3]), |ix| src[ix[0] * 3 + ix[1]]),
+    )
+    .expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
     assert_bounds_valid(&output);
 
     let (lo, hi) = output.lower_upper();
-    for &v in lo.iter() {
+    assert_eq!(lo.len(), 12, "expected the [2, 6] interleaved output");
+    for (i, (&l, &u)) in lo.iter().zip(hi.iter()).enumerate() {
+        // Expected value, recomputed here from the source row rather than read
+        // back from `eager`: row r, column c, repeat count 2 everywhere.
+        let want = f64::from(src[(i / 6) * 3 + (i % 6) / 2]);
         assert!(
-            v.is_finite(),
-            "repeat_interleave lo must be finite, got {v}"
+            f64::from(l) <= want && want <= f64::from(u),
+            "repeat_interleave[{i}] bounds [{l}, {u}] must enclose {want}"
+        );
+        assert!(
+            (f64::from(l) - want).abs() < 1e-6 && (f64::from(u) - want).abs() < 1e-6,
+            "repeat_interleave[{i}] should be exact on a degenerate box, got [{l}, {u}] \
+             for {want}"
+        );
+        assert!(
+            (l - eager[i]).abs() < 1e-6 && (u - eager[i]).abs() < 1e-6,
+            "repeat_interleave[{i}] must match nn's eager value {}, got [{l}, {u}]",
+            eager[i]
         );
     }
-    for &v in hi.iter() {
-        assert!(
-            v.is_finite(),
-            "repeat_interleave hi must be finite, got {v}"
-        );
-    }
+
+    // Compile path agrees the graph is translatable.
+    let steps = nn_dsl::compile_trace(&graph).expect("RepeatInterleave: compile path");
+    assert!(!steps.is_empty());
 }
 
 // -- Unfold: verify path IBP (#3094) ------------------------------------------

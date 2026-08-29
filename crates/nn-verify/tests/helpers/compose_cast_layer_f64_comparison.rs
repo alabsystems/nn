@@ -2,13 +2,19 @@
 // Author: Andrew Yates
 // SPDX-License-Identifier: Apache-2.0
 
-//! f64 tightness comparison tests for CastLayer-containing pipelines.
+//! f64 tightness comparison tests for cast-adjacent pipelines.
 //!
-//! Validates that CastLayer (identity for upcasts) has zero impact on bound
-//! tightness, and that F16 downcast (Clamp) does not widen bounds for inputs
-//! within the F16 representable range.
+//! Posture change (ny hardening 25dee0c5e): only the F32 -> F32 identity
+//! ToDtype lowers; every non-F32 cast is refused fail-closed because the
+//! non-F32 endpoint's rounding semantics are unmodeled. The former
+//! "F16 downcast (Clamp) does not widen bounds" comparison measured a
+//! surrogate the bridge no longer emits and was deleted; the representative
+//! per-dtype refusal tests live in `compose_cast_layer_f64_tightness.rs`.
+//! What remains here: f64-evaluation tightness baselines (no ToDtype
+//! involved) and the identity-composition property of the restored
+//! F32 -> F32 lowering.
 //!
-//! Part of #4316: CastLayer for ToDtype verification + f64 evaluation.
+//! Historical: #4316 (CastLayer for ToDtype verification + f64 evaluation).
 
 use super::common::{assert_bounds_valid, uniform_bounds};
 use nn_core::dyn_tensor::trace::{ComputationGraph, TraceNode, TraceOp};
@@ -108,106 +114,21 @@ fn test_f64_tightness_cast_zero_impact() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. F16 downcast: no widening for inputs within F16 range
+// 2. Consecutive F32 identity casts: identity composition
 // ---------------------------------------------------------------------------
+// (The former "F16 downcast no-widening" comparison that sat here measured
+// the deleted Clamp surrogate; F16 casts now refuse fail-closed — see the
+// per-dtype refusal tests in compose_cast_layer_f64_tightness.rs.)
 
-/// F16 downcast (Clamp to [-65504, 65504]) does not introduce additional
-/// bound widening for inputs well within F16 range.
+/// Consecutive F32 -> F32 identity casts compose to identity.
+///
+/// The former version of this test chained ToDtype(F64) + ToDtype(F32); the
+/// F64 leg is now refused fail-closed (ny 25dee0c5e — F64 rounding semantics
+/// unmodeled, asserted in `test_f64_cast_refused_fail_closed`), so this test
+/// chains the one still-lowerable cast twice to keep the composition property
+/// of the restored identity lowering covered.
 #[test]
-fn test_f16_downcast_no_widening_within_range() {
-    let shape = vec![2, 3];
-
-    let graph_no_cast = ComputationGraph::from_nodes(vec![
-        TraceNode::new(
-            0,
-            "input_0".into(),
-            TraceOp::Input,
-            vec![],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            1,
-            "relu_0".into(),
-            TraceOp::Relu,
-            vec![0],
-            shape.clone(),
-            DType::F32,
-        ),
-    ]);
-
-    let graph_with_cast = ComputationGraph::from_nodes(vec![
-        TraceNode::new(
-            0,
-            "input_0".into(),
-            TraceOp::Input,
-            vec![],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            1,
-            "relu_0".into(),
-            TraceOp::Relu,
-            vec![0],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            2,
-            "cast_0".into(),
-            TraceOp::ToDtype {
-                target_dtype: DType::F16,
-            },
-            vec![1],
-            shape.clone(),
-            DType::F32,
-        ),
-    ]);
-
-    let gn_no = trace_to_graph_model(&graph_no_cast).expect("no-cast").graph;
-    let gn_with = trace_to_graph_model(&graph_with_cast)
-        .expect("with-cast")
-        .graph;
-
-    let input = uniform_bounds(&shape, 2.0);
-
-    let out_no = gn_no.propagate_ibp(&input).expect("IBP no cast");
-    let out_with = gn_with.propagate_ibp(&input).expect("IBP with F16");
-
-    assert_bounds_valid(&out_no);
-    assert_bounds_valid(&out_with);
-
-    // After ReLU on [-2, 2]: bounds are [0, 2]. F16 Clamp [-65504, 65504]
-    // is inactive at these values. Output bounds should be identical.
-    let (lo_no, hi_no) = out_no.lower_upper();
-    let (lo_with, hi_with) = out_with.lower_upper();
-
-    let eps = 1e-3;
-    for (i, ((&ln, &lw), (&hn, &hw))) in lo_no
-        .iter()
-        .zip(lo_with.iter())
-        .zip(hi_no.iter().zip(hi_with.iter()))
-        .enumerate()
-    {
-        assert!(
-            (ln - lw).abs() < eps,
-            "F16 Clamp lower[{i}]: no_cast={ln}, with_cast={lw}"
-        );
-        assert!(
-            (hn - hw).abs() < eps,
-            "F16 Clamp upper[{i}]: no_cast={hn}, with_cast={hw}"
-        );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 3. Consecutive CastLayers: identity composition
-// ---------------------------------------------------------------------------
-
-/// Multiple consecutive CastLayer operations (F64 + F32) produce identity.
-#[test]
-fn test_consecutive_castlayers_identity() {
+fn test_consecutive_f32_identity_casts_compose() {
     let shape = vec![2, 4];
     let graph = ComputationGraph::from_nodes(vec![
         TraceNode::new(
@@ -220,9 +141,9 @@ fn test_consecutive_castlayers_identity() {
         ),
         TraceNode::new(
             1,
-            "cast_f64".into(),
+            "cast_a".into(),
             TraceOp::ToDtype {
-                target_dtype: DType::F64,
+                target_dtype: DType::F32,
             },
             vec![0],
             shape.clone(),
@@ -230,7 +151,7 @@ fn test_consecutive_castlayers_identity() {
         ),
         TraceNode::new(
             2,
-            "cast_f32".into(),
+            "cast_b".into(),
             TraceOp::ToDtype {
                 target_dtype: DType::F32,
             },
@@ -240,8 +161,8 @@ fn test_consecutive_castlayers_identity() {
         ),
     ]);
 
-    let result = trace_to_graph_model(&graph).expect("consecutive casts translate");
-    assert_eq!(result.dtype_cast_count, 0, "no downcasts = 0 cast count");
+    let result = trace_to_graph_model(&graph).expect("consecutive F32 identity casts translate");
+    assert_eq!(result.dtype_cast_count, 0, "identity casts = 0 cast count");
 
     let input = uniform_bounds(&shape, 10.0);
     let output = result

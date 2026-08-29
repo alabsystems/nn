@@ -20,7 +20,7 @@
 //! use nn_models::kokoro_pipeline::KokoroTextPipeline;
 //!
 //! let mut kokoro = CompiledKokoro::new(model)?;
-//! let cache = PipelineCache::new();
+//! let cache = PipelineCache::new_global()?;
 //! let mut gpu = GpuSynth::new(&mut kokoro, &cache);
 //! // gpu implements KokoroSynth — plug into KokoroTextPipeline
 //! ```

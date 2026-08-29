@@ -11,11 +11,11 @@
 //!
 //! Extracted from graph.rs (#422) to isolate the growing dispatch table.
 
+use nn_dsl::ir::KernelDef;
 use ny_propagate::layers::{
     GELULayer, GeluApproximation, MulConstantLayer, SiLULayer, SigmoidLayer, SnakeLayer,
 };
 use ny_propagate::{GraphNetwork, GraphNode, Layer};
-use nn_dsl::ir::KernelDef;
 
 use super::ParamBinding;
 use crate::error::VerifyError;
@@ -45,15 +45,28 @@ pub(crate) fn try_native_layer(
     bindings: &[ParamBinding],
 ) -> Result<Option<GraphNetwork>, VerifyError> {
     // Snake: f(x, alpha) = x + (1/alpha) * sin²(alpha * x)
-    // Requires: 2 params (variable x, constant alpha), alpha > 0.
-    // Falls through to decomposition when alpha is invalid (e.g., alpha=0
-    // is clamped internally by the IR's max(alpha, 1e-8) node).
+    // Requires: 2 params (variable x, constant alpha). The alpha handed to ny
+    // is nn's RUNTIME-clamped value (see below); only non-finite alpha falls
+    // through to the decomposed path.
     if kernel.name == "snake"
         && bindings.len() == 2
         && matches!(bindings[0], ParamBinding::Variable)
     {
         if let ParamBinding::Constant(alpha) = bindings[1] {
-            if let Ok(snake) = SnakeLayer::new(alpha) {
+            // nn's runtime kernel clamps alpha (`DynTensor::snake`:
+            // `alpha.clamp(1e-8, 1e6)`, matching GPU/DSL `SNAKE_MIN_ALPHA`), so
+            // nn NEVER evaluates snake at a raw negative or out-of-range alpha.
+            // Verification must model what nn RUNS: hand ny the clamped value.
+            //
+            // This became load-bearing when ny gained certified negative-alpha
+            // Snake (ny 7dea51cce). Before that, `SnakeLayer::new` refused
+            // negatives and this fell through to the decomposed path, which
+            // applies the IR's own `max(alpha, 1e-8)` node — sound, but only by
+            // accident. Passing the raw alpha now would verify
+            // `x + (1/-a)sin^2(-a x)` while nn computes the clamped function:
+            // a false proof about a different function.
+            let runtime_alpha = alpha.clamp(1e-8, 1e6);
+            if let Ok(snake) = SnakeLayer::new(runtime_alpha) {
                 let mut graph = GraphNetwork::new();
                 let node_name = "snake_native";
                 graph.add_node(GraphNode::from_input(
@@ -63,8 +76,8 @@ pub(crate) fn try_native_layer(
                 graph.set_output(node_name.to_string());
                 return Ok(Some(graph));
             }
-            // alpha <= 0 or non-finite: fall through to decomposed path
-            // where the IR's max(alpha, 1e-8) node handles clamping.
+            // Non-finite alpha (NaN/inf) survives the clamp and is still
+            // refused by ny: fall through to the decomposed path.
         }
     }
 

@@ -113,7 +113,7 @@ This is program synthesis from specifications, with proof.
 - Tier-0 scalar safety extraction
 - Native integration with NY bound propagation (already in tree)
 
-NN's existing `gamma_propagate::ay` integration is the synthesis backend's foundation. No new dependency.
+NN's existing `ay-bindings` integration — `nn-verify`'s opt-in `ay-smt` feature, successor to the `gamma_propagate::ay` path this note was written against — is the synthesis backend's foundation. No new dependency.
 
 ### Practical scope per problem class
 

@@ -301,6 +301,10 @@ enum CostModelChoice {
     AppleM4Max,
 }
 
+// nn-import exports OptLevel/VerifyLevel from its `metal` feature (they are
+// the convert builder's knobs, and the convert builder compiles for the Metal
+// GPU), so these conversions exist exactly where that feature does: macOS.
+#[cfg(target_os = "macos")]
 impl From<Optimize> for nn_import::OptLevel {
     fn from(opt: Optimize) -> Self {
         match opt {
@@ -311,6 +315,7 @@ impl From<Optimize> for nn_import::OptLevel {
     }
 }
 
+#[cfg(target_os = "macos")]
 impl From<Verify> for nn_import::VerifyLevel {
     fn from(v: Verify) -> Self {
         match v {
@@ -319,6 +324,30 @@ impl From<Verify> for nn_import::VerifyLevel {
             Verify::Full => Self::Full,
         }
     }
+}
+
+/// The honest non-macOS arm of the GPU dispatch points.
+///
+/// Every model-compiling subcommand in this CLI brings up the Metal backend
+/// before doing anything else (`init_metal_cache` / `MetalBackend::init`),
+/// and Metal is an Apple framework: on this platform there is no GPU backend
+/// to probe and no CPU inference path wired into the CLI today. So these
+/// subcommands refuse up front — with the whole story — instead of probing
+/// for a GPU that cannot exist or pretending a CPU fallback ran the model.
+/// What does work everywhere: `nn device` (reports the CPU-only truth) and
+/// `nn optimize` (the plan search never touches a GPU).
+#[cfg(not(target_os = "macos"))]
+fn metal_required(subcommand: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "`nn {subcommand}` compiles and runs models on the Apple Metal GPU, which \
+         requires macOS on Apple silicon.\n\
+         This build ({os}) carries no GPU backend, and no CPU inference path is \
+         wired into the CLI today — so there is nothing honest this subcommand \
+         could do here.\n\
+         Available on this platform: `nn device` (backend status) and \
+         `nn optimize` (plan search over a compiled .nnc — runs fully on CPU).",
+        os = std::env::consts::OS,
+    )
 }
 
 fn main() {
@@ -422,6 +451,7 @@ fn run(cli: Cli) -> Result<()> {
 ///   report the GPU memory budget and current allocation.
 ///
 /// It compiles no kernels, imports no graph and dispatches no work.
+#[cfg(target_os = "macos")]
 fn cmd_device(json: bool) -> Result<()> {
     let backend = nn_metal::MetalBackend::init().map_err(|e| {
         anyhow::anyhow!(
@@ -489,12 +519,47 @@ fn cmd_device(json: bool) -> Result<()> {
     Ok(())
 }
 
+/// `nn device` — the non-macOS arm: report the CPU-only truth.
+///
+/// On macOS this subcommand initializes Metal and reports the GPU. Here there
+/// is no GPU backend to probe — Metal is an Apple framework — so the honest
+/// device report is exactly that: backend `cpu`, no device, plus a pointer to
+/// what still works in this build. Reporting the truth is a success, not an
+/// error: this remains the zero-input first-run command.
+#[cfg(not(target_os = "macos"))]
+fn cmd_device(json: bool) -> Result<()> {
+    if json {
+        let report = serde_json::json!({
+            "device": serde_json::Value::Null,
+            "backend": "cpu",
+            "metal_supported": false,
+            "platform": std::env::consts::OS,
+        });
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("Metal device:          none — Metal requires macOS on Apple silicon");
+    println!(
+        "Backend:               cpu ({} build, no GPU backend compiled in)",
+        std::env::consts::OS
+    );
+    println!();
+    println!("`nn convert`, `nn compile` and `nn run` need the Metal pipeline and are");
+    println!("unavailable in this build. `nn optimize` (plan search over a compiled");
+    println!(".nnc) runs fully on CPU.");
+
+    Ok(())
+}
+
 /// Bytes as gibibytes, for the human-readable `nn device` report.
+#[cfg(target_os = "macos")]
 fn gib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0 * 1024.0)
 }
 
 /// Bytes as mebibytes, for the human-readable `nn device` report.
+#[cfg(target_os = "macos")]
 fn mib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
 }
@@ -505,6 +570,7 @@ fn mib(bytes: u64) -> f64 {
 /// 1. `NN_EXPORT_SCRIPT` environment variable
 /// 2. `../nn-import/python/nn_export.py` relative to the binary
 /// 3. `crates/nn-import/python/nn_export.py` relative to cwd (workspace dev layout)
+#[cfg(target_os = "macos")]
 fn find_export_script() -> Result<PathBuf> {
     // 1. Env var override.
     if let Ok(path) = std::env::var("NN_EXPORT_SCRIPT") {
@@ -541,6 +607,7 @@ fn find_export_script() -> Result<PathBuf> {
 
 /// Run `nn_export.py` as a subprocess and return the temp directory
 /// containing `graph.json` and `weights.safetensors`.
+#[cfg(target_os = "macos")]
 fn run_pytorch_export(
     checkpoint: &Path,
     model_spec: &str,
@@ -629,6 +696,7 @@ fn run_pytorch_export(
 }
 
 /// Convert from a PyTorch model: run the exporter, then the standard pipeline.
+#[cfg(target_os = "macos")]
 fn cmd_convert_from_pytorch(
     checkpoint: PathBuf,
     model_spec: Option<String>,
@@ -685,6 +753,28 @@ fn cmd_convert_from_pytorch(
     )
 }
 
+/// Convert from a PyTorch model — the non-macOS arm.
+///
+/// Refuses before running the Python exporter: the convert pipeline behind it
+/// is Metal-only, so exporting first would burn minutes of subprocess work on
+/// a command that cannot finish here.
+#[cfg(not(target_os = "macos"))]
+fn cmd_convert_from_pytorch(
+    _checkpoint: PathBuf,
+    _model_spec: Option<String>,
+    _input_shape: Option<Vec<usize>>,
+    _capture_reference: bool,
+    _optimize: Optimize,
+    _verify: Verify,
+    _reference: Option<PathBuf>,
+    _output: Option<PathBuf>,
+    _report_output: Option<PathBuf>,
+    _json: bool,
+) -> Result<()> {
+    Err(metal_required("convert"))
+}
+
+#[cfg(target_os = "macos")]
 fn ensure_parent_dir(path: &Path) -> Result<()> {
     let Some(parent) = path.parent() else {
         return Ok(());
@@ -696,6 +786,7 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
         .with_context(|| format!("failed to create parent directory {}", parent.display()))
 }
 
+#[cfg(target_os = "macos")]
 fn init_metal_cache() -> Result<nn_metal::PipelineCache> {
     let _backend =
         nn_metal::MetalBackend::init().context("failed to initialize Metal GPU backend")?;
@@ -703,6 +794,7 @@ fn init_metal_cache() -> Result<nn_metal::PipelineCache> {
     nn_metal::PipelineCache::new_global().context("failed to create Metal pipeline cache")
 }
 
+#[cfg(target_os = "macos")]
 fn write_report_json(report: &nn_import::ConvertReport, report_path: &Path) -> Result<()> {
     ensure_parent_dir(report_path)?;
     std::fs::write(report_path, report.to_json())
@@ -716,6 +808,9 @@ fn write_report_json(report: &nn_import::ConvertReport, report_path: &Path) -> R
     Ok(())
 }
 
+// Only the macOS `nn compile` arm produces a report at runtime, but the
+// path derivation is pure and its unit test runs on every platform.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn default_compile_report_path(output: &Path) -> PathBuf {
     let file_name = output
         .file_stem()
@@ -731,6 +826,7 @@ fn default_compile_report_path(output: &Path) -> PathBuf {
     report_path
 }
 
+#[cfg(target_os = "macos")]
 fn save_compiled_plan(
     imported: &nn_import::ImportedGraph,
     output: &Path,
@@ -747,6 +843,7 @@ fn save_compiled_plan(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn cmd_convert(
     graph: PathBuf,
     weights: PathBuf,
@@ -825,7 +922,24 @@ fn cmd_convert(
     Ok(())
 }
 
+/// `nn convert` — the non-macOS arm: the convert pipeline is Metal-only.
+#[cfg(not(target_os = "macos"))]
+fn cmd_convert(
+    _graph: PathBuf,
+    _weights: PathBuf,
+    _intake_path: Option<nn_import::ConvertIntakePath>,
+    _optimize: Optimize,
+    _verify: Verify,
+    _reference: Option<PathBuf>,
+    _output: Option<PathBuf>,
+    _report_output: Option<PathBuf>,
+    _json: bool,
+) -> Result<()> {
+    Err(metal_required("convert"))
+}
+
 /// Compile a graph JSON + weights into a .nnc precompiled plan file.
+#[cfg(target_os = "macos")]
 fn cmd_compile(
     graph: PathBuf,
     weights: PathBuf,
@@ -882,10 +996,23 @@ fn cmd_compile(
     Ok(())
 }
 
+/// `nn compile` — the non-macOS arm: the compile pipeline is Metal-only.
+#[cfg(not(target_os = "macos"))]
+fn cmd_compile(
+    _graph: PathBuf,
+    _weights: PathBuf,
+    _output: PathBuf,
+    _report_output: Option<PathBuf>,
+    _json: bool,
+) -> Result<()> {
+    Err(metal_required("compile"))
+}
+
 /// Run a compiled model: import, compile, load inputs, execute, print stats.
 ///
 /// When `compiled` is `Some`, loads a pre-compiled `.nnc` plan to skip
 /// the trace compilation step.
+#[cfg(target_os = "macos")]
 fn cmd_run(
     graph: PathBuf,
     weights: PathBuf,
@@ -1020,6 +1147,19 @@ fn cmd_run(
     Ok(())
 }
 
+/// `nn run` — the non-macOS arm: model execution is Metal-only.
+#[cfg(not(target_os = "macos"))]
+fn cmd_run(
+    _graph: PathBuf,
+    _weights: PathBuf,
+    _compiled: Option<PathBuf>,
+    _input: PathBuf,
+    _output: Option<PathBuf>,
+    _optimize: Optimize,
+) -> Result<()> {
+    Err(metal_required("run"))
+}
+
 /// Run the self-optimizing compiler on a compiled plan.
 ///
 /// Imports the model from graph JSON + safetensors weights (to get the
@@ -1144,6 +1284,9 @@ fn cmd_optimize(
 /// 1. If all model input names are present in the map, use name-based lookup.
 /// 2. Otherwise, if the map has exactly `num_inputs` entries, use sorted order.
 /// 3. Otherwise, error with a helpful message.
+// Only the macOS `nn run` arm calls this at runtime, but the matching logic
+// is pure CPU and its unit tests run on every platform.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn build_ordered_inputs(
     tensors: &HashMap<String, nn_core::DynTensor>,
     input_names: &[String],
@@ -1189,6 +1332,7 @@ fn build_ordered_inputs(
 }
 
 /// Print shape, dtype, and summary statistics for a tensor.
+#[cfg(target_os = "macos")]
 fn print_tensor_stats(name: &str, tensor: &nn_core::DynTensor) -> Result<()> {
     let shape = tensor.dims();
     let dtype = tensor.dtype();
@@ -1742,7 +1886,10 @@ mod tests {
     }
 
     // ---- Optimize / Verify From impls ----
+    // (macOS-only, like the impls: nn_import::{OptLevel, VerifyLevel} exist
+    // behind nn-import's `metal` feature.)
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_optimize_to_opt_level_conversion() {
         assert!(matches!(
@@ -1759,6 +1906,7 @@ mod tests {
         ));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_verify_to_verify_level_conversion() {
         assert!(matches!(

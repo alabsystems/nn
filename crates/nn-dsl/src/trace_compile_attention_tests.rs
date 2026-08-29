@@ -634,21 +634,36 @@ fn test_compile_swiglu_passthrough() {
 
 // -- MultiHeadAttention tests -------------------------------------------------
 
+/// Fixture: a self-attention (1-input), maskless, RoPE-free, bias-free MHA
+/// node over `D = 64` with 4 heads of dim 16. `scale` is `1/sqrt(head_dim)`
+/// and the projections are shape-only captures (the compile path under test
+/// is `IdentityPassthrough` and reads none of them; shapes still describe
+/// the real `[D, D]` projections of this geometry).
+fn mha_fixture_op() -> TraceOp {
+    TraceOp::MultiHeadAttention {
+        num_heads: 4,
+        num_kv_heads: 4,
+        head_dim: 16,
+        scale: 0.25, // 1/sqrt(16)
+        q_weight: WeightRef::from_shape(&[64, 64]),
+        q_bias: None,
+        k_weight: WeightRef::from_shape(&[64, 64]),
+        k_bias: None,
+        v_weight: WeightRef::from_shape(&[64, 64]),
+        v_bias: None,
+        out_weight: WeightRef::from_shape(&[64, 64]),
+        out_bias: None,
+        rope: None,
+        cross_attention: false, // single input: x only
+        has_mask: false,
+    }
+}
+
 #[test]
 fn test_compile_mha_passthrough() {
     let graph = ComputationGraph::from_nodes(vec![
         input_node(0, &[1, 8, 64]),
-        unary_node(
-            1,
-            "mha",
-            TraceOp::MultiHeadAttention {
-                num_heads: 4,
-                num_kv_heads: 4,
-                head_dim: 16,
-            },
-            0,
-            &[1, 8, 64],
-        ),
+        unary_node(1, "mha", mha_fixture_op(), 0, &[1, 8, 64]),
     ]);
     let node = &graph.nodes()[1];
     let step = compile_mha(node, &graph).expect("mha should compile");
@@ -959,17 +974,7 @@ fn test_e2e_swiglu_through_dispatch() {
 fn test_e2e_mha_through_dispatch() {
     let graph = ComputationGraph::from_nodes(vec![
         input_node(0, &[1, 8, 64]),
-        unary_node(
-            1,
-            "mha",
-            TraceOp::MultiHeadAttention {
-                num_heads: 4,
-                num_kv_heads: 4,
-                head_dim: 16,
-            },
-            0,
-            &[1, 8, 64],
-        ),
+        unary_node(1, "mha", mha_fixture_op(), 0, &[1, 8, 64]),
     ]);
     let steps = compile_trace(&graph).expect("mha should compile through dispatch");
     assert_eq!(steps.len(), 2);

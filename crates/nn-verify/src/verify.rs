@@ -9,6 +9,29 @@
 //!
 //! Types (`PropMethod`, `KernelVerification`, `SpecVerification`, `VerifyConfig`)
 //! live in [`verify_types`](crate::verify_types).
+//!
+//! # Escalation here vs. ny's ladder
+//!
+//! The two escalating paths in this file — [`run_escalation`] (bounds) and
+//! [`verify_graph_against_spec_with_config`] (spec) — are nn's **fixed two-step**
+//! policy: run IBP, and if its widest bound exceeds
+//! [`VerifyConfig::escalation_threshold`] make exactly one CROWN-family attempt,
+//! recording the fallback reason if it fails. That policy is unchanged and stays
+//! the default for every existing caller.
+//!
+//! [`ny_ladder`](crate::ny_ladder) is now wired as an **opt-in alternative** for
+//! the spec path: [`VerifyRequest::verify_spec_laddered`](crate::verify_request::VerifyRequest::verify_spec_laddered)
+//! climbs IBP → α-CROWN → CROWN → β-CROWN, stopping at the first decisive rung
+//! and reporting which rung decided plus the whole escalation trace. Use it when
+//! a property is worth more verification effort than one CROWN attempt; the
+//! laddered enclosure is never looser than the first rung's, because the ladder
+//! returns the tightest result it saw.
+//!
+//! The **bounds** path deliberately keeps [`run_escalation`] and is *not*
+//! ladder-able: a ladder rung's stopping condition is "did this method prove the
+//! property", and a bounds run has no property — it computes an enclosure. Wiring
+//! the ladder there would require inventing a spec, which would either be vacuous
+//! or silently change what the bounds mean.
 
 use ny_api::{Bound, BoundedTensor, NyError, VerificationResult, VerificationSpec};
 use ny_core::{nan_propagating_max, VerificationSoundnessMode};
@@ -88,54 +111,55 @@ pub(crate) fn run_escalation(
     let ibp_output = graph.propagate_ibp(input_bounds)?;
     let ibp_width = ibp_output.max_width();
 
-    let (method, output_bounds, crown_fallback_reason) =
-        if ibp_width <= config.escalation_threshold() {
-            (PropMethod::Ibp, ibp_output, None)
-        } else {
-            // Phase 2: CROWN-family escalation (slower, tighter)
-            //
-            // GraphNetwork::propagate_crown() already tries alpha-CROWN first,
-            // but it only returns bounds, not the verifier-level method that
-            // actually succeeded. We mirror that upgrade path explicitly here so
-            // KernelVerification.method can report AlphaCrown/Crown/Ibp
-            // accurately instead of collapsing every successful upgrade to Crown.
-            match graph.propagate_alpha_crown_with_config(input_bounds, &alpha_config_with_deadline()) {
-                Ok(alpha_output) => (PropMethod::AlphaCrown, alpha_output, None),
-                Err(alpha_err) => {
-                    if crown_error_must_propagate(&alpha_err) {
-                        return Err(alpha_err.into());
-                    }
+    let (method, output_bounds, crown_fallback_reason) = if ibp_width
+        <= config.escalation_threshold()
+    {
+        (PropMethod::Ibp, ibp_output, None)
+    } else {
+        // Phase 2: CROWN-family escalation (slower, tighter)
+        //
+        // GraphNetwork::propagate_crown() already tries alpha-CROWN first,
+        // but it only returns bounds, not the verifier-level method that
+        // actually succeeded. We mirror that upgrade path explicitly here so
+        // KernelVerification.method can report AlphaCrown/Crown/Ibp
+        // accurately instead of collapsing every successful upgrade to Crown.
+        match graph.propagate_alpha_crown_with_config(input_bounds, &alpha_config_with_deadline()) {
+            Ok(alpha_output) => (PropMethod::AlphaCrown, alpha_output, None),
+            Err(alpha_err) => {
+                if crown_error_must_propagate(&alpha_err) {
+                    return Err(alpha_err.into());
+                }
 
-                    match graph.propagate_crown_with_provenance(input_bounds) {
-                        Ok(crown_result) => {
-                            if crown_result.is_fallback() {
-                                let reason = format!(
-                                    "alpha-CROWN failed: {alpha_err}; fixed-slope CROWN fell \
-                                     back to IBP internally"
-                                );
-                                (PropMethod::Ibp, crown_result.bounds, Some(reason))
-                            } else {
-                                (PropMethod::Crown, crown_result.bounds, None)
-                            }
-                        }
-                        Err(crown_err) => {
-                            if crown_error_must_propagate(&crown_err) {
-                                return Err(crown_err.into());
-                            }
-
-                            // CROWN-family propagation failed — fall back to IBP but record the
-                            // failure reason. This surfaces the distinction between
-                            // "escalation not attempted" and "escalation attempted, IBP used."
+                match graph.propagate_crown_with_provenance(input_bounds) {
+                    Ok(crown_result) => {
+                        if crown_result.is_fallback() {
                             let reason = format!(
-                                "alpha-CROWN failed: {alpha_err}; fixed-slope CROWN failed: \
-                                 {crown_err}"
+                                "alpha-CROWN failed: {alpha_err}; fixed-slope CROWN fell \
+                                     back to IBP internally"
                             );
-                            (PropMethod::Ibp, ibp_output, Some(reason))
+                            (PropMethod::Ibp, crown_result.bounds, Some(reason))
+                        } else {
+                            (PropMethod::Crown, crown_result.bounds, None)
                         }
+                    }
+                    Err(crown_err) => {
+                        if crown_error_must_propagate(&crown_err) {
+                            return Err(crown_err.into());
+                        }
+
+                        // CROWN-family propagation failed — fall back to IBP but record the
+                        // failure reason. This surfaces the distinction between
+                        // "escalation not attempted" and "escalation attempted, IBP used."
+                        let reason = format!(
+                            "alpha-CROWN failed: {alpha_err}; fixed-slope CROWN failed: \
+                                 {crown_err}"
+                        );
+                        (PropMethod::Ibp, ibp_output, Some(reason))
                     }
                 }
             }
-        };
+        }
+    };
 
     let (out_lower, out_upper) = crate::util::bounds_min_max(&output_bounds);
     let raw_width = out_upper - out_lower;

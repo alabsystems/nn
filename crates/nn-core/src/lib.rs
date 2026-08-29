@@ -20,8 +20,12 @@
 
 // Force linker to include Accelerate framework symbols when workspace feature
 // unification activates ndarray/blas (via NY). Without this, downstream
-// test binaries fail to link with "undefined _cblas_sgemm".
+// test binaries fail to link with "undefined _cblas_sgemm". Apple-only, like
+// the target-gated deps in Cargo.toml: off macOS there is no Accelerate,
+// ndarray/blas never activates, and matmul is ndarray's pure-Rust path.
+#[cfg(target_os = "macos")]
 extern crate accelerate_src;
+#[cfg(target_os = "macos")]
 extern crate blas_src;
 
 pub mod audio;

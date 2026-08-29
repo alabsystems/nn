@@ -73,10 +73,14 @@ pub(in crate::trace_compile) fn try_compile(
 
         // -- Upsample ---------------------------------------------------------
         TraceOp::Upsample1d { factor } => Some(compile_upsample1d(node, graph, *factor)),
+        // `align_corners` is not forwarded: `compile_upsample2d` refuses every
+        // interpolating mode (bilinear → UnsupportedTraceOp) and Nearest's
+        // mapping does not depend on the flag.
         TraceOp::Upsample2d {
             mode,
             scale_h,
             scale_w,
+            align_corners: _,
         } => Some(compile_upsample2d(
             node,
             graph,

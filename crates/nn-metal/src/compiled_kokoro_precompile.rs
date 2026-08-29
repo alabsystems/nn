@@ -722,7 +722,7 @@ impl CompiledKokoro {
     ///
     /// ```rust,ignore
     /// let mut kokoro = unsafe { CompiledKokoro::load("kokoro.safetensors")? };
-    /// let cache = PipelineCache::new();
+    /// let cache = PipelineCache::new_global()?;
     /// let count = kokoro.warmup(&PrecompileShapes::default(), &cache)?;
     /// // First synthesize() with common input sizes is now fast.
     /// ```
@@ -866,7 +866,7 @@ impl CompiledKokoro {
     ///
     /// ```rust,ignore
     /// let mut kokoro = unsafe { CompiledKokoro::load("kokoro.safetensors")? };
-    /// let cache = PipelineCache::new();
+    /// let cache = PipelineCache::new_global()?;
     ///
     /// // Warm up for short texts.
     /// let result = kokoro.warmup_shapes(&PrecompileShapes::short(), &cache)?;
@@ -911,7 +911,7 @@ impl CompiledKokoro {
     ///
     /// ```rust,ignore
     /// let mut kokoro = unsafe { CompiledKokoro::load("kokoro.safetensors")? };
-    /// let cache = PipelineCache::new();
+    /// let cache = PipelineCache::new_global()?;
     ///
     /// // Load per-segment configs from optimizer output.
     /// let configs = SegmentPeepholeConfigs::load_from_dir("./kokoro_configs/")?;

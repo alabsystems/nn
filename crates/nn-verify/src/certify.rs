@@ -19,9 +19,9 @@
 //!
 //! Part of #3020 (Proof Certificates), #3030 (VerifiedCompiledModel), #2218.
 
-use ny_api::BoundedTensor;
 use nn_core::dyn_tensor::trace::ComputationGraph;
 use nn_dsl::verifiability::{classify_op, VerifiabilityClass, VerifiabilitySummary};
+use ny_api::BoundedTensor;
 
 use crate::bound_analysis::{analyze_layer_bounds, AnalysisConfig, BoundAnalysisReport};
 use crate::certificate::integrity::sign_bundle;
@@ -383,6 +383,14 @@ pub fn certify_model(
     }
 
     // 5b. Auto-populate PrecisionModel from dtype cast count (#3023).
+    //
+    // NOTE (ny hardening 25dee0c5e): for newly-translated traces the F16Aware
+    // branch is unreachable — every non-F32 cast is refused upstream by the
+    // bridge (graph-wide F32 gate / resolved-source ToDtype refusal), so a
+    // successful translation always reports dtype_cast_count == 0 and the
+    // certificate is F32Only. The branch is kept because F16Aware remains a
+    // valid PrecisionModel value: legacy certificate bundles serialized before
+    // the hardening still deserialize and validate with it.
     let precision = if translate_result.dtype_cast_count > 0 {
         PrecisionModel::F16Aware {
             cast_count: translate_result.dtype_cast_count,

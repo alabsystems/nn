@@ -43,10 +43,10 @@
 use super::common::{
     assert_bounds_valid, assert_crown_tighter_when_not_fallback, bounds_min_max, uniform_bounds,
 };
+use ndarray::{ArrayD, IxDyn};
 use nn_dsl::tensor_block_builder::TensorBlockBuilder;
 use nn_dsl::tensor_ir::{AttentionMask, TensorKernelDef};
 use nn_verify::{tensor_kernel_to_graph, BoundedTensor, TensorParamBinding};
-use ndarray::{ArrayD, IxDyn};
 
 // ---------------------------------------------------------------------------
 // Dimensions -- production Table Transformer configuration
@@ -442,6 +442,11 @@ fn test_transformer_encoder_self_attention_ibp() {
 }
 
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            ran past the 45-min watchdog twice (both aggregator binaries). Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_transformer_encoder_self_attention_crown() {
     let def = build_encoder_layer_kernel();
     let bindings = encoder_layer_bindings();
@@ -537,6 +542,12 @@ fn test_detr_decoder_cross_attention_ibp() {
 }
 
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            this decoder cross-attention CROWN ran 5.1h wall / 7.2h CPU without terminating on \
+            2026-08-25 and was killed (the sibling 4-layer encoder stack CROWN now takes 1.7h \
+            and still passes). The IBP variant above keeps this shape covered; re-enable when \
+            ny's attention CROWN cost returns to interactive scale or a deadline reaches this \
+            path — same pattern as the earlier alpha-CROWN perf-frontier retirements (e286838b)."]
 fn test_detr_decoder_cross_attention_crown() {
     let def = build_decoder_cross_attn_kernel();
     let bindings = decoder_cross_attn_bindings();
@@ -826,6 +837,11 @@ fn test_full_encoder_pipeline_e2e_ibp() {
 }
 
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            ran past the watchdog in both aggregator binaries. Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_full_encoder_pipeline_e2e_crown() {
     let def = build_full_encoder_pipeline_kernel();
     let bindings = full_encoder_pipeline_bindings();
@@ -935,6 +951,11 @@ fn test_full_decoder_pipeline_e2e_ibp() {
 }
 
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            ran ~2h without terminating and was killed. Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_full_decoder_pipeline_e2e_crown() {
     let def = build_full_decoder_pipeline_kernel();
     let bindings = full_decoder_pipeline_bindings();

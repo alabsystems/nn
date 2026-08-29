@@ -25,7 +25,7 @@
 //!
 //! where `θ_i = base^(-2i / head_dim)`.
 
-use crate::dyn_tensor::trace::{self, TraceOp};
+use crate::dyn_tensor::trace::{self, TraceOp, WeightRef};
 use crate::dyn_tensor::DynTensor;
 use crate::{Device, Result, TensorError};
 
@@ -192,6 +192,30 @@ impl RotaryEmbedding {
             }
         }
         Ok(result)
+    }
+
+    /// Capture the narrowed cos/sin windows for positions
+    /// `[offset .. offset + seq_len)` as trace weight data.
+    ///
+    /// This is the SAME narrowing [`apply`](Self::apply) performs before
+    /// rotating, so the captured window is exactly the data the traced
+    /// computation used. Used by the fused `MultiHeadAttention` trace
+    /// capture, which records one window pair for Q (`S_q`) and one for K
+    /// (`S_kv`) — in cross-attention those lengths differ.
+    pub fn window_weight_refs(&self, offset: usize, seq_len: usize) -> Result<(WeightRef, WeightRef)> {
+        let end_pos = offset + seq_len;
+        if end_pos > self.max_seq_len {
+            return Err(TensorError::ValueOutOfRange {
+                description: "RotaryEmbedding: offset + seq_len exceeds max_seq_len",
+            });
+        }
+        // Narrow under trace suppression — the caches were created before
+        // the trace scope so they have no trace_node_id.
+        trace::with_trace_suppressed(|| {
+            let c = self.cos_cache.narrow(0, offset, seq_len)?;
+            let s = self.sin_cache.narrow(0, offset, seq_len)?;
+            Ok((c.to_weight_ref()?, s.to_weight_ref()?))
+        })
     }
 
     /// Apply RoPE rotation to query and key tensors at explicit positions.

@@ -30,7 +30,7 @@
 
 use nn_core::dyn_tensor::trace::{
     record_input, trace_graph, ComputationGraph, KokoroFusedOp, ResBlockActivation,
-    TraceActivation, TraceNode, TraceOp, TraceUpsampleMode, WeightRef,
+    TraceActivation, TraceMhaRope, TraceNode, TraceOp, TraceUpsampleMode, WeightRef,
 };
 use nn_core::dyn_tensor::{CompareOp, DynTensor, GridSamplePaddingMode};
 use nn_core::layers::{Linear, Module};
@@ -198,10 +198,32 @@ fn all_nn_trace_ops() -> Vec<TraceOp> {
             cos_cache: w(),
             sin_cache: wr(&[0.75, -0.75], &[2]),
         },
+        // Fully-populated witness: distinct weights per projection, biases
+        // present, RoPE captured, cross-attention + mask flags set — so a
+        // transposed projection or dropped discriminator cannot cancel out.
         TraceOp::MultiHeadAttention {
             num_heads: 8,
             num_kv_heads: 2,
             head_dim: 64,
+            scale: 0.125,
+            q_weight: wr(&[0.1, 0.2], &[2]),
+            q_bias: Some(wr(&[0.3], &[1])),
+            k_weight: wr(&[0.4, 0.5], &[2]),
+            k_bias: Some(wr(&[0.6], &[1])),
+            v_weight: wr(&[0.7, 0.8], &[2]),
+            v_bias: Some(wr(&[0.9], &[1])),
+            out_weight: wr(&[1.0, 1.1], &[2]),
+            out_bias: Some(wr(&[1.2], &[1])),
+            rope: Some(Box::new(TraceMhaRope {
+                head_dim: 64,
+                offset: 7,
+                q_cos_cache: wr(&[0.11, 0.12], &[2]),
+                q_sin_cache: wr(&[0.13, 0.14], &[2]),
+                k_cos_cache: wr(&[0.15, 0.16], &[2]),
+                k_sin_cache: wr(&[0.17, 0.18], &[2]),
+            })),
+            cross_attention: true,
+            has_mask: true,
         },
         TraceOp::Embedding { weight: w() },
         TraceOp::Lstm {
@@ -265,6 +287,7 @@ fn all_nn_trace_ops() -> Vec<TraceOp> {
             mode: TraceUpsampleMode::Bicubic,
             scale_h: 1.5,
             scale_w: 2.5,
+            align_corners: true,
         },
         TraceOp::ResizeBilinear {
             target_h: 24,
@@ -280,7 +303,14 @@ fn all_nn_trace_ops() -> Vec<TraceOp> {
             weight: w(),
             bias: ow(),
         },
-        TraceOp::Topk { k: 5, dim: 1 },
+        // Distinct values on purpose: largest=false is NOT the default and a
+        // largest/sorted swap must show.
+        TraceOp::Topk {
+            k: 5,
+            dim: 1,
+            largest: false,
+            sorted: true,
+        },
         TraceOp::Argmax { dim: 2 },
         TraceOp::Argmin { dim: 3 },
         TraceOp::ArgSort {
@@ -746,6 +776,82 @@ fn lstm_payload_maps_node_ids_and_weights() {
     assert_eq!(got, want);
 }
 
+/// The fused MHA payload maps field-for-field: all four projections
+/// (weight + bias), the recorded scale, both RoPE window pairs, and the
+/// `cross_attention`/`has_mask` discriminators — the fields ny's lowering
+/// (and its per-parameterization refusals) dispatch on.
+#[test]
+fn mha_payload_maps_projections_rope_and_discriminators() {
+    let got = convert_one(TraceOp::MultiHeadAttention {
+        num_heads: 8,
+        num_kv_heads: 2,
+        head_dim: 64,
+        scale: 0.125,
+        q_weight: wr(&[0.1, 0.2], &[2]),
+        q_bias: Some(wr(&[0.3], &[1])),
+        k_weight: wr(&[0.4, 0.5], &[2]),
+        k_bias: None,
+        v_weight: wr(&[0.7, 0.8], &[2]),
+        v_bias: Some(wr(&[0.9], &[1])),
+        out_weight: wr(&[1.0, 1.1], &[2]),
+        out_bias: None,
+        rope: Some(Box::new(TraceMhaRope {
+            head_dim: 64,
+            offset: 7,
+            q_cos_cache: wr(&[0.11, 0.12], &[2]),
+            q_sin_cache: wr(&[0.13, 0.14], &[2]),
+            k_cos_cache: wr(&[0.15, 0.16], &[2]),
+            k_sin_cache: wr(&[0.17, 0.18], &[2]),
+        })),
+        cross_attention: true,
+        has_mask: true,
+    });
+    let want = schema::TraceOp::MultiHeadAttention {
+        num_heads: 8,
+        num_kv_heads: 2,
+        head_dim: 64,
+        scale: 0.125,
+        q_weight: wp(&[0.1, 0.2], &[2]),
+        q_bias: Some(wp(&[0.3], &[1])),
+        k_weight: wp(&[0.4, 0.5], &[2]),
+        k_bias: None,
+        v_weight: wp(&[0.7, 0.8], &[2]),
+        v_bias: Some(wp(&[0.9], &[1])),
+        out_weight: wp(&[1.0, 1.1], &[2]),
+        out_bias: None,
+        rope: Some(Box::new(schema::TraceMhaRope {
+            head_dim: 64,
+            offset: 7,
+            q_cos_cache: wp(&[0.11, 0.12], &[2]),
+            q_sin_cache: wp(&[0.13, 0.14], &[2]),
+            k_cos_cache: wp(&[0.15, 0.16], &[2]),
+            k_sin_cache: wp(&[0.17, 0.18], &[2]),
+        })),
+        cross_attention: true,
+        has_mask: true,
+    };
+    assert_eq!(got, want);
+}
+
+/// Topk's `largest`/`sorted` survive conversion — they select one of four
+/// different functions, and the witness uses the non-default `largest`.
+#[test]
+fn topk_payload_maps_largest_and_sorted() {
+    let got = convert_one(TraceOp::Topk {
+        k: 5,
+        dim: 1,
+        largest: false,
+        sorted: true,
+    });
+    let want = schema::TraceOp::Topk {
+        k: 5,
+        dim: 1,
+        largest: false,
+        sorted: true,
+    };
+    assert_eq!(got, want);
+}
+
 /// Every Kokoro fused variant maps field-for-field, including the 8-weight
 /// `FusedAdainResBlock` under both activation variants.
 #[test]
@@ -924,18 +1030,22 @@ fn upsample_and_grid_sample_modes_map_one_to_one() {
         ),
     ];
     for (mode, want) in modes {
-        assert_eq!(
-            convert_one(TraceOp::Upsample2d {
-                mode,
-                scale_h: 1.5,
-                scale_w: 2.5,
-            }),
-            schema::TraceOp::Upsample2d {
-                mode: want,
-                scale_h: 1.5,
-                scale_w: 2.5,
-            }
-        );
+        for align_corners in [false, true] {
+            assert_eq!(
+                convert_one(TraceOp::Upsample2d {
+                    mode,
+                    scale_h: 1.5,
+                    scale_w: 2.5,
+                    align_corners,
+                }),
+                schema::TraceOp::Upsample2d {
+                    mode: want,
+                    scale_h: 1.5,
+                    scale_w: 2.5,
+                    align_corners,
+                }
+            );
+        }
     }
     let paddings = [
         (

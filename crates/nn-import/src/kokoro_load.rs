@@ -8,7 +8,7 @@
 //! use nn_import::load_kokoro;
 //! use nn_metal::cache::PipelineCache;
 //!
-//! let cache = PipelineCache::new()?;
+//! let cache = PipelineCache::new_global()?;
 //! let mut kokoro = load_kokoro("kokoro_v1_0.safetensors")?;
 //! let (audio, cert) = kokoro.synthesize(&input_ids, &style, 1.0, &cache)?;
 //! assert!(cert.overall_passed);

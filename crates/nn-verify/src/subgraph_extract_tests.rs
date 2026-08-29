@@ -532,10 +532,25 @@ fn test_ay_incompatible_ops() {
     let sdpa = TraceOp::Sdpa { scale: 1.0 };
     assert!(!super::is_ay_compatible_op(&sdpa), "SDPA not ay-compatible");
 
+    // Self-attention, maskless, RoPE-free, bias-free MHA over D = 512:
+    // compatibility classification is what is under test, but the fields
+    // still describe a real MHA of this geometry (scale = 1/sqrt(64)).
     let mha = TraceOp::MultiHeadAttention {
         num_heads: 8,
         num_kv_heads: 8,
         head_dim: 64,
+        scale: 0.125,
+        q_weight: WeightRef::from_shape(&[512, 512]),
+        q_bias: None,
+        k_weight: WeightRef::from_shape(&[512, 512]),
+        k_bias: None,
+        v_weight: WeightRef::from_shape(&[512, 512]),
+        v_bias: None,
+        out_weight: WeightRef::from_shape(&[512, 512]),
+        out_bias: None,
+        rope: None,
+        cross_attention: false,
+        has_mask: false,
     };
     assert!(!super::is_ay_compatible_op(&mha), "MHA not ay-compatible");
 

@@ -6,10 +6,10 @@
 //!
 //! Extracted from `graph_tensor.rs` to stay under the 500-line file limit (#479).
 
-use ny_propagate::layers::{MulConstantLayer, PowConstantLayer, SiLULayer, SnakeLayer};
-use ny_propagate::{GraphNetwork, Layer};
 use nn_dsl::ir::{BinOpKind, IRNodeKind, KernelDef};
 use nn_dsl::tensor_ir::TensorNodeId;
+use ny_propagate::layers::{MulConstantLayer, PowConstantLayer, SiLULayer, SnakeLayer};
+use ny_propagate::{GraphNetwork, Layer};
 
 use crate::error::VerifyError;
 use crate::graph::{add_unary_node, translate_node, NodeValue, ParamBinding, TranslationContext};
@@ -169,11 +169,25 @@ fn try_native_elementwise(
         if let (TensorNodeValue::Variable(input_name), TensorNodeValue::Constant(alpha)) =
             (x_val, alpha_val)
         {
-            if let Ok(snake) = SnakeLayer::new(alpha.get()) {
+            // nn's runtime kernel clamps alpha (`DynTensor::snake`:
+            // `alpha.clamp(1e-8, 1e6)`, matching GPU/DSL `SNAKE_MIN_ALPHA`), so
+            // nn NEVER evaluates snake at a raw negative or out-of-range alpha.
+            // Verification must model what nn RUNS: hand ny the clamped value.
+            //
+            // This became load-bearing when ny gained certified negative-alpha
+            // Snake (ny 7dea51cce). Before that, `SnakeLayer::new` refused
+            // negatives and this fell through to the decomposed path, which
+            // applies the IR's own `max(alpha, 1e-8)` node — sound, but only by
+            // accident. Passing the raw alpha now would verify
+            // `x + (1/-a)sin^2(-a x)` while nn computes the clamped function:
+            // a false proof about a different function.
+            let runtime_alpha = alpha.get().clamp(1e-8, 1e6);
+            if let Ok(snake) = SnakeLayer::new(runtime_alpha) {
                 add_unary_node(&node_name, Layer::Snake(snake), input_name, graph);
                 return Ok(Some(TensorNodeValue::Variable(node_name)));
             }
-            // alpha <= 0 or non-finite: fall through to decomposed path
+            // Non-finite alpha survives the clamp and is still refused by ny:
+            // fall through to the decomposed path.
         }
     }
 

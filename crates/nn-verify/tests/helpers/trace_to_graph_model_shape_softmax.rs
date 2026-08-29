@@ -597,8 +597,11 @@ fn test_model_trace_expand_both_paths_accept() {
 
 // -- RepeatInterleave: compile path round-trip (Part of #2329) ----------------
 //
-// The verify-path IBP test lives in trace_to_graph_model_decompose_ops.rs
-// (test_repeat_interleave_verify_path_ibp). Constant node fix: #2399.
+// The verify path REFUSES RepeatInterleave fail-closed (ny 25dee0c5e: the
+// serialized op omits per-element repeat counts); the refusal test lives in
+// trace_to_graph_model_decompose_ops.rs
+// (test_repeat_interleave_refused_fail_closed). The compile path below is
+// unaffected — it executes eagerly and never crosses the bridge.
 
 #[test]
 fn test_model_trace_repeat_interleave_compile_path() {

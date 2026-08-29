@@ -346,7 +346,19 @@ fn classification_attention() {
         TraceOp::MultiHeadAttention {
             num_heads: 8,
             num_kv_heads: 2,
-            head_dim: 64
+            head_dim: 64,
+            scale: 0.125,
+            q_weight: dummy_weight_2d(8, 8),
+            q_bias: None,
+            k_weight: dummy_weight_2d(8, 8),
+            k_bias: None,
+            v_weight: dummy_weight_2d(8, 8),
+            v_bias: None,
+            out_weight: dummy_weight_2d(8, 8),
+            out_bias: None,
+            rope: None,
+            cross_attention: false,
+            has_mask: false,
         }
         .classification()
             == TraceOpClass::Attention
@@ -429,7 +441,16 @@ fn classification_pooling() {
 #[kani::proof]
 #[kani::unwind(1)]
 fn classification_indexing() {
-    assert!(TraceOp::Topk { k: 5, dim: 0 }.classification() == TraceOpClass::Indexing);
+    assert!(
+        TraceOp::Topk {
+            k: 5,
+            dim: 0,
+            largest: true,
+            sorted: true
+        }
+        .classification()
+            == TraceOpClass::Indexing
+    );
     assert!(TraceOp::Argmax { dim: 0 }.classification() == TraceOpClass::Indexing);
     assert!(TraceOp::Argmin { dim: 0 }.classification() == TraceOpClass::Indexing);
     assert!(
@@ -515,7 +536,8 @@ fn classification_vision() {
         TraceOp::Upsample2d {
             mode: TraceUpsampleMode::Nearest,
             scale_h: 2.0,
-            scale_w: 2.0
+            scale_w: 2.0,
+            align_corners: false
         }
         .classification()
             == TraceOpClass::Vision

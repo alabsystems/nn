@@ -337,6 +337,7 @@ fn test_classification_vision() {
             mode: TraceUpsampleMode::Nearest,
             scale_h: 2.0,
             scale_w: 2.0,
+            align_corners: false,
         }
         .classification(),
         TraceOpClass::Vision,

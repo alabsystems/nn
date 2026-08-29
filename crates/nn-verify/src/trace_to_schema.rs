@@ -31,7 +31,7 @@
 
 use nn_core::dyn_tensor::trace::{
     ComputationGraph, GraphSegment, KokoroFusedOp, ResBlockActivation, SegmentedGraph,
-    TraceActivation, TraceNode, TraceOp, TraceUpsampleMode, WeightRef,
+    TraceActivation, TraceMhaRope, TraceNode, TraceOp, TraceUpsampleMode, WeightRef,
 };
 use nn_core::dyn_tensor::{CompareOp, GridSamplePaddingMode};
 use nn_core::DType;
@@ -313,10 +313,34 @@ fn op_to_schema(op: &TraceOp) -> schema::TraceOp {
             num_heads,
             num_kv_heads,
             head_dim,
+            scale,
+            q_weight,
+            q_bias,
+            k_weight,
+            k_bias,
+            v_weight,
+            v_bias,
+            out_weight,
+            out_bias,
+            rope,
+            cross_attention,
+            has_mask,
         } => schema::TraceOp::MultiHeadAttention {
             num_heads: *num_heads,
             num_kv_heads: *num_kv_heads,
             head_dim: *head_dim,
+            scale: *scale,
+            q_weight: weight_to_payload(q_weight),
+            q_bias: q_bias.as_ref().map(weight_to_payload),
+            k_weight: weight_to_payload(k_weight),
+            k_bias: k_bias.as_ref().map(weight_to_payload),
+            v_weight: weight_to_payload(v_weight),
+            v_bias: v_bias.as_ref().map(weight_to_payload),
+            out_weight: weight_to_payload(out_weight),
+            out_bias: out_bias.as_ref().map(weight_to_payload),
+            rope: rope.as_deref().map(|r| Box::new(mha_rope_to_schema(r))),
+            cross_attention: *cross_attention,
+            has_mask: *has_mask,
         },
         TraceOp::Embedding { weight } => schema::TraceOp::Embedding {
             weight: weight_to_payload(weight),
@@ -412,10 +436,12 @@ fn op_to_schema(op: &TraceOp) -> schema::TraceOp {
             mode,
             scale_h,
             scale_w,
+            align_corners,
         } => schema::TraceOp::Upsample2d {
             mode: upsample_mode_to_schema(*mode),
             scale_h: *scale_h,
             scale_w: *scale_w,
+            align_corners: *align_corners,
         },
         TraceOp::ResizeBilinear { target_h, target_w } => schema::TraceOp::ResizeBilinear {
             target_h: *target_h,
@@ -438,7 +464,17 @@ fn op_to_schema(op: &TraceOp) -> schema::TraceOp {
             weight: weight_to_payload(weight),
             bias: bias.as_ref().map(weight_to_payload),
         },
-        TraceOp::Topk { k, dim } => schema::TraceOp::Topk { k: *k, dim: *dim },
+        TraceOp::Topk {
+            k,
+            dim,
+            largest,
+            sorted,
+        } => schema::TraceOp::Topk {
+            k: *k,
+            dim: *dim,
+            largest: *largest,
+            sorted: *sorted,
+        },
         TraceOp::Argmax { dim } => schema::TraceOp::Argmax { dim: *dim },
         TraceOp::Argmin { dim } => schema::TraceOp::Argmin { dim: *dim },
         TraceOp::ArgSort { dim, descending } => schema::TraceOp::ArgSort {
@@ -683,6 +719,18 @@ fn grid_padding_to_schema(mode: GridSamplePaddingMode) -> schema::GridSamplePadd
 /// schema's `Placeholder` so the "data was never captured" fact survives the
 /// wire — the bridge can then refuse them explicitly instead of reading an
 /// empty tensor as real weights.
+/// Map `nn-core`'s fused-MHA RoPE capture onto its schema mirror, 1:1.
+fn mha_rope_to_schema(rope: &TraceMhaRope) -> schema::TraceMhaRope {
+    schema::TraceMhaRope {
+        head_dim: rope.head_dim,
+        offset: rope.offset,
+        q_cos_cache: weight_to_payload(&rope.q_cos_cache),
+        q_sin_cache: weight_to_payload(&rope.q_sin_cache),
+        k_cos_cache: weight_to_payload(&rope.k_cos_cache),
+        k_sin_cache: weight_to_payload(&rope.k_sin_cache),
+    }
+}
+
 fn weight_to_payload(weight: &WeightRef) -> schema::WeightPayload {
     if weight.is_placeholder() {
         schema::WeightPayload::placeholder(weight.shape().to_vec())

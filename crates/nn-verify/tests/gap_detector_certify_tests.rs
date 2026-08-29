@@ -110,6 +110,8 @@ fn test_stage_gap_result_has_any_bounds_all_false() {
         bound_width: None,
         proof_strength: None,
         soundness_mode: None,
+        has_status_entry: true,
+        has_crown_entry: false,
         has_constructive_certificate: false,
     };
     assert!(!result.has_any_bounds());
@@ -134,6 +136,8 @@ fn test_stage_gap_result_has_any_bounds_ibp_only() {
         bound_width: Some(5.0),
         proof_strength: Some("sound".to_string()),
         soundness_mode: Some("sound".to_string()),
+        has_status_entry: true,
+        has_crown_entry: false,
         has_constructive_certificate: false,
     };
     assert!(result.has_any_bounds());
@@ -158,6 +162,8 @@ fn test_stage_gap_result_has_any_bounds_analytical_only() {
         bound_width: Some(3.0),
         proof_strength: Some("sound".to_string()),
         soundness_mode: Some("sound".to_string()),
+        has_status_entry: true,
+        has_crown_entry: false,
         has_constructive_certificate: false,
     };
     assert!(result.has_any_bounds());

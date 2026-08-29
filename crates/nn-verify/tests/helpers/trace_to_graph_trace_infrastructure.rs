@@ -314,10 +314,26 @@ fn test_trace_op_attention_ops() {
             "rope",
         ),
         (
+            // Self-attention (1-input), maskless, RoPE-free, bias-free
+            // fixture over D = 32: only canonical_name is under test here,
+            // but the field values still describe a real MHA of this
+            // geometry (scale = 1/sqrt(8)).
             TraceOp::MultiHeadAttention {
                 num_heads: 4,
                 num_kv_heads: 4,
                 head_dim: 8,
+                scale: 1.0 / (8.0f64).sqrt(),
+                q_weight: WeightRef::from_shape(&[32, 32]),
+                q_bias: None,
+                k_weight: WeightRef::from_shape(&[32, 32]),
+                k_bias: None,
+                v_weight: WeightRef::from_shape(&[32, 32]),
+                v_bias: None,
+                out_weight: WeightRef::from_shape(&[32, 32]),
+                out_bias: None,
+                rope: None,
+                cross_attention: false,
+                has_mask: false,
             },
             "mha",
         ),
@@ -434,7 +450,15 @@ fn test_trace_op_selection_indexing() {
     let selection_ops: Vec<(TraceOp, &str)> = vec![
         (TraceOp::Argmax { dim: 0 }, "argmax"),
         (TraceOp::Argmin { dim: 0 }, "argmin"),
-        (TraceOp::Topk { k: 3, dim: 0 }, "topk"),
+        (
+            TraceOp::Topk {
+                k: 3,
+                dim: 0,
+                largest: true,
+                sorted: true,
+            },
+            "topk",
+        ),
         (TraceOp::IndexSelect { dim: 0 }, "index_select"),
         (TraceOp::Gather { dim: 0 }, "gather"),
     ];

@@ -17,11 +17,10 @@
 //! - ConstructiveProofData validation and replay
 //! - Certificate checker types
 
-use crate::certificate::{
-    CertificateBundle, CertificateError, ProofCertificate,
-};
+use crate::certificate::{CertificateBundle, CertificateError, ProofCertificate};
 use crate::certificate_types::{
-    compute_bytes_hash, ConstructiveLayerRecord, ConstructiveProofData, ConstructiveProofMethod, LayerBoundRecord,
+    compute_bytes_hash, ConstructiveLayerRecord, ConstructiveProofData, ConstructiveProofMethod,
+    LayerBoundRecord,
 };
 use crate::gap_detector::{
     classify_entry, count_gaps_and_vacuous, detect_gaps, format_gap_report, kokoro_pipeline_stages,
@@ -33,12 +32,8 @@ use crate::status::{
     ProofStrength, VerifyOutcome, VerifyStatus, VACUOUS_WIDTH_THRESHOLD,
 };
 use crate::status_report::{GapSummary, StatusReport, Trend, VerificationBreakdown};
-use crate::status_smt::{
-    BoundsSource, SmtEncodingKind, SmtOutcome, SmtStatusRecord,
-};
-use crate::verify_types::{
-    KernelVerification, NormBoundsMode, PropMethod,
-};
+use crate::status_smt::{BoundsSource, SmtEncodingKind, SmtOutcome, SmtStatusRecord};
+use crate::verify_types::{KernelVerification, NormBoundsMode, PropMethod};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -200,6 +195,8 @@ fn test_count_gaps_mixed_results() {
             proof_strength: None,
             soundness_mode: None,
             has_constructive_certificate: false,
+            has_status_entry: i < 3,
+            has_crown_entry: false,
         });
     }
 

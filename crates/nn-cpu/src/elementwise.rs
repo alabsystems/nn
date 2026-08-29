@@ -321,7 +321,10 @@ mod avx2 {
     /// # Safety
     /// Caller must verify AVX2 is available (`is_x86_feature_detected!("avx2")`).
     #[target_feature(enable = "avx2")]
-    #[inline(always)]
+    // `#[inline]`, not `always`: a `#[target_feature]` function cannot be inlined
+    // into a caller that lacks the feature, and the compiler now rejects the pair
+    // outright (rust#145574). This is x86-only code that had never been compiled.
+    #[inline]
     pub unsafe fn add_avx2(a: &[f32], b: &[f32], out: &mut [f32]) {
         assert_eq!(a.len(), b.len());
         assert_eq!(a.len(), out.len());
@@ -348,7 +351,10 @@ mod avx2 {
     /// # Safety
     /// Caller must verify AVX2 is available.
     #[target_feature(enable = "avx2")]
-    #[inline(always)]
+    // `#[inline]`, not `always`: a `#[target_feature]` function cannot be inlined
+    // into a caller that lacks the feature, and the compiler now rejects the pair
+    // outright (rust#145574). This is x86-only code that had never been compiled.
+    #[inline]
     pub unsafe fn mul_avx2(a: &[f32], b: &[f32], out: &mut [f32]) {
         assert_eq!(a.len(), b.len());
         assert_eq!(a.len(), out.len());

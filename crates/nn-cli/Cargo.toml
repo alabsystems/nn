@@ -14,13 +14,25 @@ path = "src/main.rs"
 [dependencies]
 nn-core = { workspace = true }
 nn-dsl = { workspace = true, features = ["plan-serde"] }
-nn-import = { workspace = true, features = ["metal"] }
-nn-metal = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
 safetensors = { workspace = true }
+
+# The GPU stack is Apple-only: nn-metal wraps Metal via the objc FFI, which
+# neither compiles nor links anywhere else, and nn-import's `metal` feature
+# drags nn-metal in. On macOS this resolves exactly as it always has; on every
+# other OS the CLI builds without the GPU stack — `nn optimize` and the
+# import/plan surface still work, and the GPU subcommand arms in main.rs say
+# honestly that Metal needs macOS. tempfile rides along: its one consumer is
+# the --from-pytorch export staging inside the Metal convert path.
+[target.'cfg(target_os = "macos")'.dependencies]
+nn-import = { workspace = true, features = ["metal"] }
+nn-metal = { workspace = true }
 tempfile = { workspace = true }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+nn-import = { workspace = true }
 
 [lints]
 workspace = true

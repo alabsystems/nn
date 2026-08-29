@@ -48,28 +48,48 @@
 //!
 //! ## Memory gate (CROWN)
 //!
-//! The fused `SelfAttention` node has no CROWN backward, so alpha-CROWN cleanly
-//! falls back to (cheap) IBP. The de-fused MatMul/Softmax nodes DO have a CROWN
-//! backward (McCormick), so CROWN now traverses them — which is O(H·S²·…) memory
-//! per attention. To avoid regressing the CROWN compose tests into an OOM, we only
-//! de-fuse when `num_heads * seq² <= DEFUSE_SCORE_BUDGET`; larger attention keeps
-//! the fused node (sound, looser score, but CROWN-cheap). The zonotope score
-//! benefit is realized at IBP time regardless, where it is cheap.
+//! **Corrected premise (re-verified against current NY).** This gate used to be
+//! justified by "the fused `SelfAttention` node has no CROWN backward, so
+//! alpha-CROWN cleanly falls back to (cheap) IBP". **That is false today.**
+//! `network::backward_dispatch::dispatch` has a `Layer::SelfAttention` arm that
+//! calls `SelfAttentionLayer::propagate_crown_ternary` — a center-point
+//! linearization with an IBP-validated McCormick margin — and it is **enabled by
+//! default** (`attn_crown_ternary_enabled()` is true unless
+//! `NY_ATTN_CROWN_TERNARY=0`). CROWN therefore traverses the fused node too;
+//! `tests::fused_self_attention_has_a_working_crown_backward` pins that.
+//!
+//! The gate itself is UNCHANGED, because the corrected facts justify it at least
+//! as strongly:
+//!   * The fused ternary CROWN is memory-BOUNDED — NY measures ~30 MB at
+//!     `seq = 64` against ~20 GB for the de-fused per-head form — so the budget
+//!     is guarding against the de-fused side's O(H·S²·…) McCormick blow-up, not
+//!     against "adding CROWN where there was none".
+//!   * The fused fallback is not merely "sound, looser". NY measures the ternary
+//!     CROWN as STRICTLY TIGHTER than the simplex-aware IBP end-to-end
+//!     (attention→Linear 0.72x, attention→ReLU→Linear 0.70x). So over-budget
+//!     attention keeps a node that is tight in its own right; what it gives up
+//!     is the zonotope `Q@Kᵀ` score, not CROWN altogether.
+//!
+//! `DEFUSE_SCORE_BUDGET_DEFAULT` is deliberately left at its measured-safe value:
+//! correcting the premise does not by itself justify moving a number that was set
+//! by an observed OOM. Moving it needs its own measurement.
 //!
 //! ## Fail-safe
 //!
 //! Any deviation from the exact pattern (bias present, base not a shared Variable,
 //! non-`[1,0,2]` transpose, reshape not `[S,H,HD]`, weight not 2-D, unknown mask,
 //! over the size budget) returns `Ok(None)` and the caller keeps the fused node —
-//! **sound, just looser**. We never emit a different function.
+//! **sound, and looser only in the `Q@Kᵀ` score** (the fused node keeps its own
+//! default-on ternary CROWN, which NY measures as tighter than simplex-aware IBP).
+//! We never emit a different function.
 
+use ndarray::{Array2, ArrayD};
+use nn_dsl::tensor_ir::{AttentionMask, TensorNode, TensorNodeId, TensorOpKind};
 use ny_propagate::layers::{
     CausalSoftmaxLayer, ConcatLayer, LinearLayer, MatMulLayer, ReshapeLayer, SoftmaxLayer,
     UnsqueezeLayer,
 };
 use ny_propagate::{GraphNetwork, GraphNode, Layer};
-use nn_dsl::tensor_ir::{AttentionMask, TensorNode, TensorNodeId, TensorOpKind};
-use ndarray::{Array2, ArrayD};
 
 use super::TensorNodeValue;
 use crate::error::VerifyError;
@@ -77,23 +97,24 @@ use crate::util::get_value;
 
 /// Upper bound on `num_heads * seq²` for de-fusing.
 ///
-/// The de-fused per-head path exposes binary `MatMul`/`Softmax` nodes to CROWN's
-/// McCormick backward, whereas the fused `SelfAttention` node has no CROWN backward
-/// (CROWN cheaply falls back to IBP). For *small* attention this is fine — and is
-/// where the zonotope IBP score tightening is realized cheaply — but for
-/// production-sequence attention the per-head CROWN backward through a residual can
-/// allocate enormous bound matrices (observed to exceed machine memory at
-/// `H=4, S=64`, in BOTH the fused and de-fused forms — i.e. those tests are already
-/// memory-bound independent of this change).
+/// The de-fused per-head path exposes `num_heads` separate binary
+/// `MatMul`/`Softmax` node pairs to CROWN's McCormick backward, each carrying an
+/// `S×S` score. The fused `SelfAttention` node ALSO has a CROWN backward today
+/// (`propagate_crown_ternary`, default-on — see the module docs; the older claim
+/// that it had none and fell back to IBP is retired), but that one is
+/// memory-bounded: NY measures ~30 MB at `seq = 64` against ~20 GB for the
+/// de-fused form. The blow-up this budget guards is therefore the DE-FUSED
+/// side's, and it is real: the per-head CROWN backward through a residual was
+/// observed to exceed machine memory at `H=4, S=64`.
 ///
-/// To guarantee the de-fusion never *adds* CROWN memory risk to the existing
-/// CROWN-heavy compose tests, we de-fuse only when `num_heads * seq²` is small
-/// enough that the per-head CROWN backward stays cheap. This covers the small
-/// encoder blocks (DETR-small `S=16` => 1024, SVTR `S=16` => 2048) where the score
-/// tightening is delivered; larger attention (DETR-medium `S=32`,
-/// table_transformer `S=64`) keeps the fused node — sound, with CROWN behaviour
-/// IDENTICAL to before this change. Tunable via `NN_VERIFY_DEFUSE_SCORE_BUDGET`
-/// (set high to de-fuse all sizes for IBP-only verification).
+/// So we de-fuse only when `num_heads * seq²` is small enough that the per-head
+/// CROWN backward stays cheap. This covers the small encoder blocks (DETR-small
+/// `S=16` => 1024, SVTR `S=16` => 2048) where the zonotope score tightening is
+/// delivered; larger attention (DETR-medium `S=32`, table_transformer `S=64`)
+/// keeps the fused node — which is not a wooden-spoon fallback: NY measures its
+/// ternary CROWN as strictly tighter than the simplex-aware IBP end-to-end
+/// (0.70x–0.72x). Tunable via `NN_VERIFY_DEFUSE_SCORE_BUDGET` (set high to
+/// de-fuse all sizes for IBP-only verification).
 const DEFUSE_SCORE_BUDGET_DEFAULT: usize = 4096; // e.g. S=16,H<=16 or S=32,H<=4
 
 fn defuse_score_budget() -> usize {
@@ -171,8 +192,7 @@ fn trace_projection<'a>(
         if seq == 0 {
             return None;
         }
-        let (base_id, weight, d_out) =
-            validate_no_bias_linear(start, seq, all_nodes, node_values)?;
+        let (base_id, weight, d_out) = validate_no_bias_linear(start, seq, all_nodes, node_values)?;
         if d_out == 0 {
             return None;
         }
@@ -279,11 +299,14 @@ pub(super) fn try_defuse_mha(
 
     let (seq, num_heads, head_dim) = (qp.seq, qp.num_heads, qp.head_dim);
 
-    // Safety ceiling on `H·S²` (see `DEFUSE_SCORE_BUDGET_DEFAULT`): a guard against
-    // pathologically large attention only — at realistic transformer sizes the
-    // de-fused per-head path is lighter than the fused path, not a regression. Also
-    // bails on `checked_mul` overflow (a degenerate/huge shape).
-    match num_heads.checked_mul(seq).and_then(|hs| hs.checked_mul(seq)) {
+    // Safety ceiling on `H·S²` (see `DEFUSE_SCORE_BUDGET_DEFAULT`): a guard on
+    // the DE-FUSED side's per-head CROWN memory, which NY measures at ~20 GB at
+    // seq=64 against ~30 MB for the fused ternary CROWN. Also bails on
+    // `checked_mul` overflow (a degenerate/huge shape).
+    match num_heads
+        .checked_mul(seq)
+        .and_then(|hs| hs.checked_mul(seq))
+    {
         Some(cost) if cost <= defuse_score_budget() => {}
         _ => return Ok(None),
     }
@@ -337,11 +360,10 @@ pub(super) fn try_defuse_mha(
                     context: format!("MHA de-fuse: {which} head {h} weight slice failed"),
                 }
             })?;
-            let lin =
-                LinearLayer::new(rows, None).map_err(|e| VerifyError::WeightValidation {
-                    op: "Attention(de-fused)",
-                    reason: format!("{which} head {h} LinearLayer: {e}"),
-                })?;
+            let lin = LinearLayer::new(rows, None).map_err(|e| VerifyError::WeightValidation {
+                op: "Attention(de-fused)",
+                reason: format!("{which} head {h} LinearLayer: {e}"),
+            })?;
             let name = format!("{prefix}_{which}{h}");
             graph.add_node(GraphNode::new(
                 name.clone(),
@@ -371,7 +393,11 @@ pub(super) fn try_defuse_mha(
         } else {
             Layer::Softmax(SoftmaxLayer::new(-1))
         };
-        graph.add_node(GraphNode::new(probs_h.clone(), softmax_layer, vec![scores_h]));
+        graph.add_node(GraphNode::new(
+            probs_h.clone(),
+            softmax_layer,
+            vec![scores_h],
+        ));
 
         // out_h = MatMul(probs_h, v_h, transpose_b=false) -> [S, HD]  (simplex@V)
         let out_h = if assemble_2d {
@@ -422,4 +448,119 @@ pub(super) fn try_defuse_mha(
     }
 
     Ok(Some(TensorNodeValue::Variable(out_name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BoundedTensor;
+    use ndarray::{Array1, Array2, IxDyn};
+    use ny_propagate::layers::{LinearLayer, SelfAttentionLayer};
+    use ny_propagate::NETWORK_INPUT;
+
+    fn mixed_weights(rows: usize, cols: usize, salt: usize) -> Array2<f32> {
+        let mut w = Array2::<f32>::zeros((rows, cols));
+        for i in 0..rows {
+            for j in 0..cols {
+                let k = (i * 29 + j * 13 + salt * 5) % 19;
+                w[[i, j]] = ((k as f32) / 9.0 - 1.0) * 0.4;
+            }
+        }
+        w
+    }
+
+    fn push_linear(
+        graph: &mut GraphNetwork,
+        name: &str,
+        input: &str,
+        rows: usize,
+        cols: usize,
+        salt: usize,
+    ) {
+        let lin = LinearLayer::new(mixed_weights(rows, cols, salt), Some(Array1::zeros(rows)))
+            .expect("linear stage");
+        graph.add_node(GraphNode::new(
+            name.to_string(),
+            Layer::Linear(lin),
+            vec![input.to_string()],
+        ));
+    }
+
+    fn total_width(t: &BoundedTensor) -> f64 {
+        let (lo, hi) = t.lower_upper();
+        lo.iter()
+            .zip(hi.iter())
+            .map(|(&l, &u)| f64::from(u) - f64::from(l))
+            .sum()
+    }
+
+    /// `input -> {q,k,v} Linear -> fused SelfAttention -> Linear` — the graph
+    /// shape this module falls back to when de-fusion bails.
+    fn fused_attention_graph(seq: usize, head_dim: usize) -> GraphNetwork {
+        let mut graph = GraphNetwork::new();
+        push_linear(&mut graph, "q", NETWORK_INPUT, head_dim, head_dim, 1);
+        push_linear(&mut graph, "k", NETWORK_INPUT, head_dim, head_dim, 2);
+        push_linear(&mut graph, "v", NETWORK_INPUT, head_dim, head_dim, 3);
+        graph.add_node(GraphNode::new(
+            "attn".to_string(),
+            Layer::SelfAttention(SelfAttentionLayer::new(
+                ny_propagate::layers::AttentionMask::Standard,
+                None,
+            )),
+            vec!["q".to_string(), "k".to_string(), "v".to_string()],
+        ));
+        push_linear(&mut graph, "out", "attn", head_dim, head_dim, 4);
+        graph.set_output("out".to_string());
+        let _ = seq;
+        graph
+    }
+
+    /// PREMISE CHECK (task 4). The module's memory budget used to rest on "the
+    /// fused `SelfAttention` node has no CROWN backward, so alpha-CROWN cleanly
+    /// falls back to (cheap) IBP". Current NY dispatches `Layer::SelfAttention`
+    /// to `propagate_crown_ternary` by default, so CROWN really does traverse
+    /// the fused node — and produces bounds that differ from (and are tighter
+    /// than) the IBP ones. If this test ever starts seeing CROWN == IBP again,
+    /// the old premise has returned and the module docs need re-correcting.
+    #[test]
+    fn fused_self_attention_has_a_working_crown_backward() {
+        let (seq, head_dim) = (4usize, 4usize);
+        let graph = fused_attention_graph(seq, head_dim);
+        let input = BoundedTensor::new(
+            ArrayD::from_elem(IxDyn(&[seq, head_dim]), -0.25f32),
+            ArrayD::from_elem(IxDyn(&[seq, head_dim]), 0.25f32),
+        )
+        .expect("valid input box");
+
+        let ibp = graph.propagate_ibp(&input).expect("fused IBP");
+        let crown = graph.propagate_crown(&input).expect("fused CROWN");
+        let ibp_width = total_width(&ibp);
+        let crown_width = total_width(&crown);
+        println!("fused SelfAttention: IBP width={ibp_width:.6} CROWN width={crown_width:.6}");
+
+        assert!(
+            crown_width < ibp_width,
+            "the fused SelfAttention node must have a real CROWN backward \
+             (propagate_crown_ternary, default-on): got CROWN width {crown_width} vs IBP \
+             {ibp_width}. Equality would mean CROWN fell back to IBP — the retired premise."
+        );
+    }
+
+    /// The budget is a REAL gate, not decoration: the DETR-small shape stays
+    /// under it and the table_transformer shape does not. Pinning this keeps the
+    /// premise correction above from silently changing behaviour.
+    #[test]
+    fn defuse_budget_admits_small_encoders_and_refuses_production_sequences() {
+        let budget = defuse_score_budget();
+        assert_eq!(budget, DEFUSE_SCORE_BUDGET_DEFAULT);
+        // DETR-small: H=4, S=16 -> 1024.
+        assert!(4 * 16 * 16 <= budget, "DETR-small must de-fuse");
+        // SVTR: H=8, S=16 -> 2048.
+        assert!(8 * 16 * 16 <= budget, "SVTR must de-fuse");
+        // table_transformer: H=8, S=64 -> 32768.
+        assert!(
+            8 * 64 * 64 > budget,
+            "production-sequence attention must keep the fused node"
+        );
+    }
 }

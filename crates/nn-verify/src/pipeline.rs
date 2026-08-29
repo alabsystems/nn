@@ -8,23 +8,88 @@
 //! cross-verification, and SMT result recording into a single call.
 //! This prevents the decoupled-recording gap where ay results can be
 //! silently dropped if the caller forgets `record_smt()`.
+//!
+//! # ny_api adapters wired into this pipeline
+//!
+//! **Wired (opt-in, default off):** [`ny_conformance`](crate::ny_conformance).
+//! [`OpCoverageMode`] turns ny's op soundness-coverage gate on for a pipeline
+//! run. [`verify_and_record_full_with_coverage`] (scalar, single-variable) and
+//! [`tensor::verify_tensor_and_record_with_coverage`] (tensor / model-level)
+//! classify every operation in the translated `GraphNetwork`, attach the tally
+//! to the result (`op_coverage`), and write a one-line summary into the status
+//! entry's `soundness_justification` so an `Unsupported`-class op shows up in
+//! `nn_verify_status_*.json` instead of only in a refusal message.
+//! [`OpCoverageMode::Gate`] additionally refuses (fail-closed) *before* any
+//! verdict is recorded.
+//!
+//! **Wired (opt-in, default off):** [`ny_equivalence`](crate::ny_equivalence),
+//! via [`equivalence::verify_tensor_kernels_equivalent`] — the pipeline-level
+//! generalization of the hand-rolled difference-network proof in
+//! [`crate::resblock_equivalence`], which is deliberately left in place.
+//!
+//! **Wired (explicit call, never implicit):** [`ny_session`](crate::ny_session),
+//! via [`session::verify_specs_in_session`] — load-once / verify-many with the
+//! opt-in verdict cache. `verify_all`'s session tier and the batch/sweep callers
+//! go through it; the per-call entry points below still build and propagate
+//! per call, because they compute an enclosure rather than deciding a spec.
+//!
+//! **Still opt-in / not wired here:** the ladder lives on
+//! [`VerifyRequest::verify_spec_laddered`](crate::verify_request::VerifyRequest::verify_spec_laddered)
+//! (spec verification only — the bounds path has no property to ladder on), and
+//! the remaining `ny_*` adapters keep their standalone module APIs.
+//!
+//! Every default entry point (`verify_and_record_full`,
+//! `verify_and_record_full_with_config`, `verify_tensor_and_record`,
+//! `verify_tensor_and_record_with_config`) behaves exactly as before: the
+//! adapters run only when a caller explicitly asks for them.
+//!
+//! ## Where the coverage report is persisted, and why
+//!
+//! [`record_op_coverage`] writes the summary into the status entry's
+//! `soundness_justification`, because that is the only free-text field
+//! `KernelStatus` persists. It appends rather than replaces when an unrelated
+//! justification is already present. The proper home is a dedicated
+//! `op_coverage` field on `KernelStatus` — adding one is a `status.rs` change,
+//! and until it exists a `Heuristic` entry that had no justification of its own
+//! will show the coverage tally in that slot.
 
 use nn_dsl::ir::KernelDef;
 
+#[cfg(feature = "ay-smt")]
+use crate::ay::{verify_kernel_smt_multi, verify_kernel_smt_with_bounds, TranslatedKernel};
 use crate::error::VerifyError;
-use crate::graph::ParamBinding;
+use crate::graph::{kernel_to_graph, ParamBinding};
+use crate::ny_conformance::ModelCoverage;
 use crate::status::{ParamInputRecord, SmtStatusRecord, VerifyStatus};
 use crate::verify::{KernelVerification, VerifyConfig};
 use crate::verify_input::ScalarInputBounds;
 use crate::verify_request::VerifyRequest;
-#[cfg(feature = "ay-smt")]
-use crate::ay::{verify_kernel_smt_multi, verify_kernel_smt_with_bounds, TranslatedKernel};
+
+#[path = "pipeline_conformance.rs"]
+pub mod conformance;
+pub use conformance::{
+    op_coverage_for_graph, op_coverage_summary, record_op_coverage, OpCoverageMode,
+};
 
 #[path = "pipeline_tensor.rs"]
 pub mod tensor;
 pub use tensor::{
-    verify_tensor_and_record, verify_tensor_and_record_with_config, verify_with_selective_crown,
-    SelectiveCrownResult, TensorPipelineResult,
+    verify_tensor_and_record, verify_tensor_and_record_with_config,
+    verify_tensor_and_record_with_coverage, verify_with_selective_crown, SelectiveCrownResult,
+    TensorPipelineResult,
+};
+
+#[path = "pipeline_equivalence.rs"]
+pub mod equivalence;
+pub use equivalence::{
+    default_equivalence_method, verify_tensor_kernels_equivalent, EquivalenceOutcome,
+};
+
+#[path = "pipeline_session.rs"]
+pub mod session;
+pub use session::{
+    open_session, verdict_fingerprint, verify_specs_in_session, SessionRun, SessionStats,
+    VerifierSession,
 };
 
 #[path = "pipeline_fusion.rs"]
@@ -48,6 +113,12 @@ pub struct PipelineResult {
     /// `false` when NY produced non-finite bounds (`is_finite == false`),
     /// meaning ay ran without bounds to check against (#428).
     pub cross_verified: bool,
+    /// ny conformance op soundness-coverage tally for the translated graph.
+    ///
+    /// `None` unless the run opted in with an [`OpCoverageMode`] other than
+    /// [`OpCoverageMode::Off`] (see [`verify_and_record_full_with_coverage`]).
+    /// When `Some`, the same tally was summarized into the status entry.
+    pub op_coverage: Option<ModelCoverage>,
 }
 
 /// Run the full verification pipeline for a single-variable kernel:
@@ -155,7 +226,76 @@ pub fn verify_and_record_full_with_config(
         gamma_crown,
         smt,
         cross_verified,
+        op_coverage: None,
     })
+}
+
+/// Run the full verification pipeline for a single-variable kernel **with the
+/// ny conformance op soundness-coverage stage**.
+///
+/// Identical to [`verify_and_record_full_with_config`] except that `coverage`
+/// selects whether ny's conformance gate runs over the translated graph:
+///
+/// * [`OpCoverageMode::Off`] — exactly [`verify_and_record_full_with_config`].
+/// * [`OpCoverageMode::Report`] — the tally is attached to
+///   [`PipelineResult::op_coverage`] and summarized into the status entry's
+///   `soundness_justification`, so an `Unsupported`-class op is visible in
+///   `nn_verify_status_*.json` rather than only in a refusal message.
+/// * [`OpCoverageMode::Gate`] — additionally refuses with
+///   [`VerifyError::UnsupportedOp`] before propagating or recording anything.
+///
+/// The graph is translated once more here (via
+/// [`kernel_to_graph`](crate::graph::kernel_to_graph)) so the gate can run
+/// *before* the recording stages; translation is cheap next to propagation, and
+/// keeping the check ahead of `status.record` is what makes
+/// [`OpCoverageMode::Gate`] fail closed.
+///
+/// Only the single-variable scalar path is wired. The multi-variable path
+/// ([`verify_and_record_full_multi_with_config`]) is not — callers wanting
+/// coverage there build the graph with
+/// [`kernel_to_graph_multi`](crate::graph::kernel_to_graph_multi) and call
+/// [`crate::ny_conformance::model_op_coverage`] directly.
+///
+/// # Errors
+///
+/// As [`verify_and_record_full_with_config`], plus
+/// [`VerifyError::UnsupportedOp`] when `coverage` is [`OpCoverageMode::Gate`]
+/// and the graph contains an `Unsupported`-class operation.
+#[must_use = "returns a Result that may contain an error"]
+pub fn verify_and_record_full_with_coverage(
+    status: &mut VerifyStatus,
+    kernel: &KernelDef,
+    constant_params: &[f32],
+    bounds: ScalarInputBounds,
+    status_key: Option<&str>,
+    config: &VerifyConfig,
+    coverage: OpCoverageMode,
+) -> Result<PipelineResult, VerifyError> {
+    let key = status_key.unwrap_or(&kernel.name);
+
+    // Conformance first: a Gate refusal must happen before any verdict is
+    // persisted, so it cannot leave a recorded result behind.
+    let op_coverage = if coverage.is_enabled() {
+        let graph = kernel_to_graph(kernel, constant_params)?;
+        op_coverage_for_graph(&graph, key, coverage)?
+    } else {
+        None
+    };
+
+    let mut result = verify_and_record_full_with_config(
+        status,
+        kernel,
+        constant_params,
+        bounds,
+        status_key,
+        config,
+    )?;
+
+    if let Some(cov) = op_coverage {
+        record_op_coverage(status, key, &cov)?;
+        result.op_coverage = Some(cov);
+    }
+    Ok(result)
 }
 
 /// Run the full verification pipeline for a multi-variable kernel (#411):
@@ -282,5 +422,6 @@ pub fn verify_and_record_full_multi_with_config(
         gamma_crown,
         smt,
         cross_verified,
+        op_coverage: None,
     })
 }

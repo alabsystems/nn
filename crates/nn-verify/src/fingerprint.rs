@@ -491,10 +491,44 @@ fn hash_op_params(hasher: &mut Sha256, op: &TraceOp, include_weight_content: boo
             num_heads,
             num_kv_heads,
             head_dim,
+            scale,
+            q_weight,
+            q_bias,
+            k_weight,
+            k_bias,
+            v_weight,
+            v_bias,
+            out_weight,
+            out_bias,
+            rope,
+            cross_attention,
+            has_mask,
         } => {
             hash_usize(hasher, *num_heads);
             hash_usize(hasher, *num_kv_heads);
             hash_usize(hasher, *head_dim);
+            hash_f64(hasher, *scale);
+            for w in [q_weight, k_weight, v_weight, out_weight] {
+                hash_weight_ref(hasher, w, include_weight_content);
+            }
+            for b in [q_bias, k_bias, v_bias, out_bias] {
+                // Hash presence explicitly so `Some(empty)` and `None` differ.
+                hasher.update([u8::from(b.is_some())]);
+                if let Some(b) = b {
+                    hash_weight_ref(hasher, b, include_weight_content);
+                }
+            }
+            hasher.update([u8::from(rope.is_some())]);
+            if let Some(r) = rope {
+                hash_usize(hasher, r.head_dim);
+                hash_usize(hasher, r.offset);
+                hash_weight_ref(hasher, &r.q_cos_cache, include_weight_content);
+                hash_weight_ref(hasher, &r.q_sin_cache, include_weight_content);
+                hash_weight_ref(hasher, &r.k_cos_cache, include_weight_content);
+                hash_weight_ref(hasher, &r.k_sin_cache, include_weight_content);
+            }
+            hasher.update([u8::from(*cross_attention)]);
+            hasher.update([u8::from(*has_mask)]);
         }
         TraceOp::Embedding { weight } => {
             hash_weight_ref(hasher, weight, include_weight_content);
@@ -584,10 +618,12 @@ fn hash_op_params(hasher: &mut Sha256, op: &TraceOp, include_weight_content: boo
             mode,
             scale_h,
             scale_w,
+            align_corners,
         } => {
             hasher.update(format!("{mode:?}").as_bytes());
             hash_f64(hasher, *scale_h);
             hash_f64(hasher, *scale_w);
+            hasher.update([u8::from(*align_corners)]);
         }
 
         // Spatial mask / sampling
@@ -603,9 +639,16 @@ fn hash_op_params(hasher: &mut Sha256, op: &TraceOp, include_weight_content: boo
         }
 
         // Selection / indexing
-        TraceOp::Topk { k, dim } => {
+        TraceOp::Topk {
+            k,
+            dim,
+            largest,
+            sorted,
+        } => {
             hash_usize(hasher, *k);
             hash_usize(hasher, *dim);
+            hasher.update([u8::from(*largest)]);
+            hasher.update([u8::from(*sorted)]);
         }
         TraceOp::Argmax { dim }
         | TraceOp::Argmin { dim }

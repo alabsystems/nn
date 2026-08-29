@@ -31,7 +31,7 @@
 //!
 //! // 1. Initialize Metal backend (once per process).
 //! register_metal_dyn_backend();
-//! let cache = PipelineCache::new();
+//! let cache = PipelineCache::new_global()?;
 //!
 //! // 2. Load weights via mmap (zero-copy into Metal buffers).
 //! let vb = unsafe {
@@ -69,7 +69,7 @@
 //! use nn::models::kokoro_chorus::ChorusConfig;
 //!
 //! // Warm up the primary instance first (compiles GPU segments).
-//! let cache = PipelineCache::new();
+//! let cache = PipelineCache::new_global()?;
 //! kokoro.synthesize(&input_ids, &styles[0], 1.0, &cache)?;
 //!
 //! // Create an 8-voice chorus -- shares weights, independent segment caches.

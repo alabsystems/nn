@@ -5,9 +5,9 @@
 //! Integration tests for misc op trace-to-graph translation
 //! via the `trace_to_graph_model` (LayerSpec → build_graph_network) path.
 //!
-//! Covers: Floor, Transpose, GroupNorm, ConvTranspose1d (IBP, CROWN,
-//! groups/dilation/output_padding rejection), and a multi-layer
-//! Linear→ReLU→Linear→Sigmoid end-to-end model.
+//! Covers: Floor, Transpose, GroupNorm, ConvTranspose1d (IBP, CROWN, and the
+//! groups / dilation / output_padding parameter paths — all three translate),
+//! and a multi-layer Linear→ReLU→Linear→Sigmoid end-to-end model.
 //!
 //! Normalization tests (LayerNorm, RmsNorm, BatchNorm) extracted to
 //! `trace_to_graph_model_norm_ops.rs` for 500-line compliance.
@@ -16,12 +16,12 @@
 //! `trace_to_graph_network` path) to ensure equivalent coverage on the new path.
 
 use super::common::assert_bounds_valid;
+use ndarray::{ArrayD, IxDyn};
 use nn_core::dyn_tensor::trace::{record_input, trace_graph};
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::layers::{ConvTranspose1d, ConvTranspose1dConfig, GroupNorm, Linear, Module};
 use nn_core::{DType, Device};
 use nn_verify::{propagate_with_crown_fallback, trace_to_graph_model, BoundedTensor, PropMethod};
-use ndarray::{ArrayD, IxDyn};
 
 fn cpu() -> Device {
     Device::Cpu
@@ -381,15 +381,30 @@ fn test_model_trace_conv_transpose1d_groups_succeeds() {
     );
 }
 
+/// ConvTranspose1d `dilation` TRANSLATES (ny 3f91a42f2 removed a stale gate;
+/// `ConvTranspose1dLayer` and its converter carried dilation end to end all
+/// along). The lowering is ONE native `ConvTranspose1d` layer with the
+/// attribute set, not a decomposition.
+///
+/// Unlike its 2-D dilated sibling this geometry ACCUMULATES — `ot = it + 2k`
+/// has up to two `(it, k)` contributors — so the expected interval is folded
+/// here in f64 over the same taps and checked for enclosure and tightness.
 #[test]
-fn test_model_trace_conv_transpose1d_dilation_rejected() {
+fn test_model_trace_conv_transpose1d_dilation_ibp() {
+    const W: [f64; 3] = [1.0, 0.5, -0.5];
+    const X: [f64; 4] = [1.0, 2.0, 3.0, 4.0];
+    const DILATION: usize = 2;
+    const RADIUS: f64 = 0.25;
+    // (4-1)*1 - 0 + 2*(3-1) + 1 = 8.
+    const T_OUT: usize = 8;
+
     let weight = DynTensor::new(&[1.0, 0.5, -0.5], &[1, 1, 3], &cpu()).unwrap();
     let config = ConvTranspose1dConfig::default().with_dilation(2);
     let conv_t = ConvTranspose1d::new(weight, None, config).unwrap();
 
     let x = DynTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 4], &cpu()).unwrap();
 
-    let (_result, graph) = trace_graph(|| {
+    let (result, graph) = trace_graph(|| {
         let mut x = x.clone();
         let id = record_input(&[1, 1, 4], DType::F32).unwrap();
         x.set_trace_id(id);
@@ -398,12 +413,81 @@ fn test_model_trace_conv_transpose1d_dilation_rejected() {
     })
     .unwrap();
 
-    let err = trace_to_graph_model(&graph).unwrap_err();
-    let err_str = err.to_string();
-    assert!(
-        err_str.contains("dilation") || err_str.contains("not supported"),
-        "Expected dilation rejection, got: {err_str}"
+    assert_eq!(result.dims(), &[1, 1, T_OUT]);
+    let eager = result.to_flat_vec::<f32>().unwrap();
+
+    let gn = trace_to_graph_model(&graph)
+        .expect("dilated ConvTranspose1d must translate")
+        .graph;
+    let conv_t_nodes = gn
+        .node_names()
+        .iter()
+        .filter(|name| {
+            gn.node(name)
+                .is_some_and(|n| n.layer().layer_type() == "ConvTranspose1d")
+        })
+        .count();
+    assert_eq!(
+        conv_t_nodes, 1,
+        "dilation must ride ONE native ConvTranspose1d layer, not a decomposition"
     );
+
+    let input_bounds = BoundedTensor::new(
+        ArrayD::from_shape_fn(IxDyn(&[1, 1, 4]), |ix| (X[ix[2]] - RADIUS) as f32),
+        ArrayD::from_shape_fn(IxDyn(&[1, 1, 4]), |ix| (X[ix[2]] + RADIUS) as f32),
+    )
+    .expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
+    assert_bounds_valid(&output);
+
+    let (lo, hi) = output.lower_upper();
+    let ibp_lo: Vec<f32> = lo.iter().copied().collect();
+    let ibp_hi: Vec<f32> = hi.iter().copied().collect();
+    assert_eq!(ibp_lo.len(), T_OUT, "expected the dilated output length");
+
+    for (ot, (&got_lo, &got_hi)) in ibp_lo.iter().zip(ibp_hi.iter()).enumerate() {
+        // Independent f64 interval fold over the taps feeding output `ot`.
+        let (mut want_lo, mut want_hi) = (0.0_f64, 0.0_f64);
+        for (k, &w) in W.iter().enumerate() {
+            let Some(it) = ot.checked_sub(k * DILATION) else {
+                continue;
+            };
+            if it >= X.len() {
+                continue;
+            }
+            let (tap_lo, tap_hi) = if w >= 0.0 {
+                (w * (X[it] - RADIUS), w * (X[it] + RADIUS))
+            } else {
+                (w * (X[it] + RADIUS), w * (X[it] - RADIUS))
+            };
+            want_lo += tap_lo;
+            want_hi += tap_hi;
+        }
+
+        const EPS: f64 = 1e-5;
+        assert!(
+            got_lo.is_finite() && got_hi.is_finite() && got_lo <= got_hi,
+            "conv_transpose1d dilation[{ot}] bounds must be finite and ordered, \
+             got [{got_lo}, {got_hi}]"
+        );
+        assert!(
+            f64::from(got_lo) <= want_lo + EPS && f64::from(got_hi) >= want_hi - EPS,
+            "conv_transpose1d dilation[{ot}] bounds [{got_lo}, {got_hi}] must ENCLOSE the \
+             reachable range [{want_lo}, {want_hi}]"
+        );
+        assert!(
+            f64::from(got_lo) >= want_lo - EPS && f64::from(got_hi) <= want_hi + EPS,
+            "conv_transpose1d dilation[{ot}] bounds [{got_lo}, {got_hi}] are looser than the \
+             exact reachable range [{want_lo}, {want_hi}]"
+        );
+        assert!(
+            got_lo <= eager[ot] && eager[ot] <= got_hi,
+            "conv_transpose1d dilation[{ot}] bounds [{got_lo}, {got_hi}] must contain the \
+             eager value {}",
+            eager[ot]
+        );
+    }
 }
 
 /// Output padding is handled via decomposition: ConvTranspose1d(output_padding=0)

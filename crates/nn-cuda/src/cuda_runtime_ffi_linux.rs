@@ -25,8 +25,9 @@ use crate::cuda_ffi::{
 
 /// Probe for `libcuda.so` availability.
 ///
-/// Attempts `dlopen("libcuda.so.1", RTLD_LAZY)`. Returns `true` if the
-/// library loads successfully.
+/// Scaffolding, per the module header: always returns `false`. The
+/// `dlopen("libcuda.so.1", RTLD_LAZY)` probe is not implemented, so no CUDA
+/// runtime is ever reported available on Linux.
 pub(super) fn probe_cuda_runtime() -> bool {
     // TODO: Implement dlopen probe for libcuda.so.1
     // For now, return false — actual runtime dispatch requires the dlopen infra.

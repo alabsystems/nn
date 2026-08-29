@@ -15,7 +15,7 @@
 //! use nn_metal::compiled_model::{CompiledModel, InFlightInference};
 //! use nn_metal::PipelineCache;
 //!
-//! let cache = PipelineCache::new();
+//! let cache = PipelineCache::new_global()?;
 //! // Submit inference N — GPU starts immediately, CPU continues.
 //! let in_flight = compiled.execute_dyn_submit(&cache, &[&input_n])?;
 //!

@@ -115,10 +115,10 @@ use super::common::{
     assert_bounds_valid, assert_crown_tighter_when_not_fallback, bounds_min_max, uniform_bounds,
     verify_and_assert,
 };
+use ndarray::{ArrayD, IxDyn};
 use nn_dsl::tensor_block_builder::TensorBlockBuilder;
 use nn_dsl::tensor_ir::{AttentionMask, TensorKernelDef};
 use nn_verify::{tensor_kernel_to_graph, TensorParamBinding};
-use ndarray::{ArrayD, IxDyn};
 
 // ---------------------------------------------------------------------------
 // Dimensions -- small for fast verification, structurally representative
@@ -1363,6 +1363,11 @@ fn test_encoder_2layer_stack_ibp() {
 
 /// CROWN bounds propagate through 2-layer DETR encoder stack.
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            exceeded the 25-min watchdog bound. Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_encoder_2layer_stack_crown() {
     let def = build_encoder_2layer_stack_kernel();
     let bindings = encoder_2layer_stack_bindings();
@@ -3006,6 +3011,11 @@ fn test_encoder_4layer_stack_ibp() {
 
 /// CROWN bounds through 4-layer DETR encoder stack.
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            PASSES but takes 1.7h wall (measured 2026-08-25) — unsustainable per corpus run. Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_encoder_4layer_stack_crown() {
     let def = build_encoder_4layer_stack_kernel();
     let bindings = encoder_4layer_stack_bindings();
@@ -3700,6 +3710,11 @@ fn test_pe_propagation_ibp() {
 
 /// CROWN bounds through PE propagation.
 #[test]
+#[ignore = "alpha-CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            passes in tens of minutes in one binary, exceeded the bound in the other. Corpus policy 2026-08-25: attention-bearing table-transformer CROWN \
+            tests exceeding the serialized-suite budget are retired with the IBP variants \
+            keeping shape coverage — same pattern as e286838b. Re-enable when ny's attention \
+            CROWN cost returns to interactive scale or a deadline reaches this path."]
 fn test_pe_propagation_crown() {
     let def = build_pe_propagation_kernel();
     let bindings = pe_propagation_bindings();

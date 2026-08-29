@@ -318,7 +318,20 @@ pub(super) fn map_topk_values(node: &Node) -> Result<(TraceOp, Vec<String>), Imp
     let input = first_tensor_name(node)?;
     let k = safe_usize(require_int(node, "k")?, "k", &node.target)?;
     let dim = safe_usize(optional_int(node, "dim").unwrap_or(0), "dim", &node.target)?;
-    Ok((TraceOp::Topk { k, dim }, vec![input]))
+    // Import the selection the model actually performs; aten defaults are
+    // largest=True, sorted=True (`largest`/`sorted` pick one of four
+    // different functions, not a presentation detail).
+    let largest = optional_bool(node, "largest", true);
+    let sorted = optional_bool(node, "sorted", true);
+    Ok((
+        TraceOp::Topk {
+            k,
+            dim,
+            largest,
+            sorted,
+        },
+        vec![input],
+    ))
 }
 
 // =========================================================================

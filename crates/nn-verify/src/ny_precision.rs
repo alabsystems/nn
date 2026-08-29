@@ -2,27 +2,31 @@
 // Author: Andrew Yates
 // SPDX-License-Identifier: Apache-2.0
 
-//! Deployed-precision sound verification (Metal f16) via `ny_api::precision`.
+//! Deployed-precision verification (Metal f16) via `ny_api::precision`.
 //!
 //! NY proves bounds under an f32 *idealization*. NN's models do NOT run in f32 on
 //! the GPU — the Metal backend executes in f16 — so a bound proven in f32 is not
 //! automatically valid for the bits that actually run on-device. This adapter
-//! verifies the bounds at the precision NN actually deploys.
+//! asks for the bounds at the precision NN actually deploys.
 //!
 //! It delegates to [`ny_api::precision::verify_with_sound_precision`], the
-//! layer-aware, SOUND path: it accounts for the accumulation rounding inside each
-//! reduction/Linear layer (via direct outward-rounded interval arithmetic), so a
-//! `Verified` verdict it returns is sound for the deployed precision. (This is
-//! distinct from `ny`'s representation-only *heuristic* widening, which this
-//! adapter deliberately does not expose.)
+//! fail-closed sound entry point. **Every non-F32 policy is currently REFUSED
+//! upstream with [`ny_core::NyError::UnsupportedConfiguration`]** (ny hardening
+//! 25dee0c5e): the experimental widening path behind the facade does not yet
+//! model every deployed store and reduction rigorously, and it must never emit
+//! `Verified` with sound provenance. The refusal IS the sound posture — no
+//! false verification is possible through this adapter. NY's representation-only
+//! *heuristic* precision API still exists upstream; this adapter deliberately
+//! does not expose it, because its verdicts carry no soundness claim.
 //!
 //! # Soundness direction
 //!
-//! Widening to the deployed grid can only *loosen* the computed output bounds, and
-//! NY's verdict rule is monotone, so a verdict can only ever flip from `Verified`
-//! to `Unknown` when moving from f32 to f16 — never the reverse. The pass is
-//! therefore fail-closed: it never falsely reports `Verified` at a lower
-//! precision.
+//! While the non-F32 path is refused, the fail-closed direction is trivial:
+//! `verify_metal_f16` can only error, never falsely report `Verified`. If the
+//! sound widening path lands upstream, the intended monotonicity (a verdict can
+//! only flip `Verified` -> `Unknown` when moving f32 -> f16, never the reverse)
+//! applies, and the refusal tests below will fail loudly so the un-refusal is a
+//! conscious event.
 //!
 //! # `F32` is a strict no-op
 //!
@@ -45,17 +49,19 @@ use ny_api::precision::MixedPrecisionPolicy;
 /// policy where both the per-element compute and the reduction accumulate run at
 /// `precision`.
 ///
-/// This is the SOUND, layer-aware path: a `Verified` verdict is valid for the bits
-/// that actually execute at `precision`, not just for the f32 idealization. The
-/// verdict is fail-closed — widening to the deployed grid can only flip `Verified`
-/// to `Unknown`, never the reverse, so this never falsely reports `Verified`.
+/// This is the fail-closed sound entry point: it never falsely reports
+/// `Verified` for the deployed precision. Currently (ny hardening 25dee0c5e)
+/// every non-F32 `precision` is refused upstream with
+/// [`ny_core::NyError::UnsupportedConfiguration`] rather than verified.
 ///
 /// [`FloatPrecision::F32`] is a strict no-op: the result is identical to the plain
 /// verifier's f32 verdict. Use [`verify_metal_f16`] for NN's actual deployment
 /// target.
 ///
 /// # Errors
-/// Propagates any error from [`ny_api::precision::verify_with_sound_precision`]
+/// Returns [`ny_core::NyError::UnsupportedConfiguration`] for every non-F32
+/// `precision` (the sound widening path is not yet implemented upstream).
+/// For F32, propagates any error from the plain verifier
 /// (layer/propagation errors and shape errors from the underlying IBP).
 pub fn verify_deployed(
     net: &GraphNetwork,
@@ -71,12 +77,14 @@ pub fn verify_deployed(
 ///
 /// This is the general form behind [`verify_deployed`]; use it when the deployed
 /// hardware multiplies in one precision but accumulates in another (e.g. f16
-/// multiply with f32 accumulate). The same soundness guarantees apply: a
-/// `Verified` verdict is valid for the deployed precision, and the idealized
-/// all-f32 policy is a strict no-op equal to the plain verifier.
+/// multiply with f32 accumulate). The same fail-closed posture applies: the
+/// idealized all-f32 policy is a strict no-op equal to the plain verifier, and
+/// every non-F32 policy is currently refused upstream (ny 25dee0c5e).
 ///
 /// # Errors
-/// Propagates any error from [`ny_api::precision::verify_with_sound_precision`].
+/// Returns [`ny_core::NyError::UnsupportedConfiguration`] for every non-F32
+/// policy; otherwise propagates any error from
+/// [`ny_api::precision::verify_with_sound_precision`].
 pub fn verify_deployed_with_policy(
     net: &GraphNetwork,
     spec: &VerificationSpec,
@@ -88,13 +96,15 @@ pub fn verify_deployed_with_policy(
 /// Verify `net` against `spec` at NN's Metal deployment precision (f16).
 ///
 /// Convenience wrapper for `verify_deployed(net, spec, FloatPrecision::F16)`. NN's
-/// Metal backend runs in f16, so this verifies the bounds for the bits that
-/// actually execute on-device rather than the f32 idealization. A `Verified`
-/// verdict here is sound for the deployed f16 compute; the pass is fail-closed and
-/// can only ever downgrade an f32 `Verified` to `Unknown`.
+/// Metal backend runs in f16, so a sound verdict here would have to hold for the
+/// bits that actually execute on-device rather than the f32 idealization.
+/// Currently (ny 25dee0c5e) that sound f16 path is refused upstream, so this
+/// always errors — fail-closed: it can never falsely report `Verified` for the
+/// deployed f16 compute.
 ///
 /// # Errors
-/// Propagates any error from [`verify_deployed`].
+/// Always returns [`ny_core::NyError::UnsupportedConfiguration`] while the sound
+/// non-F32 path is refused upstream; see [`verify_deployed`].
 pub fn verify_metal_f16(net: &GraphNetwork, spec: &VerificationSpec) -> Result<VerificationResult> {
     verify_deployed(net, spec, FloatPrecision::F16)
 }
@@ -159,34 +169,45 @@ mod tests {
             .expect("plain f32 verify")
     }
 
+    /// Shared assertion: the f16 deployed path refuses fail-closed with the
+    /// upstream `UnsupportedConfiguration` (ny hardening 25dee0c5e) — the sound
+    /// widening path is not yet implemented, and refusing is the only verdict
+    /// that can never be a false `Verified`.
+    fn assert_f16_refused(err: ny_core::NyError) {
+        match err {
+            ny_core::NyError::UnsupportedConfiguration(msg) => {
+                assert!(
+                    msg.contains("sound deployed-precision verification is not yet implemented"),
+                    "refusal must state the missing sound path, got: {msg}"
+                );
+                assert!(
+                    msg.contains("compute=F16"),
+                    "refusal must name the refused policy, got: {msg}"
+                );
+            }
+            other => panic!("expected UnsupportedConfiguration, got {other:?}"),
+        }
+    }
+
     #[test]
-    fn metal_f16_returns_sound_verdict_never_falsely_verified() {
+    fn metal_f16_refused_fail_closed_is_the_sound_verdict() {
         let net = tiny_fc_relu_net();
         let spec = spec_generous();
 
-        let f16 = verify_metal_f16(&net, &spec).expect("f16 verify");
+        // Formerly this asserted an f16 `Verified` from the sound widening
+        // path; ny 25dee0c5e refuses every non-F32 policy upstream because
+        // that path does not yet model every deployed store/reduction. The
+        // fail-closed refusal IS the sound posture: no false verification is
+        // possible through this adapter.
+        let err = verify_metal_f16(&net, &spec)
+            .expect_err("f16 deployed verification must refuse (ny 25dee0c5e)");
+        assert_f16_refused(err);
 
-        // Must be a SOUND verdict: Verified or Unknown, never Violated/Timeout for
-        // this finite well-formed net, and crucially never a FALSE Verified — the
-        // f32 verdict is Verified with a wide margin, so f16 widening (which only
-        // loosens) must keep it within the generous band.
-        assert!(
-            matches!(
-                f16,
-                VerificationResult::Verified { .. } | VerificationResult::Unknown { .. }
-            ),
-            "f16 deployed verdict must be Verified or Unknown, got {f16:?}"
-        );
-
-        // The f32 reference is Verified with a margin; fail-closed widening cannot
-        // turn an Unknown into Verified, so an f16 Verified here is genuinely sound.
+        // The refusal is not vacuous: the same net/spec verifies under the
+        // f32 idealization, so it is precisely the f16 soundness claim — not
+        // the problem instance — that is being refused.
         let f32 = plain_f32_verdict(&net, &spec);
         assert!(f32.is_verified(), "f32 reference must be Verified");
-        // For this generous band the f16 widening stays inside it -> still Verified.
-        assert!(
-            f16.is_verified(),
-            "f16 verdict for a generously-satisfied spec must remain Verified, got {f16:?}"
-        );
     }
 
     #[test]
@@ -218,9 +239,12 @@ mod tests {
     }
 
     #[test]
-    fn f16_does_not_rescue_an_unsatisfiable_spec() {
-        // A spec the f32 path cannot satisfy must stay non-Verified under f16
-        // (widening only loosens bounds — it can never rescue a verdict).
+    fn f16_refusal_cannot_rescue_an_unsatisfiable_spec() {
+        // A spec the f32 path cannot satisfy must stay non-Verified under f16.
+        // With the non-F32 path refused upstream (ny 25dee0c5e) the guarantee
+        // is trivial and absolute: the f16 entry errors instead of returning
+        // any verdict, so no spec — satisfiable or not — can be falsely
+        // verified through it.
         let net = tiny_fc_relu_net();
         // input [1,2] -> output ~[2,4]; require an impossible tight band [10, 11].
         let spec = VerificationSpec::new(vec![Bound::new(1.0, 2.0)], vec![Bound::new(10.0, 11.0)])
@@ -231,10 +255,8 @@ mod tests {
         let f32 = plain_f32_verdict(&net, &spec);
         assert!(!f32.is_verified(), "f32 verdict must not satisfy [10,11]");
 
-        let f16 = verify_metal_f16(&net, &spec).expect("f16 verify");
-        assert!(
-            !f16.is_verified(),
-            "f16 must not falsely rescue an unsatisfiable spec, got {f16:?}"
-        );
+        let err = verify_metal_f16(&net, &spec)
+            .expect_err("f16 deployed verification must refuse (ny 25dee0c5e)");
+        assert_f16_refused(err);
     }
 }

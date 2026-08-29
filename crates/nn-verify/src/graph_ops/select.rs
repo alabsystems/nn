@@ -4,11 +4,11 @@
 
 //! Select/Where translation with activation pattern matching (ReLU, LeakyReLU).
 
+use nn_dsl::ir::{BinOpKind, CompareOpKind, IRNode, IRNodeKind};
 use ny_propagate::layers::{
-    AddConstantLayer, AddLayer, MulConstantLayer, ReLULayer, WhereLayer,
+    AddConstantLayer, AddLayer, MulBinaryLayer, MulConstantLayer, ReLULayer, SubLayer, WhereLayer,
 };
 use ny_propagate::{GraphNetwork, GraphNode, Layer};
-use nn_dsl::ir::{BinOpKind, CompareOpKind, IRNode, IRNodeKind};
 
 use crate::error::VerifyError;
 use crate::graph::{add_unary_node, scalar_array, NodeValue};
@@ -87,7 +87,8 @@ pub(crate) fn translate_select(
 ///
 /// Matches:
 /// - ReLU: `if x > 0 { x } else { 0 }`
-/// - LeakyReLU: `if x > 0 { x } else { alpha * x }`
+/// - LeakyReLU: `if x > 0 { x } else { alpha * x }` — `alpha` may be a
+///   translation-time constant or a variable (e.g. a kernel parameter)
 ///
 /// Returns `None` if no pattern matches (caller should fall back to WhereLayer).
 fn try_match_activation_pattern(
@@ -147,65 +148,130 @@ fn try_match_activation_pattern(
         return Some(Ok(NodeValue::Variable(name.to_string())));
     }
 
-    // Check for alpha * x pattern (LeakyReLU)
+    // Check for slope * x pattern (LeakyReLU). The slope may be a constant
+    // (classic LeakyReLU) or a variable (e.g. the AdaIN+LeakyReLU kernels
+    // pass the negative slope as a kernel parameter).
     let else_node = try_get!(all_nodes, else_idx, "Select activation else node");
-    let alpha = match &else_node.kind {
+    let slope = match &else_node.kind {
         IRNodeKind::BinOp {
             op: BinOpKind::Mul,
             lhs,
             rhs,
         } => {
             if lhs.index() == compare_lhs_idx {
-                match try_get!(values, rhs.index(), "Select LeakyReLU alpha (rhs)") {
-                    NodeValue::Constant(c) => Some(c.get()),
-                    NodeValue::Variable(_) => None,
-                }
+                Some(try_get!(values, rhs.index(), "Select LeakyReLU slope (rhs)").clone())
             } else if rhs.index() == compare_lhs_idx {
-                match try_get!(values, lhs.index(), "Select LeakyReLU alpha (lhs)") {
-                    NodeValue::Constant(c) => Some(c.get()),
-                    NodeValue::Variable(_) => None,
-                }
+                Some(try_get!(values, lhs.index(), "Select LeakyReLU slope (lhs)").clone())
             } else {
                 None
             }
         }
         // SAFETY: IRNodeKind is #[non_exhaustive]. Non-BinOp::Mul nodes don't
-        // match LeakyReLU pattern. None causes `alpha?` to return None from
+        // match LeakyReLU pattern. None causes `slope?` to return None from
         // the function, falling back to WhereLayer in the caller (conservative).
         _ => None,
     };
 
-    let alpha = alpha?;
-    // Decompose LeakyReLU(x, alpha) = alpha*x + (1-alpha)*ReLU(x).
-    // NY's LeakyReLULayer returns IBP-wide bounds (lower = input_lower
-    // instead of alpha*input_lower). The decomposed form uses ReLU (which has
-    // correct CROWN linearization) plus exact linear layers. (#2977)
-    let scale_name = format!("{name}_alpha_x");
-    add_unary_node(
-        &scale_name,
-        Layer::MulConstant(MulConstantLayer::scalar(alpha)),
-        &input_name,
-        graph,
-    );
-    let relu_name = format!("{name}_relu");
-    add_unary_node(
-        &relu_name,
-        Layer::ReLU(ReLULayer::new()),
-        &input_name,
-        graph,
-    );
-    let relu_scaled_name = format!("{name}_relu_scaled");
-    add_unary_node(
-        &relu_scaled_name,
-        Layer::MulConstant(MulConstantLayer::scalar(1.0 - alpha)),
-        &relu_name,
-        graph,
-    );
-    graph.add_node(GraphNode::new(
-        name.to_string(),
-        Layer::Add(AddLayer),
-        vec![scale_name, relu_scaled_name],
-    ));
+    match slope? {
+        NodeValue::Constant(alpha) => {
+            let alpha = alpha.get();
+            // Decompose LeakyReLU(x, alpha) = alpha*x + (1-alpha)*ReLU(x).
+            //
+            // The historical reason — "NY's LeakyReLULayer returns IBP-wide
+            // bounds (#2977)" — is STALE: `leaky_relu_linear_relaxation` is a
+            // full chord/tangent relaxation upstream today. The decomposition
+            // is kept on MEASURED evidence instead: `Layer::ReLU` is dispatched
+            // into NY's per-site ReLU CROWN path and is the only activation
+            // α-CROWN optimizes, so the ReLU form's CROWN comes out 1.3-1.7x
+            // tighter than a fused `Layer::LeakyReLU` on a shared fixture. The
+            // measurement (and the trigger to delete this decomposition once it
+            // stops winning) lives in `graph_tensor_leaky_relu.rs`:
+            // `tests::decomposition_crown_is_tighter_than_native_leaky_relu`.
+            let scale_name = format!("{name}_alpha_x");
+            add_unary_node(
+                &scale_name,
+                Layer::MulConstant(MulConstantLayer::scalar(alpha)),
+                &input_name,
+                graph,
+            );
+            let relu_name = format!("{name}_relu");
+            add_unary_node(
+                &relu_name,
+                Layer::ReLU(ReLULayer::new()),
+                &input_name,
+                graph,
+            );
+            let relu_scaled_name = format!("{name}_relu_scaled");
+            add_unary_node(
+                &relu_scaled_name,
+                Layer::MulConstant(MulConstantLayer::scalar(1.0 - alpha)),
+                &relu_name,
+                graph,
+            );
+            graph.add_node(GraphNode::new(
+                name.to_string(),
+                Layer::Add(AddLayer),
+                vec![scale_name, relu_scaled_name],
+            ));
+        }
+        NodeValue::Variable(slope_name) => {
+            // Variable slope: decompose LeakyReLU(x, s) = ReLU(x) - s*ReLU(-x).
+            // Exact identity: x >= 0 → ReLU(x)=x, ReLU(-x)=0 → x;
+            //                 x <  0 → ReLU(x)=0, ReLU(-x)=-x → s*x.
+            // (At x == 0 both select branches agree — s*0 == 0 — so the Gt/Ge
+            // boundary distinction is immaterial, same as the constant path.)
+            //
+            // Previously this shape fell back to a WhereLayer, whose bound
+            // propagation takes the branch UNION when the condition is not a
+            // translation-time constant. NY's DAG alpha-CROWN currently returns
+            // that union even for point inputs (it no longer proves the
+            // condition sign from intermediate bounds on this path), which
+            // broke fused-vs-sequential equivalence proofs with a
+            // (1-slope)*|y| gap. The ReLU/MulBinary decomposition needs no
+            // condition reasoning at all and stays exact under CROWN. (#2977)
+            //
+            // RE-VERIFIED against current NY: `Layer::Where` is still an
+            // explicit `BackwardDispatchResult::Unsupported` arm in
+            // `network::backward_dispatch::dispatch` (no CROWN backward), and
+            // `WhereLayer::propagate_ibp` still returns the per-element union
+            // of the two branches for a data-dependent condition. This premise
+            // has NOT gone stale — unlike the `#2977` LeakyReLU one above.
+            let neg_name = format!("{name}_neg_x");
+            add_unary_node(
+                &neg_name,
+                Layer::MulConstant(MulConstantLayer::scalar(-1.0)),
+                &input_name,
+                graph,
+            );
+            let relu_neg_name = format!("{name}_relu_neg");
+            add_unary_node(
+                &relu_neg_name,
+                Layer::ReLU(ReLULayer::new()),
+                &neg_name,
+                graph,
+            );
+            let slope_part_name = format!("{name}_slope_neg");
+            graph.add_node(GraphNode::binary(
+                slope_part_name.clone(),
+                Layer::MulBinary(MulBinaryLayer),
+                slope_name,
+                relu_neg_name,
+            ));
+            let relu_name = format!("{name}_relu");
+            add_unary_node(
+                &relu_name,
+                Layer::ReLU(ReLULayer::new()),
+                &input_name,
+                graph,
+            );
+            graph.add_node(GraphNode::binary(
+                name.to_string(),
+                Layer::Sub(SubLayer),
+                relu_name,
+                slope_part_name,
+            ));
+        }
+    }
     Some(Ok(NodeValue::Variable(name.to_string())))
 }
 

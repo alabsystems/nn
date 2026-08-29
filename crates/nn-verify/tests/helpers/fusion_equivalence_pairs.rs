@@ -284,9 +284,10 @@ fn test_adain_leaky_relu_fusion_point_inputs() {
     ];
 
     // Note: epsilon is 2e-6 (not 1e-10) because CROWN's linear relaxation of
-    // rsqrt() and the branch/select for LeakyReLU introduce ~1.2 ULP difference
-    // even at point inputs when the fused and sequential paths evaluate through
-    // different IR node paths.
+    // rsqrt() and the LeakyReLU lowering (ReLU(x) - slope*ReLU(-x), see
+    // graph_ops/select.rs) introduce ~1 ULP difference even at point inputs
+    // when the fused and sequential paths evaluate through different IR node
+    // paths.
     let result = verify_adain_leaky_relu_fusion(&point_bounds, 2e-6)
         .expect("point input verification should succeed");
 

@@ -9,6 +9,7 @@
 //! to ensure equivalent coverage on the new path.
 
 use super::common::assert_bounds_valid;
+use ndarray::{ArrayD, IxDyn};
 use nn_core::dyn_tensor::trace::{record_input, trace_graph};
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::layers::{
@@ -17,10 +18,68 @@ use nn_core::layers::{
 };
 use nn_core::{DType, Device};
 use nn_verify::{propagate_with_crown_fallback, trace_to_graph_model, BoundedTensor, PropMethod};
-use ndarray::{ArrayD, IxDyn};
 
 fn cpu() -> Device {
     Device::Cpu
+}
+
+/// Count nodes carrying a given NY layer type.
+fn count_layer_type(graph: &nn_verify::GraphNetwork, layer_type: &str) -> usize {
+    graph
+        .node_names()
+        .iter()
+        .filter(|name| {
+            graph
+                .node(name)
+                .is_some_and(|n| n.layer().layer_type() == layer_type)
+        })
+        .count()
+}
+
+/// Interval image of `w * [lo, hi]` in f64 (sign-aware endpoint swap).
+fn scale_interval(w: f64, lo: f64, hi: f64) -> (f64, f64) {
+    if w >= 0.0 {
+        (w * lo, w * hi)
+    } else {
+        (w * hi, w * lo)
+    }
+}
+
+/// Assert `[ibp_lo, ibp_hi]` encloses the independently computed `[lo, hi]`
+/// (soundness) without being materially wider than it (tightness), and that it
+/// also contains `truth` — the value nn's own eager kernel produced.
+fn assert_encloses(
+    label: &str,
+    index: usize,
+    ibp_lo: f32,
+    ibp_hi: f32,
+    lo: f64,
+    hi: f64,
+    truth: f32,
+) {
+    const EPS: f64 = 1e-5;
+    assert!(
+        ibp_lo.is_finite() && ibp_hi.is_finite(),
+        "{label}[{index}] bounds must be finite, got [{ibp_lo}, {ibp_hi}]"
+    );
+    assert!(
+        ibp_lo <= ibp_hi,
+        "{label}[{index}] lower {ibp_lo} must be <= upper {ibp_hi}"
+    );
+    assert!(
+        f64::from(ibp_lo) <= lo + EPS && f64::from(ibp_hi) >= hi - EPS,
+        "{label}[{index}] bounds [{ibp_lo}, {ibp_hi}] must ENCLOSE the reachable range \
+         [{lo}, {hi}]"
+    );
+    assert!(
+        f64::from(ibp_lo) >= lo - EPS && f64::from(ibp_hi) <= hi + EPS,
+        "{label}[{index}] bounds [{ibp_lo}, {ibp_hi}] are looser than the exact reachable \
+         range [{lo}, {hi}]"
+    );
+    assert!(
+        ibp_lo <= truth && truth <= ibp_hi,
+        "{label}[{index}] bounds [{ibp_lo}, {ibp_hi}] must contain the eager value {truth}"
+    );
 }
 
 // -- Embedding trace → graph translation with IBP bounds -----------------------
@@ -81,6 +140,11 @@ fn test_model_trace_embedding_ibp() {
 
 // -- Embedding non-finite weight rejection ------------------------------------
 
+/// A NaN embedding weight is refused by the bridge's `weight_f32` validation
+/// with `NyError::NumericalInstability` naming the offending weight and index.
+/// (Pinned after the ny 25dee0c5e hardening: the Embedding lowering itself now
+/// succeeds via the integer-index carve-out + vocabulary-hull surrogate, so
+/// this weight validation is the guard that must keep firing.)
 #[test]
 fn test_model_trace_embedding_non_finite_weight_rejected() {
     let weight_data = vec![
@@ -108,11 +172,15 @@ fn test_model_trace_embedding_non_finite_weight_rejected() {
     .unwrap();
 
     let err = trace_to_graph_model(&graph).unwrap_err();
-    let err_str = err.to_string();
-    assert!(
-        err_str.contains("non-finite") || err_str.contains("NaN"),
-        "Expected non-finite weight rejection, got: {err_str}"
-    );
+    match err {
+        nn_verify::VerifyError::Ny(ny_api::NyError::NumericalInstability(msg)) => {
+            assert!(
+                msg.contains("Embedding weight") && msg.contains("non-finite"),
+                "refusal must name the embedding weight and the non-finite value, got: {msg}"
+            );
+        }
+        other => panic!("expected VerifyError::Ny(NumericalInstability), got: {other:?}"),
+    }
 }
 
 // -- ConvTranspose2d IBP propagation ------------------------------------------
@@ -212,9 +280,18 @@ fn test_model_trace_conv_transpose2d_crown_succeeds() {
 
 // -- ConvTranspose2d unsupported parameters -----------------------------------
 
-/// Grouped ConvTranspose2d is supported: NY builder handles groups natively.
+/// Grouped ConvTranspose2d is the ONE ConvTranspose2d attribute still refused
+/// fail-closed. `dilation` and `output_padding` were stale gates and now
+/// translate (see the two acceptance tests below, ny 3f91a42f2); grouping is a
+/// real gap: ny's `ConvTranspose2dLayer` models only the dense groups=1 kernel
+/// layout, so lowering a grouped `[C_in, C_out/groups, kH, kW]` kernel onto it
+/// would reinterpret it as dense and produce non-enclosing bounds.
+///
+/// The refusal surfaces as `VerifyError::Ny(UnsupportedOp)` — the variant
+/// changed with the accurate-reason rewrite — and its message states that
+/// kernel-layout reason rather than a generic "unsupported configuration".
 #[test]
-fn test_model_trace_conv_transpose2d_groups_succeeds() {
+fn test_model_trace_conv_transpose2d_groups_refused_fail_closed() {
     let weight_data: Vec<f32> = (0..8).map(|i| i as f32 * 0.1).collect();
     let weight = DynTensor::new(&weight_data, &[2, 1, 2, 2], &cpu()).unwrap();
     let config = ConvTranspose2dConfig::default().with_groups(2);
@@ -232,24 +309,47 @@ fn test_model_trace_conv_transpose2d_groups_succeeds() {
     })
     .unwrap();
 
-    let network = trace_to_graph_model(&graph)
-        .expect("grouped ConvTranspose2d should build")
-        .graph;
-    assert!(
-        network.num_nodes() > 0,
-        "graph should contain at least one node"
-    );
+    let err = trace_to_graph_model(&graph)
+        .expect_err("grouped ConvTranspose2d must be refused fail-closed");
+    match err {
+        nn_verify::VerifyError::Ny(ny_api::NyError::UnsupportedOp(msg)) => {
+            assert!(
+                msg.contains("ConvTranspose2d groups=2 not supported")
+                    && msg.contains("dense groups=1 kernel layout")
+                    && msg.contains("not enclosing"),
+                "refusal must name the group count and the dense-kernel-layout reason, got: {msg}"
+            );
+        }
+        other => panic!("expected VerifyError::Ny(UnsupportedOp), got: {other:?}"),
+    }
 }
 
+/// ConvTranspose2d `dilation` TRANSLATES (ny 3f91a42f2 removed a stale gate;
+/// the layer and its converter supported dilation end to end all along).
+///
+/// The lowering is one native `ConvTranspose2d` layer carrying `dilation`, not
+/// a decomposition — so the test pins the layer type, the dilated output
+/// geometry, and IBP bounds against an f64 reference computed here.
+///
+/// With `stride=1, padding=0, dilation=2` and a 2x2 kernel over a 2x2 input,
+/// `oh = ih + 2*kh` is a BIJECTION onto `0..4`, so every output element is a
+/// single product `x[oh%2][ow%2] * k[oh/2][ow/2]` — an exact expected interval
+/// with no accumulation, which makes a tightness assertion meaningful too.
 #[test]
-fn test_model_trace_conv_transpose2d_dilation_rejected() {
+fn test_model_trace_conv_transpose2d_dilation_ibp() {
+    // kernel[kh][kw], matching the [1, 1, 2, 2] weight below.
+    const K: [[f64; 2]; 2] = [[1.0, 0.5], [-0.5, 0.3]];
+    // x[ih][iw], the eager input the trace is recorded on.
+    const X: [[f64; 2]; 2] = [[1.0, 2.0], [3.0, 4.0]];
+    const RADIUS: f64 = 0.25;
+
     let weight = DynTensor::new(&[1.0, 0.5, -0.5, 0.3], &[1, 1, 2, 2], &cpu()).unwrap();
     let config = ConvTranspose2dConfig::default().with_dilation(2);
     let conv_t = ConvTranspose2d::new(weight, None, config).unwrap();
 
     let x = DynTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 2, 2], &cpu()).unwrap();
 
-    let (_result, graph) = trace_graph(|| {
+    let (result, graph) = trace_graph(|| {
         let mut x = x.clone();
         let id = record_input(&[1, 1, 2, 2], DType::F32).unwrap();
         x.set_trace_id(id);
@@ -258,16 +358,66 @@ fn test_model_trace_conv_transpose2d_dilation_rejected() {
     })
     .unwrap();
 
-    let err = trace_to_graph_model(&graph).unwrap_err();
-    let err_str = err.to_string();
-    assert!(
-        err_str.contains("dilation") || err_str.contains("not supported"),
-        "Expected dilation rejection, got: {err_str}"
+    // Dilated geometry: (2-1)*1 - 0 + 2*(2-1) + 1 = 4.
+    assert_eq!(result.dims(), &[1, 1, 4, 4]);
+    let eager = result.to_flat_vec::<f32>().unwrap();
+
+    let gn = trace_to_graph_model(&graph)
+        .expect("dilated ConvTranspose2d must translate")
+        .graph;
+    assert_eq!(
+        count_layer_type(&gn, "ConvTranspose2d"),
+        1,
+        "dilation must ride ONE native ConvTranspose2d layer, not a decomposition"
     );
+
+    // Input box centred on the traced point, so the eager output is reachable.
+    let lower = ArrayD::from_shape_fn(IxDyn(&[1, 1, 2, 2]), |ix| (X[ix[2]][ix[3]] - RADIUS) as f32);
+    let upper = ArrayD::from_shape_fn(IxDyn(&[1, 1, 2, 2]), |ix| (X[ix[2]][ix[3]] + RADIUS) as f32);
+    let input_bounds = BoundedTensor::new(lower, upper).expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
+    assert_bounds_valid(&output);
+
+    let (lo, hi) = output.lower_upper();
+    let ibp_lo: Vec<f32> = lo.iter().copied().collect();
+    let ibp_hi: Vec<f32> = hi.iter().copied().collect();
+    assert_eq!(ibp_lo.len(), 16, "expected a 4x4 dilated output");
+
+    for oh in 0..4 {
+        for ow in 0..4 {
+            let (ih, kh) = (oh % 2, oh / 2);
+            let (iw, kw) = (ow % 2, ow / 2);
+            let w = K[kh][kw];
+            let (want_lo, want_hi) = scale_interval(w, X[ih][iw] - RADIUS, X[ih][iw] + RADIUS);
+            let flat = oh * 4 + ow;
+            assert_encloses(
+                "conv_transpose2d dilation",
+                flat,
+                ibp_lo[flat],
+                ibp_hi[flat],
+                want_lo,
+                want_hi,
+                eager[flat],
+            );
+        }
+    }
 }
 
+/// ConvTranspose2d `output_padding` TRANSLATES (ny 3f91a42f2). Only
+/// `output_padding >= stride` — which is not a representable geometry — stays
+/// refused; `stride=2, output_padding=1` is emitted as a layer attribute.
+///
+/// `oh = 2*ih + kh` covers `0..4` exactly once, so the interior is again a
+/// single product per element, and the trailing output_padding row/column has
+/// NO contributor at all — its bounds must be exactly `[0, 0]`, which is the
+/// assertion that catches an output_padding silently dropped or misplaced.
 #[test]
-fn test_model_trace_conv_transpose2d_output_padding_rejected() {
+fn test_model_trace_conv_transpose2d_output_padding_ibp() {
+    const K: [[f64; 2]; 2] = [[1.0, 0.5], [-0.5, 0.3]];
+    const X: [[f64; 2]; 2] = [[1.0, 2.0], [3.0, 4.0]];
+    const RADIUS: f64 = 0.25;
+
     let weight = DynTensor::new(&[1.0, 0.5, -0.5, 0.3], &[1, 1, 2, 2], &cpu()).unwrap();
     let config = ConvTranspose2dConfig::default()
         .with_stride(2)
@@ -276,7 +426,7 @@ fn test_model_trace_conv_transpose2d_output_padding_rejected() {
 
     let x = DynTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 2, 2], &cpu()).unwrap();
 
-    let (_result, graph) = trace_graph(|| {
+    let (result, graph) = trace_graph(|| {
         let mut x = x.clone();
         let id = record_input(&[1, 1, 2, 2], DType::F32).unwrap();
         x.set_trace_id(id);
@@ -285,12 +435,53 @@ fn test_model_trace_conv_transpose2d_output_padding_rejected() {
     })
     .unwrap();
 
-    let err = trace_to_graph_model(&graph).unwrap_err();
-    let err_str = err.to_string();
-    assert!(
-        err_str.contains("output_padding") || err_str.contains("not supported"),
-        "Expected output_padding rejection, got: {err_str}"
+    // (2-1)*2 - 0 + 1*(2-1) + 1 + output_padding(1) = 5.
+    assert_eq!(result.dims(), &[1, 1, 5, 5]);
+    let eager = result.to_flat_vec::<f32>().unwrap();
+
+    let gn = trace_to_graph_model(&graph)
+        .expect("ConvTranspose2d with output_padding must translate")
+        .graph;
+    assert_eq!(
+        count_layer_type(&gn, "ConvTranspose2d"),
+        1,
+        "output_padding must ride ONE native ConvTranspose2d layer"
     );
+
+    let lower = ArrayD::from_shape_fn(IxDyn(&[1, 1, 2, 2]), |ix| (X[ix[2]][ix[3]] - RADIUS) as f32);
+    let upper = ArrayD::from_shape_fn(IxDyn(&[1, 1, 2, 2]), |ix| (X[ix[2]][ix[3]] + RADIUS) as f32);
+    let input_bounds = BoundedTensor::new(lower, upper).expect("valid bounds");
+
+    let output = gn.propagate_ibp(&input_bounds).expect("IBP propagation");
+    assert_bounds_valid(&output);
+
+    let (lo, hi) = output.lower_upper();
+    let ibp_lo: Vec<f32> = lo.iter().copied().collect();
+    let ibp_hi: Vec<f32> = hi.iter().copied().collect();
+    assert_eq!(ibp_lo.len(), 25, "expected a 5x5 output_padded output");
+
+    for oh in 0..5 {
+        for ow in 0..5 {
+            let flat = oh * 5 + ow;
+            // The output_padding row/column has no (ih, kh) contributor: the
+            // true value there is exactly 0.
+            let (want_lo, want_hi) = if oh == 4 || ow == 4 {
+                (0.0, 0.0)
+            } else {
+                let w = K[oh % 2][ow % 2];
+                scale_interval(w, X[oh / 2][ow / 2] - RADIUS, X[oh / 2][ow / 2] + RADIUS)
+            };
+            assert_encloses(
+                "conv_transpose2d output_padding",
+                flat,
+                ibp_lo[flat],
+                ibp_hi[flat],
+                want_lo,
+                want_hi,
+                eager[flat],
+            );
+        }
+    }
 }
 
 // -- ConvTranspose1d with output_padding decomposition (#2558) ----------------

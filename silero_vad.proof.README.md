@@ -57,7 +57,7 @@ The bundle's top-level `"provenance"` field carries the same warning
 machine-readably:
 
 ```json
-"provenance": "synthetic-weights schema evidence — not deployment evidence"
+"provenance": "synthetic-weights schema evidence — not deployment evidence (see silero_vad.proof.README.md)"
 ```
 
 A future deployment-grade bundle must bind real weights (weight hash),

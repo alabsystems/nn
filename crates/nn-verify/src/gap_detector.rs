@@ -119,6 +119,20 @@ pub struct StageGapResult {
     /// indicating that a machine-checkable proof artifact (IBP recomputation data
     /// or Lean4 export) was generated during verification.
     pub has_constructive_certificate: bool,
+    /// Whether the status file contains ANY entry for this stage (primary or
+    /// `_crown`).
+    ///
+    /// Distinguishes "this environment never ran the suite that records this
+    /// stage" (e.g. the production-weights compose suite, which needs
+    /// `KOKORO_WEIGHTS`) from "the stage was recorded but its bounds are
+    /// missing" — the latter is the regression signature gates must fail on,
+    /// the former is the per-stage analogue of the whole-file-absent skip.
+    pub has_status_entry: bool,
+    /// Whether the status file contains the stage's `_crown` entry
+    /// specifically (recorded by the CROWN suites). Lets gates distinguish
+    /// "CROWN was never recorded for this stage" from "the recorded CROWN
+    /// entry is invalid" (`has_crown_bounds` false in both cases).
+    pub has_crown_entry: bool,
 }
 
 impl StageGapResult {
@@ -312,6 +326,8 @@ pub fn detect_gaps(status: &serde_json::Value) -> GapReport {
             proof_strength,
             soundness_mode,
             has_constructive_certificate,
+            has_status_entry: primary_entry.is_some() || crown_entry.is_some(),
+            has_crown_entry: crown_entry.is_some(),
         });
     }
 

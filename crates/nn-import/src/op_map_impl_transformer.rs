@@ -806,11 +806,16 @@ pub(super) fn map_upsample_bicubic2d(node: &Node) -> Result<(TraceOp, Vec<String
     let input = first_tensor_name(node)?;
     let scale_h = optional_float(node, "scales_h").unwrap_or(2.0);
     let scale_w = optional_float(node, "scales_w").unwrap_or(2.0);
+    // Bicubic interpolates, so `align_corners` selects the coordinate
+    // mapping — import the value the model was exported with. Absent means
+    // PyTorch's `align_corners=None`, which aten treats as false.
+    let align_corners = optional_bool(node, "align_corners", false);
     Ok((
         TraceOp::Upsample2d {
             mode: TraceUpsampleMode::Bicubic,
             scale_h,
             scale_w,
+            align_corners,
         },
         vec![input],
     ))

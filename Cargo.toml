@@ -28,7 +28,7 @@ members = [
 # nn-ane, nn-swift
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Andrew Yates <andrewyates.name@gmail.com>"]
 license = "Apache-2.0"
@@ -152,6 +152,10 @@ half = { version = "2.7", features = ["num-traits", "bytemuck"] }
 
 # BLAS — Apple Accelerate on macOS for hardware-accelerated matmul.
 # ndarray's `blas` feature makes dot() use cblas_sgemm via Accelerate.
+# These entries are inert until a member inherits them, and the one member
+# that does (nn-core) inherits them under [target.'cfg(target_os = "macos")']:
+# accelerate-src cannot build anywhere else, and off macOS ndarray's blas
+# feature is never activated, so dot() runs the pure-Rust matrixmultiply path.
 blas-src = { version = "0.14", features = ["accelerate"] }
 accelerate-src = "0.3"
 
@@ -217,16 +221,16 @@ hound = "3.5"
 # Verification (ny — neural-network verifier, local sibling path dep at ../ny).
 # Successor to the deprecated gamma-crown; ny-{api,build,core,propagate} are the
 # direct analogs of the former gamma-{api,build,core,propagate} crates.
-ny-api = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
-ny-build = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
-ny-core = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
-ny-propagate = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
-ny-trace-bridge = { git = "https://github.com/alabsystems/ny", tag = "v0.1.0" }
+ny-api = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
+ny-build = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
+ny-core = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
+ny-propagate = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
+ny-trace-bridge = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
 
 # Verification (ay SMT solver — local sibling path dep at ../ay).
 # `direct` feature enables in-process solving for non-UF programs;
 # UF programs (transcendental kernels using sin_approx, etc.) return Unexecuted.
-ay-bindings = { git = "https://github.com/alabsystems/ay", tag = "v0.3.0", features = ["direct"] }
+ay-bindings = { git = "https://github.com/alabsystems/ay", tag = "v0.18.0", features = ["direct"] }
 
 # Internal crates
 nn-core = { path = "crates/nn-core" }
@@ -258,14 +262,14 @@ codegen-units = 1
 
 # Local sibling overrides: redirect GitHub URLs to ../ny and ../ay.
 [workspace.metadata.atpkg]
-# The user-facing command for `nn` is the single `nn` bin (crate nn-cli):
-# convert / compile / run / optimize over torch.export artifacts. Every other
-# workspace bin is internal tooling — nn-optimize (tiers 2-3 bail as "not yet
-# implemented"; tier 2's real implementation IS `nn optimize`), nn_report /
-# rss_measure / kokoro_synth (nn-metal dev, perf and demo harnesses; the last
-# two need an unshipped $KOKORO_WEIGHTS), and nn_verify_cert / tighten
-# (nn-verify proof tooling, which drags the ../ny and ../ay sibling path deps
-# into the build).
+# The user-facing command for `nn` is the single `nn` bin (crate nn-cli): the
+# zero-input `nn device` report (added 4f6e50b), plus convert / compile / run /
+# optimize over torch.export artifacts. Every other workspace bin is internal
+# tooling — nn-optimize (tiers 2-3 bail as "not yet implemented"; tier 2's real
+# implementation IS `nn optimize`), nn_report / rss_measure / kokoro_synth
+# (nn-metal dev, perf and demo harnesses; the last two need an unshipped
+# $KOKORO_WEIGHTS), and nn_verify_cert / tighten (nn-verify proof tooling, which
+# drags the ../ny and ../ay sibling path deps into the build).
 #
 # This block is not optional decoration: without it aterm's atpkg-pack.sh falls
 # back to a LOUD name-token heuristic and ships that junk set onto the user's

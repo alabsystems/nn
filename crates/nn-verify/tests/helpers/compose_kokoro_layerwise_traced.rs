@@ -392,6 +392,12 @@ fn test_trace_layerwise_d256_all_properties() {
 
 /// Persist D=64/D=128/D=256 CROWN results, overwriting stale builder entries.
 #[test]
+#[ignore = "CROWN perf frontier under ny's joint-bilinear-relaxation era (ny b284de596): \
+            the layerwise persist CROWN ran 5h+ without terminating on 2026-08-26 and was \
+            killed. Its former corpus failure was a translation refusal (sinegen dtype-gate \
+            class), FIXED in ny 49f4373c5 — translation is pinned by the 17/17 sinegen \
+            family; only the full-model persist-CROWN e2e is retired on cost. Re-enable \
+            when ny's attention CROWN cost returns to interactive scale."]
 fn test_trace_layerwise_persist_crown_status() {
     let status_path = status_file_path();
     let mut locked = VerifyStatus::load_locked(&status_path).expect("load_locked");

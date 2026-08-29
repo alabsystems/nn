@@ -36,6 +36,9 @@ pub(super) fn map_upsample_nearest2d(node: &Node) -> Result<(TraceOp, Vec<String
             mode: TraceUpsampleMode::Nearest,
             scale_h,
             scale_w,
+            // Nearest's mapping does not depend on corner alignment;
+            // recorded as `false` by convention (matches the trace side).
+            align_corners: false,
         },
         vec![input],
     ))
@@ -49,11 +52,16 @@ pub(super) fn map_upsample_bilinear2d(node: &Node) -> Result<(TraceOp, Vec<Strin
     let input = first_tensor_name(node)?;
     let scale_h = optional_float(node, "scales_h").unwrap_or(2.0);
     let scale_w = optional_float(node, "scales_w").unwrap_or(2.0);
+    // `align_corners` is a real argument of the source model and selects the
+    // coordinate mapping — import the value the model was exported with.
+    // Absent means PyTorch's `align_corners=None`, which aten treats as false.
+    let align_corners = optional_bool(node, "align_corners", false);
     Ok((
         TraceOp::Upsample2d {
             mode: TraceUpsampleMode::Bilinear,
             scale_h,
             scale_w,
+            align_corners,
         },
         vec![input],
     ))
@@ -235,11 +243,16 @@ pub(super) fn map_interpolate(node: &Node) -> Result<(TraceOp, Vec<String>), Imp
             });
         }
     };
+    // Import the model's own corner-alignment convention. Absent means
+    // PyTorch's `align_corners=None`, which aten treats as false (and the
+    // arg is meaningless for `nearest`, where false is the convention).
+    let align_corners = optional_bool(node, "align_corners", false);
     Ok((
         TraceOp::Upsample2d {
             mode: upsample_mode,
             scale_h,
             scale_w,
+            align_corners,
         },
         vec![input],
     ))
@@ -318,7 +331,20 @@ pub(super) fn map_topk(node: &Node) -> Result<(TraceOp, Vec<String>), ImportErro
     let input = first_tensor_name(node)?;
     let k = safe_usize(require_int(node, "k")?, "k", &node.target)?;
     let dim = safe_usize(optional_int(node, "dim").unwrap_or(0), "dim", &node.target)?;
-    Ok((TraceOp::Topk { k, dim }, vec![input]))
+    // Import the selection the model actually performs; aten defaults are
+    // largest=True, sorted=True (`largest`/`sorted` pick one of four
+    // different functions, not a presentation detail).
+    let largest = optional_bool(node, "largest", true);
+    let sorted = optional_bool(node, "sorted", true);
+    Ok((
+        TraceOp::Topk {
+            k,
+            dim,
+            largest,
+            sorted,
+        },
+        vec![input],
+    ))
 }
 
 // -- Sort --

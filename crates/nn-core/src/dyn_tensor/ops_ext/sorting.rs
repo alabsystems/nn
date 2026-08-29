@@ -36,7 +36,14 @@ impl DynTensor {
         if trace::is_tracing() {
             let input_ids = Self::trace_input_ids(&[self])?;
             if let Some(id) = trace::record_op(
-                TraceOp::Topk { k, dim },
+                // This entry point always computes the k LARGEST values,
+                // sorted descending (see the method doc above).
+                TraceOp::Topk {
+                    k,
+                    dim,
+                    largest: true,
+                    sorted: true,
+                },
                 &input_ids,
                 values.dims(),
                 values.dtype(),

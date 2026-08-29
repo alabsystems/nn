@@ -36,6 +36,40 @@
 //!   writes NOTHING and reports `false`: no certificate is ever claimed or
 //!   persisted for an ineligible or uncertified network.
 //!
+//! # Stricter certificate semantics (upstream ny-cert hardening, 2026-07/08)
+//!
+//! The certificate engine behind `ny_api::cert` was hardened after this adapter
+//! first landed. The changes visible through the facade — and therefore through
+//! this module — are:
+//!
+//! - **Proof minimization.** Certificates are pruned of dead rows (premise /
+//!   constraint rows whose Farkas multiplier is exactly zero) before emission,
+//!   roughly halving certificate size. The pruning is fail-closed: the
+//!   minimized certificate is kept only when the in-tree self-checkers accept
+//!   it with bounds identical to the full one; otherwise the full certificate
+//!   is emitted unchanged. Consumers must not assume a fixed row count per
+//!   conjunct — only that every emitted row is live.
+//! - **Fail-closed margin discipline.** Certification near a margin boundary
+//!   declines more often than it used to, and that is sound by design. A
+//!   strict conjunct (`ArgmaxMargin` requires `margin > 0`) is discharged only
+//!   by an exactly-positive rational lower bound, so a tie (`L == 0`) — or any
+//!   conjunct exact CROWN cannot close — refuses the WHOLE certificate rather
+//!   than overclaim. Likewise every exact-rational read is checked: a value
+//!   that cannot be serialized refuses the certificate instead of emitting a
+//!   corrupt one, and certificate content is ambient-free (no
+//!   environment-variable sensitivity). In all of these cases the verifier's
+//!   verdict is NEVER altered — only the additive proof artifact is withheld —
+//!   so treat `certificate_json == None` as "no machine-checkable proof", not
+//!   as a verification failure.
+//!
+//! ny-cert additionally gained full Alethe proof emission (checkable by the
+//! external `carcara` checker, with reserved-symbol rejection), a deployed-f32
+//! rounding-margin fold for dominance thresholds (`ny_cert::fp_margin`,
+//! consumed by ny-groundtruth), and conditioned-proof quarantine in the CLI's
+//! beta-CROWN certificate mode. None of those are re-exported by
+//! `ny_api::cert`, so this adapter — which stays behind the facade by design —
+//! does not wrap them.
+//!
 //! # Quick start
 //!
 //! ```rust,no_run
@@ -124,7 +158,7 @@ pub fn certify_to_file(
 mod tests {
     use super::*;
     use ndarray::{Array1, Array2};
-    use ny_core::{Bound, ProofFormat, VerificationResult};
+    use ny_core::{Bound, OutputConstraint, ProofFormat, VerificationResult};
     use ny_propagate::layers::{LinearLayer, ReLULayer, SiLULayer};
     use ny_propagate::{GraphNode, Layer};
 
@@ -138,7 +172,10 @@ mod tests {
         let mut g = GraphNetwork::new();
         g.add_node(GraphNode::from_input(
             "lin1",
-            linear(Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(), vec![0.0]),
+            linear(
+                Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                vec![0.0],
+            ),
         ));
         g.add_node(GraphNode::new(
             "relu",
@@ -147,7 +184,68 @@ mod tests {
         ));
         g.add_node(GraphNode::new(
             "lin2",
-            linear(Array2::from_shape_vec((1, 1), vec![2.0]).unwrap(), vec![0.5]),
+            linear(
+                Array2::from_shape_vec((1, 1), vec![2.0]).unwrap(),
+                vec![0.5],
+            ),
+            vec!["relu".to_string()],
+        ));
+        g.set_output("lin2");
+        g
+    }
+
+    /// 1->1->2 classifier where class 0 STRICTLY dominates: y0 = 2*relu(x0),
+    /// y1 = relu(x0). Over x0 in [1, 2] the argmax margin y0 - y1 = relu(x0)
+    /// is in [1, 2] — exact lower bound 1 > 0, so strict argmax holds.
+    fn strict_classifier_1to2() -> GraphNetwork {
+        let mut g = GraphNetwork::new();
+        g.add_node(GraphNode::from_input(
+            "lin1",
+            linear(
+                Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                vec![0.0],
+            ),
+        ));
+        g.add_node(GraphNode::new(
+            "relu",
+            Layer::ReLU(ReLULayer::new()),
+            vec!["lin1".to_string()],
+        ));
+        g.add_node(GraphNode::new(
+            "lin2",
+            linear(
+                Array2::from_shape_vec((2, 1), vec![2.0, 1.0]).unwrap(),
+                vec![0.0, 0.0],
+            ),
+            vec!["relu".to_string()],
+        ));
+        g.set_output("lin2");
+        g
+    }
+
+    /// 1->1->2 classifier whose class outputs are IDENTICAL: y0 = y1 = relu(x0).
+    /// The argmax margin is exactly 0 everywhere — a tie, the canonical
+    /// near-margin case that must DECLINE certification (fail-closed).
+    fn tie_classifier_1to2() -> GraphNetwork {
+        let mut g = GraphNetwork::new();
+        g.add_node(GraphNode::from_input(
+            "lin1",
+            linear(
+                Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                vec![0.0],
+            ),
+        ));
+        g.add_node(GraphNode::new(
+            "relu",
+            Layer::ReLU(ReLULayer::new()),
+            vec!["lin1".to_string()],
+        ));
+        g.add_node(GraphNode::new(
+            "lin2",
+            linear(
+                Array2::from_shape_vec((2, 1), vec![1.0, 1.0]).unwrap(),
+                vec![0.0, 0.0],
+            ),
             vec!["relu".to_string()],
         ));
         g.set_output("lin2");
@@ -159,7 +257,10 @@ mod tests {
         let mut g = GraphNetwork::new();
         g.add_node(GraphNode::from_input(
             "lin1",
-            linear(Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(), vec![0.0]),
+            linear(
+                Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                vec![0.0],
+            ),
         ));
         g.add_node(GraphNode::new(
             "silu",
@@ -168,7 +269,10 @@ mod tests {
         ));
         g.add_node(GraphNode::new(
             "lin2",
-            linear(Array2::from_shape_vec((1, 1), vec![2.0]).unwrap(), vec![0.5]),
+            linear(
+                Array2::from_shape_vec((1, 1), vec![2.0]).unwrap(),
+                vec![0.5],
+            ),
             vec!["silu".to_string()],
         ));
         g.set_output("lin2");
@@ -260,6 +364,135 @@ mod tests {
         assert!(
             !bad_path.exists(),
             "no certificate file may be created for an ineligible net"
+        );
+    }
+
+    // --- Stricter certificate semantics (2026-07/08 ny-cert hardening) -------
+    //
+    // These pin the two hardening behaviours that reach NN through the facade:
+    // proof minimization (no dead rows in emitted certificates) and fail-closed
+    // margin discipline (near-margin ties decline the certificate, soundly).
+
+    /// Every emitted certificate row is LIVE: proof minimization prunes dead
+    /// (zero-multiplier) premise/constraint rows before emission, so the
+    /// certificate this adapter surfaces must carry no `"0"` multiplier.
+    #[test]
+    fn emitted_certificate_is_minimized_no_dead_rows() {
+        let net = eligible_fc_relu_net();
+        // Two conjuncts: 2 <= y <= 5, both holding with slack (y in [5/2, 9/2]).
+        let spec = VerificationSpec::new(vec![Bound::new(1.0, 2.0)], vec![Bound::new(2.0, 5.0)])
+            .expect("valid spec");
+
+        let out = certify_model(&net, &spec).expect("certify_model runs");
+        let json = out
+            .certificate_json
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected a certificate; note: {}", out.note));
+        let parsed: serde_json::Value = serde_json::from_str(json).expect("cert JSON parses");
+        let conjuncts = parsed["conjuncts"].as_array().expect("conjuncts array");
+        assert_eq!(conjuncts.len(), 2, "lower and upper conjuncts discharged");
+        for conjunct in conjuncts {
+            for key in ["entailment", "farkas"] {
+                let mults = conjunct[key]["multipliers"]
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{key} multipliers array present"));
+                assert!(!mults.is_empty(), "{key} must keep at least one live row");
+                for m in mults {
+                    let m = m.as_str().expect("multiplier is an exact-rational string");
+                    assert_ne!(
+                        m, "0",
+                        "dead (zero-multiplier) row survived minimization in {key}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// NEAR-MARGIN DECLINE, fail-closed: an exact argmax tie (margin == 0
+    /// everywhere) must yield `certificate_json == None` — `L == 0` does not
+    /// establish the strict `margin > 0` relation, so no certificate may be
+    /// emitted or persisted, whatever the runtime verdict.
+    #[test]
+    fn near_margin_tie_declines_certificate_fail_closed() {
+        let net = tie_classifier_1to2();
+        let spec = VerificationSpec::new(
+            vec![Bound::new(1.0, 2.0)],
+            vec![Bound::new_allow_infinite(f32::NEG_INFINITY, f32::INFINITY)],
+        )
+        .expect("valid spec")
+        .with_output_constraints(vec![OutputConstraint::ArgmaxMargin { class: 0 }])
+        .expect("valid constraints");
+
+        let out = certify_model(&net, &spec).expect("certify_model runs");
+        assert!(out.eligible, "FC-ReLU classifier is eligible: {}", out.note);
+        assert!(
+            out.certificate_json.is_none(),
+            "a tie (margin == 0) must decline the certificate (no overclaim); note: {}",
+            out.note
+        );
+        if let VerificationResult::Verified { proof, .. } = &out.result {
+            assert!(proof.is_none(), "no proof attached on a near-margin tie");
+        }
+
+        // The decline is surfaced identically by the persistence path.
+        let path = std::env::temp_dir().join(format!(
+            "nn_verify_ny_certify_tie_{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let wrote = certify_to_file(&net, &spec, &path).expect("certify_to_file runs");
+        assert!(!wrote, "declined certificate must not be persisted");
+        assert!(
+            !path.exists(),
+            "no certificate file may be created on a near-margin decline"
+        );
+    }
+
+    /// STRICT ATTESTATION: when strict argmax genuinely holds (margin lower
+    /// bound 1 > 0), the emitted certificate must attest the strict relation
+    /// (`strict == true`, `relation == "margin > 0"`) with a strictly positive
+    /// exact-rational lower bound — the semantics a Clean/kernel checker needs
+    /// to re-derive strictness from the `>= 0` inequality plus `L > 0`.
+    #[test]
+    fn strict_argmax_certificate_attests_strict_relation() {
+        let net = strict_classifier_1to2();
+        let spec = VerificationSpec::new(
+            vec![Bound::new(1.0, 2.0)],
+            vec![Bound::new_allow_infinite(f32::NEG_INFINITY, f32::INFINITY)],
+        )
+        .expect("valid spec")
+        .with_output_constraints(vec![OutputConstraint::ArgmaxMargin { class: 0 }])
+        .expect("valid constraints");
+
+        let out = certify_model(&net, &spec).expect("certify_model runs");
+        assert!(out.eligible, "FC-ReLU classifier is eligible: {}", out.note);
+        assert!(
+            out.result.is_verified(),
+            "class 0 strictly dominates: {:?}",
+            out.result
+        );
+        let json = out
+            .certificate_json
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected strict argmax cert; note: {}", out.note));
+        let parsed: serde_json::Value = serde_json::from_str(json).expect("cert JSON parses");
+        let conjuncts = parsed["conjuncts"].as_array().expect("conjuncts array");
+        assert_eq!(conjuncts.len(), 1, "single competitor margin (2-class)");
+        let conjunct = &conjuncts[0];
+        assert_eq!(conjunct["strict"], serde_json::Value::Bool(true));
+        assert_eq!(
+            conjunct["relation"],
+            serde_json::Value::String("margin > 0".into())
+        );
+        let lb = conjunct["exact_lower_bound"]
+            .as_str()
+            .expect("exact bound string");
+        let (n, d) = lb.split_once('/').expect("v1 exact bound uses n/d");
+        let num: i128 = n.parse().expect("numerator parses");
+        let den: i128 = d.parse().expect("denominator parses");
+        assert!(
+            num.signum() * den.signum() > 0,
+            "strict conjunct's exact lower bound must be > 0, got {lb}"
         );
     }
 }

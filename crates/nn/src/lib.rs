@@ -506,7 +506,8 @@ pub mod tts_verify {
 /// Formal verification — IBP/CROWN bound propagation, proof certificates,
 /// and verified model wrappers.
 ///
-/// Available when the `verify` feature is enabled. Provides:
+/// Available when the `verify` feature is enabled — which also turns on `metal`,
+/// since `verify = ["metal", "dep:nn-verify", "nn-metal/verify"]`. Provides:
 /// - `verify_trace` for quick IBP verification of traced graphs
 /// - `VerifiedModel<M>` wrapper pairing a model with its certificate
 /// - `ProofCertificate` / `CertificateBundle` for deployment auditing

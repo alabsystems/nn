@@ -2,19 +2,33 @@
 // Author: Andrew Yates
 // SPDX-License-Identifier: Apache-2.0
 
-//! CastLayer compose tests: IBP/CROWN propagation through ToDtype operations.
+//! CastLayer compose tests: ToDtype translation policy through trace_to_graph.
 //!
-//! Tests that ToDtype operations (CastLayer for upcasts, Clamp for downcasts)
-//! translate correctly through the trace_to_graph pipeline AND produce sound
-//! IBP/CROWN bounds when propagated through the resulting GraphNetwork.
+//! Posture change (ny hardening 25dee0c5e): the bridge's former lossy-cast
+//! surrogates (Clamp for F16/BF16 downcasts, identity CastLayer for F64
+//! upcasts) were UNSOUND — the rounding semantics of the non-F32 endpoint are
+//! not modeled, so the emitted bounds could exclude the true cast output.
+//! Today exactly one ToDtype combination lowers: the F32 -> F32 identity
+//! (restored as an `Add(x, 0)` identity). Every other resolved combination is
+//! refused fail-closed by `translate_to_dtype`
+//! (`ToDtype {src} -> {tgt} is refused: rounding semantics ... not modeled`);
+//! a well-formed trace whose cast node records its non-F32 output dtype is
+//! refused even earlier by the graph-wide F32 gate ("the bridge only soundly
+//! supports F32 tensors" — asserted in `certify_tests_inline`).
 //!
-//! Part of #4316: CastLayer for ToDtype verification + f64 evaluation.
+//! The former F16/BF16/F64 clamp/roundtrip tightness measurements are
+//! meaningless under refusal; one representative refusal test per dtype
+//! remains so a future un-refusal is a conscious, test-visible event.
+//!
+//! Historical: #4316 (CastLayer for ToDtype verification + f64 evaluation).
 
 use super::common::{assert_bounds_valid, uniform_bounds};
 use nn_core::dyn_tensor::trace::{ComputationGraph, TraceNode, TraceOp};
 use nn_core::DType;
-use nn_verify::{propagate_with_crown_fallback, trace_to_graph_model, BoundedTensor, PropMethod};
-use ndarray::{ArrayD, IxDyn};
+use nn_verify::{
+    propagate_with_crown_fallback, trace_to_graph_model, PropMethod, VerifyError,
+};
+use ny_api::NyError;
 
 // ---------------------------------------------------------------------------
 // Graph construction helpers
@@ -95,61 +109,41 @@ fn graph_cast_then_relu(target_dtype: DType, shape: Vec<usize>) -> ComputationGr
     ])
 }
 
-/// Build: Input -> Relu -> ToDtype(F16) -> ToDtype(F32) -> Relu -> output.
-fn graph_relu_f16_roundtrip(shape: Vec<usize>) -> ComputationGraph {
-    ComputationGraph::from_nodes(vec![
-        TraceNode::new(
-            0,
-            "input_0".into(),
-            TraceOp::Input,
-            vec![],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            1,
-            "relu_0".into(),
-            TraceOp::Relu,
-            vec![0],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            2,
-            "cast_f16".into(),
-            TraceOp::ToDtype {
-                target_dtype: DType::F16,
-            },
-            vec![1],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            3,
-            "cast_f32".into(),
-            TraceOp::ToDtype {
-                target_dtype: DType::F32,
-            },
-            vec![2],
-            shape.clone(),
-            DType::F32,
-        ),
-        TraceNode::new(
-            4,
-            "relu_1".into(),
-            TraceOp::Relu,
-            vec![3],
-            shape,
-            DType::F32,
-        ),
-    ])
+/// Assert that translating `graph` refuses fail-closed with the bridge's
+/// resolved-source ToDtype refusal, naming both dtypes and the unmodeled
+/// endpoint (`expect_dtype`, e.g. "F16").
+///
+/// Fixtures here record the cast node's output dtype as F32 (they predate the
+/// hardening), so the graph-wide F32 gate passes and the refusal comes from
+/// `translate_to_dtype`'s deliberately independent resolved-combination check
+/// (ny 25dee0c5e: a later gate relaxation must not silently turn a lossy cast
+/// into an identity).
+fn assert_cast_refused(graph: &ComputationGraph, expect_dtype: &str) {
+    let err = trace_to_graph_model(graph)
+        .expect_err("non-F32 ToDtype must be refused fail-closed (ny 25dee0c5e)");
+    match err {
+        VerifyError::Ny(NyError::UnsupportedOp(msg)) => {
+            assert!(
+                msg.contains(&format!("ToDtype F32 -> {expect_dtype} is refused")),
+                "refusal must name the resolved source and target dtypes, got: {msg}"
+            );
+            assert!(
+                msg.contains(&format!(
+                    "rounding semantics of the {expect_dtype} target are not modeled"
+                )),
+                "refusal must state the unmodeled-rounding rationale, got: {msg}"
+            );
+        }
+        other => panic!("expected VerifyError::Ny(UnsupportedOp), got: {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
 // 1. CastLayer (F32 identity) IBP propagation
 // ---------------------------------------------------------------------------
 
-/// CastLayer (F32 upcast = identity) propagates IBP bounds unchanged.
+/// F32 -> F32 identity cast (the one lowerable ToDtype) propagates IBP bounds
+/// unchanged.
 #[test]
 fn test_castlayer_f32_ibp_propagation() {
     let shape = vec![2, 4];
@@ -161,7 +155,7 @@ fn test_castlayer_f32_ibp_propagation() {
     );
 
     let result = trace_to_graph_model(&graph).expect("F32 CastLayer translate");
-    assert_eq!(result.dtype_cast_count, 0, "F32 upcast = no cast count");
+    assert_eq!(result.dtype_cast_count, 0, "F32 identity = no cast count");
 
     let input = uniform_bounds(&shape, 2.0);
     let output = result
@@ -191,119 +185,55 @@ fn test_castlayer_f32_ibp_propagation() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. CastLayer (F64 upcast) IBP propagation
+// 2. Non-F32 casts: one representative fail-closed refusal per dtype
 // ---------------------------------------------------------------------------
+//
+// These replace the former F64 identity-CastLayer and F16/BF16 downcast-Clamp
+// tightness tests (in-range clamp, out-of-range clamp, F16 roundtrip). Their
+// bound-value assertions measured surrogates the bridge no longer emits.
 
-/// CastLayer (F64 upcast) works as identity for IBP bounds.
+/// ToDtype(F64) is refused fail-closed: F64 rounding semantics are unmodeled,
+/// so the former identity-CastLayer lowering was unsound (ny 25dee0c5e).
 #[test]
-fn test_castlayer_f64_ibp_propagation() {
-    let shape = vec![2, 4];
+fn test_f64_cast_refused_fail_closed() {
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
             target_dtype: DType::F64,
         },
-        shape.clone(),
+        vec![2, 4],
     );
-
-    let result = trace_to_graph_model(&graph).expect("F64 CastLayer translate");
-    assert_eq!(result.dtype_cast_count, 0, "F64 upcast = no cast count");
-
-    let input = uniform_bounds(&shape, 5.0);
-    let output = result
-        .graph
-        .propagate_ibp(&input)
-        .expect("IBP through F64 CastLayer");
-    assert_bounds_valid(&output);
-
-    let (in_lo, in_hi) = input.lower_upper();
-    let (out_lo, out_hi) = output.lower_upper();
-    let eps = 1e-5;
-    for (&il, &ol) in in_lo.iter().zip(out_lo.iter()) {
-        assert!((il - ol).abs() < eps, "F64 Cast lower: {il} vs {ol}");
-    }
-    for (&ih, &oh) in in_hi.iter().zip(out_hi.iter()) {
-        assert!((ih - oh).abs() < eps, "F64 Cast upper: {ih} vs {oh}");
-    }
+    assert_cast_refused(&graph, "F64");
 }
 
-// ---------------------------------------------------------------------------
-// 3. F16 downcast (Clamp) IBP propagation
-// ---------------------------------------------------------------------------
-
-/// F16 downcast Clamp: inactive when inputs are within F16 range.
+/// ToDtype(F16) is refused fail-closed: F16 rounding semantics are unmodeled,
+/// so the former downcast-Clamp lowering was unsound (ny 25dee0c5e).
 #[test]
-fn test_f16_downcast_ibp_clamp_within_range() {
-    let shape = vec![2, 4];
+fn test_f16_cast_refused_fail_closed() {
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
             target_dtype: DType::F16,
         },
-        shape.clone(),
+        vec![2, 4],
     );
-
-    let result = trace_to_graph_model(&graph).expect("F16 downcast translate");
-    assert_eq!(result.dtype_cast_count, 1, "F16 downcast = 1 cast count");
-
-    let input = uniform_bounds(&shape, 100.0);
-    let output = result
-        .graph
-        .propagate_ibp(&input)
-        .expect("IBP through F16 Clamp");
-    assert_bounds_valid(&output);
-
-    let (out_lo, out_hi) = output.lower_upper();
-    let eps = 1e-3;
-    for &v in out_lo.iter() {
-        assert!(
-            (v - (-100.0)).abs() < eps,
-            "F16 clamp inactive: lower should be -100, got {v}"
-        );
-    }
-    for &v in out_hi.iter() {
-        assert!(
-            (v - 100.0).abs() < eps,
-            "F16 clamp inactive: upper should be 100, got {v}"
-        );
-    }
+    assert_cast_refused(&graph, "F16");
 }
 
-/// F16 downcast clamps inputs exceeding F16 representable range.
+/// ToDtype(BF16) is refused fail-closed: BF16 rounding semantics are
+/// unmodeled, so the former downcast-Clamp lowering was unsound (ny
+/// 25dee0c5e). (The bridge dtype enum spells it `Bf16`.)
 #[test]
-fn test_f16_downcast_ibp_clamp_exceeds_range() {
-    let shape = vec![1, 2];
+fn test_bf16_cast_refused_fail_closed() {
     let graph = graph_with_unary_op(
         TraceOp::ToDtype {
-            target_dtype: DType::F16,
+            target_dtype: DType::BF16,
         },
-        shape.clone(),
+        vec![2, 4],
     );
-
-    let result = trace_to_graph_model(&graph).expect("F16 downcast translate");
-    let input = BoundedTensor::new(
-        ArrayD::from_elem(IxDyn(&shape), -100000.0_f32),
-        ArrayD::from_elem(IxDyn(&shape), 100000.0_f32),
-    )
-    .expect("valid bounds");
-
-    let output = result
-        .graph
-        .propagate_ibp(&input)
-        .expect("IBP through F16 Clamp");
-    assert_bounds_valid(&output);
-
-    let (out_lo, out_hi) = output.lower_upper();
-    let f16_max = 65504.0_f32;
-    let eps = 1.0;
-    for &v in out_lo.iter() {
-        assert!(v >= -f16_max - eps, "F16 clamp: lower {v} >= -{f16_max}");
-    }
-    for &v in out_hi.iter() {
-        assert!(v <= f16_max + eps, "F16 clamp: upper {v} <= {f16_max}");
-    }
+    assert_cast_refused(&graph, "Bf16");
 }
 
 // ---------------------------------------------------------------------------
-// 4. CastLayer in pipeline: Relu -> Cast(F32) -> output
+// 3. CastLayer in pipeline: Relu -> Cast(F32) -> output
 // ---------------------------------------------------------------------------
 
 /// CastLayer (F32) after Relu: output matches Relu-only bounds.
@@ -366,7 +296,7 @@ fn test_relu_then_castlayer_f32_ibp() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. CastLayer before activation: Cast(F32) -> Relu
+// 4. CastLayer before activation: Cast(F32) -> Relu
 // ---------------------------------------------------------------------------
 
 /// CastLayer (F32) before Relu: transparent, bounds match Relu-only.
@@ -390,36 +320,7 @@ fn test_castlayer_f32_then_relu_ibp() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. F16 roundtrip: Relu -> F16 (Clamp) -> F32 (Cast) -> Relu
-// ---------------------------------------------------------------------------
-
-/// F16 roundtrip: Clamp + CastLayer compose correctly.
-#[test]
-fn test_f16_roundtrip_ibp() {
-    let shape = vec![2, 3];
-    let graph = graph_relu_f16_roundtrip(shape.clone());
-    let result = trace_to_graph_model(&graph).expect("F16 roundtrip translate");
-    assert_eq!(result.dtype_cast_count, 1, "1 F16 downcast counted");
-
-    let input = uniform_bounds(&shape, 3.0);
-    let output = result
-        .graph
-        .propagate_ibp(&input)
-        .expect("IBP F16 roundtrip");
-    assert_bounds_valid(&output);
-
-    let (lo, hi) = output.lower_upper();
-    let eps = 1e-3;
-    for &v in lo.iter() {
-        assert!(v >= -eps, "F16 roundtrip lower >= 0, got {v}");
-    }
-    for &v in hi.iter() {
-        assert!(v <= 3.0 + eps, "F16 roundtrip upper <= 3, got {v}");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 7. CROWN propagation through CastLayer
+// 5. CROWN propagation through CastLayer
 // ---------------------------------------------------------------------------
 
 /// CROWN through CastLayer (F32) pipeline: coefficients pass unchanged.
@@ -450,46 +351,5 @@ fn test_castlayer_crown_propagation() {
         for (i, (&cu, &iu)) in crown_hi.iter().zip(ibp_hi.iter()).enumerate() {
             assert!(cu <= iu + eps, "CROWN upper[{i}] {cu} <= IBP upper {iu}");
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 8. BF16 downcast (Clamp) IBP propagation
-// ---------------------------------------------------------------------------
-
-/// BF16 downcast Clamp: inactive for typical input ranges.
-#[test]
-fn test_bf16_downcast_ibp_clamp() {
-    let shape = vec![2, 4];
-    let graph = graph_with_unary_op(
-        TraceOp::ToDtype {
-            target_dtype: DType::BF16,
-        },
-        shape.clone(),
-    );
-
-    let result = trace_to_graph_model(&graph).expect("BF16 downcast translate");
-    assert_eq!(result.dtype_cast_count, 1, "BF16 downcast = 1 cast count");
-
-    let input = uniform_bounds(&shape, 100.0);
-    let output = result
-        .graph
-        .propagate_ibp(&input)
-        .expect("IBP through BF16 Clamp");
-    assert_bounds_valid(&output);
-
-    let (out_lo, out_hi) = output.lower_upper();
-    let eps = 1e-3;
-    for &v in out_lo.iter() {
-        assert!(
-            (v - (-100.0)).abs() < eps,
-            "BF16 clamp inactive: lower should be -100, got {v}"
-        );
-    }
-    for &v in out_hi.iter() {
-        assert!(
-            (v - 100.0).abs() < eps,
-            "BF16 clamp inactive: upper should be 100, got {v}"
-        );
     }
 }

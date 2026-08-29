@@ -177,7 +177,7 @@ fn test_certificate_validate_invalid_source_hash() {
     let result = make_verification("bad_src", -1.0, 1.0);
     let cert = ProofCertificate::from_verification(&result, make_input_spec(-1.0, 1.0))
         .with_source_hash("aa".repeat(32)); // 64 chars of valid hex ('a') -> validates OK
-    // Use genuinely invalid hex chars ('g' is not in [0-9a-f]):
+                                            // Use genuinely invalid hex chars ('g' is not in [0-9a-f]):
     let cert2 = ProofCertificate::from_verification(
         &make_verification("bad_src2", -1.0, 1.0),
         make_input_spec(-1.0, 1.0),
@@ -684,6 +684,8 @@ fn test_count_gaps_all_verified() {
             proof_strength: Some("sound".to_string()),
             soundness_mode: Some("sound".to_string()),
             has_constructive_certificate: false,
+            has_status_entry: true,
+            has_crown_entry: false,
         })
         .collect();
     let (gaps, vacuous) = count_gaps_and_vacuous(&results);

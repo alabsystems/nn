@@ -392,7 +392,16 @@ fn canonical_name_attention_exact() {
 #[kani::proof]
 #[kani::unwind(1)]
 fn canonical_name_indexing_exact() {
-    assert!(TraceOp::Topk { k: 5, dim: 0 }.canonical_name() == "topk");
+    assert!(
+        TraceOp::Topk {
+            k: 5,
+            dim: 0,
+            largest: true,
+            sorted: true
+        }
+        .canonical_name()
+            == "topk"
+    );
     assert!(TraceOp::Argmax { dim: 0 }.canonical_name() == "argmax");
     assert!(TraceOp::Argmin { dim: 0 }.canonical_name() == "argmin");
     assert!(

@@ -162,8 +162,15 @@ pub struct ProofCertificate {
     /// How F16/BF16 precision loss was modeled during verification (#3023).
     ///
     /// `None` for pre-v5 certificates (treated as `F32Only`).
-    /// When `Some(F16Aware { .. })`, the certificate proves the F16 execution
-    /// path, not just the F32 algorithm.
+    /// When `Some(F16Aware { .. })`, the certificate CLAIMED to model the F16
+    /// execution path via the bridge's downcast surrogates.
+    ///
+    /// NOTE (ny hardening 25dee0c5e): those surrogates were unsound (F16/BF16
+    /// rounding semantics were never modeled), and the bridge now refuses
+    /// every non-F32 cast fail-closed, so newly-issued certificates are always
+    /// `F32Only`. `F16Aware` survives only so legacy bundles serialized before
+    /// the hardening still deserialize; treat a legacy `F16Aware` claim as
+    /// F32-algorithm-only evidence.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub precision_model: Option<PrecisionModel>,
 

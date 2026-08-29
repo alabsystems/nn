@@ -6,13 +6,27 @@
 //!
 //! Contains the kernel, fusion, and model verification loops plus
 //! certificate generation helpers.
+//!
+//! # ny_api adapters reached from this runner
+//!
+//! * **`ny_conformance`** — the kernel and model tiers accept an
+//!   [`OpCoverageMode`] and pass it to the coverage-aware pipeline entry points,
+//!   so an `Unsupported`-class op lands in `nn_verify_status_*.json` and in the
+//!   `Coverage` column instead of only in a refusal. Opt-in via
+//!   `NN_VERIFY_OP_COVERAGE=report|gate`; the default (`off`) leaves both tiers
+//!   byte-for-byte as they were.
+//! * **`ny_session`** — the separate session tier in
+//!   [`runner_session`], opt-in via `NN_VERIFY_SESSION=1`.
+//!
+//! Neither adapter runs unless its environment switch is set.
 
 use std::path::Path;
 
+use nn_verify::pipeline::{verify_and_record_full_with_coverage, OpCoverageMode};
 use nn_verify::{
-    certificate_from_pipeline_enriched, verify_and_record_full, CertificateBundle,
-    CertificateEnrichment, FusionVerification, ParamInputRecord, PipelineResult, ProofCertificate,
-    PropMethod, ScalarInputBounds, SmtStatusRecord, VerifyStatus,
+    certificate_from_pipeline_enriched, CertificateBundle, CertificateEnrichment,
+    FusionVerification, ParamInputRecord, PipelineResult, ProofCertificate, PropMethod,
+    ScalarInputBounds, SmtStatusRecord, VerifyConfig, VerifyStatus,
 };
 
 use super::configs::{BuilderFailure, KernelConfig};
@@ -27,6 +41,16 @@ use runner_helpers::{
 #[path = "runner_trace.rs"]
 mod runner_trace;
 pub(super) use runner_trace::run_trace_model_verification;
+
+#[path = "runner_coverage.rs"]
+mod runner_coverage;
+pub(super) use runner_coverage::op_coverage_mode_from_env;
+use runner_coverage::{coverage_cell, print_tier_header, report_unsupported};
+
+#[path = "runner_session.rs"]
+mod runner_session;
+use runner_session::SessionCase;
+pub(super) use runner_session::{run_session_verification, session_tier_enabled};
 
 /// Write proof certificate bundle to disk (#802).
 pub(super) fn save_certificate_bundle(bundle: &CertificateBundle, cert_path: &Path) {
@@ -44,23 +68,39 @@ pub(super) fn save_certificate_bundle(bundle: &CertificateBundle, cert_path: &Pa
 
 /// Run NY + ay verification for each config.
 ///
-/// Returns `(passed, failed, certificate_bundle)`. Each successfully verified
-/// kernel produces a `ProofCertificate` in the bundle (#802).
+/// Returns `(passed, failed, certificate_bundle, session_cases)`. Each
+/// successfully verified kernel produces a `ProofCertificate` in the bundle
+/// (#802) and a [`SessionCase`] the session tier can re-ask as a spec.
+///
+/// `coverage` selects the ny conformance stage (see
+/// [`op_coverage_mode_from_env`]). With [`OpCoverageMode::Off`] — the default —
+/// this behaves exactly as it did before the adapter wiring.
 pub(super) fn run_verification(
     status: &mut VerifyStatus,
     configs: Vec<KernelConfig>,
     builder_failures: usize,
     kani_status_path: Option<&Path>,
-) -> (usize, usize, CertificateBundle) {
+    coverage: OpCoverageMode,
+) -> (usize, usize, CertificateBundle, Vec<SessionCase>) {
     let mut passed = 0;
     let mut failed = builder_failures;
     let mut bundle = CertificateBundle::new("nn_verify_all");
+    let mut session_cases = Vec::new();
+    let collect_cases = session_tier_enabled();
+    let verify_config = VerifyConfig::default();
 
-    println!(
-        "{:<30} {:>10} {:>10} {:>12} {:>14} {:>10}",
-        "Kernel", "Status", "Method", "Width", "SMT", "Soundness"
+    print_tier_header(
+        &[
+            ("Kernel", 30),
+            ("Status", 10),
+            ("Method", 10),
+            ("Width", 12),
+            ("SMT", 14),
+            ("Soundness", 10),
+        ],
+        coverage,
+        90,
     );
-    println!("{}", "-".repeat(90));
 
     for config in configs {
         // Pass config_name as status_key so each configuration gets a
@@ -77,12 +117,14 @@ pub(super) fn run_verification(
             }
         };
 
-        match verify_and_record_full(
+        match verify_and_record_full_with_coverage(
             status,
             &config.kernel,
             &config.constant_params,
             bounds,
             Some(name),
+            &verify_config,
+            coverage,
         ) {
             Ok(result) => {
                 print_result(name, &result);
@@ -95,6 +137,17 @@ pub(super) fn run_verification(
                     kani_status_path,
                 );
                 bundle.push(cert);
+                if collect_cases && result.gamma_crown.is_finite {
+                    session_cases.push(SessionCase {
+                        config_name: name,
+                        output_lower: result.gamma_crown.output_lower,
+                        output_upper: result.gamma_crown.output_upper,
+                        input_lower: config.input_lower,
+                        input_upper: config.input_upper,
+                        kernel: config.kernel,
+                        constant_params: config.constant_params,
+                    });
+                }
                 passed += 1;
             }
             Err(e) => {
@@ -105,7 +158,7 @@ pub(super) fn run_verification(
         }
     }
 
-    (passed, failed, bundle)
+    (passed, failed, bundle, session_cases)
 }
 
 /// Persist builder failures to the status file so they are visible in
@@ -174,13 +227,20 @@ fn print_result(name: &str, result: &PipelineResult) {
     };
     let smt = format!("{:?}", result.smt.outcome);
     let soundness = format!("{:?}", gc.soundness_mode);
-    println!("{name:<30} {status:>10} {method:>10} {width:>12} {smt:>14} {soundness:>10}");
+    let row = format!("{name:<30} {status:>10} {method:>10} {width:>12} {smt:>14} {soundness:>10}");
+    match coverage_cell(result.op_coverage.as_ref()) {
+        Some(cell) => println!("{row} {cell:>9}"),
+        None => println!("{row}"),
+    }
 
     // Surface CROWN fallback diagnostics so consumers (e.g. dvoice) can
     // distinguish "CROWN not attempted" from "CROWN failed, fell back to IBP".
     if let Some(reason) = &gc.crown_fallback_reason {
         eprintln!("  {name}: CROWN fallback to IBP — {reason}");
     }
+
+    // A soundness hole is never a silent column: name the ops.
+    report_unsupported(name, result.op_coverage.as_ref());
 }
 
 /// Build a proof certificate from a pipeline result (#802).
@@ -297,27 +357,36 @@ pub(super) fn run_model_verification(
     status: &mut VerifyStatus,
     configs: Vec<ModelConfig>,
     bundle: &mut CertificateBundle,
+    coverage: OpCoverageMode,
 ) -> (usize, usize) {
     let mut passed = 0;
     let mut failed = 0;
 
-    println!(
-        "\n{:<30} {:>10} {:>10} {:>12} {:>10}",
-        "Model", "Status", "Method", "OutShape", "Soundness"
+    println!();
+    print_tier_header(
+        &[
+            ("Model", 30),
+            ("Status", 10),
+            ("Method", 10),
+            ("OutShape", 12),
+            ("Soundness", 10),
+        ],
+        coverage,
+        76,
     );
-    println!("{}", "-".repeat(76));
 
     let verify_config = nn_verify::VerifyConfig::default().with_collect_layer_bounds(true);
 
     for config in configs {
         let name = config.name;
-        match nn_verify::verify_tensor_and_record_with_config(
+        match nn_verify::pipeline::verify_tensor_and_record_with_coverage(
             status,
             &config.def,
             &config.bindings,
             &config.input_bounds,
             Some(name),
             &verify_config,
+            coverage,
         ) {
             Ok(result) => {
                 let method = format!("{:?}", result.verification.method);
@@ -329,9 +398,14 @@ pub(super) fn run_model_verification(
                 } else {
                     "Infinite"
                 };
-                println!(
+                let row = format!(
                     "{name:<30} {status_str:>10} {method:>10} {shape_str:>12} {soundness:>10}"
                 );
+                match coverage_cell(result.op_coverage.as_ref()) {
+                    Some(cell) => println!("{row} {cell:>9}"),
+                    None => println!("{row}"),
+                }
+                report_unsupported(name, result.op_coverage.as_ref());
 
                 // Build model-level certificate.
                 let variable_inputs = vec![ParamInputRecord::new(

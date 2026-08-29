@@ -139,6 +139,7 @@ fn vision_ops_arity_and_class() {
         mode: TraceUpsampleMode::Nearest,
         scale_h: 2.0,
         scale_w: 2.0,
+        align_corners: false,
     };
     assert!(op.classification() == TraceOpClass::Vision);
     assert!(op.expected_arity() == Some(1));

@@ -356,9 +356,19 @@ fn test_map_topk_values() {
         ],
     );
     let (op, inputs) = map_node_to_trace_op(&node, &ctx, 0).unwrap();
+    // The node carries largest=true / sorted=true explicitly — the import
+    // must preserve them.
     assert!(
-        matches!(&op, TraceOp::Topk { k: 5, dim: 1 }),
-        "expected Topk with k=5 dim=1, got: {op:?}"
+        matches!(
+            &op,
+            TraceOp::Topk {
+                k: 5,
+                dim: 1,
+                largest: true,
+                sorted: true,
+            }
+        ),
+        "expected Topk with k=5 dim=1 largest sorted, got: {op:?}"
     );
     assert_eq!(inputs, vec!["x"]);
 }

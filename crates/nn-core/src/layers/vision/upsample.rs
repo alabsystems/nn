@@ -105,14 +105,20 @@ impl Module for Upsample2d {
         trace::traced_forward(
             &[x],
             || {
-                let trace_mode = match mode {
-                    UpsampleMode::Nearest => TraceUpsampleMode::Nearest,
-                    UpsampleMode::Bilinear { .. } => TraceUpsampleMode::Bilinear,
+                // Record the corner-alignment convention the compute body
+                // actually uses; Nearest's mapping does not depend on it and
+                // records `false` by convention.
+                let (trace_mode, align_corners) = match mode {
+                    UpsampleMode::Nearest => (TraceUpsampleMode::Nearest, false),
+                    UpsampleMode::Bilinear { align_corners } => {
+                        (TraceUpsampleMode::Bilinear, align_corners)
+                    }
                 };
                 Ok(TraceOp::Upsample2d {
                     mode: trace_mode,
                     scale_h,
                     scale_w,
+                    align_corners,
                 })
             },
             || match mode {

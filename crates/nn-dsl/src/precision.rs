@@ -6,11 +6,14 @@
 //!
 //! # Three-Tier Precision Model
 //!
-//! nn compiles the same Rust kernel to both a CPU reference and GPU code
-//! (currently MSL; PTX and SPIR-V are planned for Phase 4). IEEE 754 floating-point arithmetic is not
-//! associative, and GPU transcendental implementations (`sin`, `cos`, `exp`)
-//! differ from Rust's `libm`. The precision contract defines how much
-//! divergence is tolerable between Rust reference output and GPU output.
+//! nn compiles the same Rust kernel to both a CPU reference and GPU code. MSL is
+//! the production path and the tier table below is the Metal contract; `nn-cuda`
+//! and `nn-vulkan` lower the same `TensorOpKind` IR to PTX/HIP and SPIR-V, and
+//! carry no precision-tier contract of their own. IEEE 754 floating-point
+//! arithmetic is not associative, and GPU transcendental implementations
+//! (`sin`, `cos`, `exp`) differ from Rust's `libm`. The precision contract
+//! defines how much divergence is tolerable between Rust reference output and
+//! GPU output.
 //!
 //! ## Tiers
 //!

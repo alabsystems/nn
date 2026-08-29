@@ -31,7 +31,17 @@ fn test_trace_topk() {
     assert_eq!(result.shape().dims(), &[1, 2]);
     let nodes = graph.nodes();
     assert_eq!(nodes.len(), 2); // input + topk
-    assert!(matches!(nodes[1].op(), TraceOp::Topk { k: 2, dim: 1 }));
+    // Core `topk` computes the k LARGEST, sorted descending — the trace must
+    // say so (largest=false / sorted=false name different functions).
+    assert!(matches!(
+        nodes[1].op(),
+        TraceOp::Topk {
+            k: 2,
+            dim: 1,
+            largest: true,
+            sorted: true,
+        }
+    ));
 }
 
 // -- HIGH severity: argmax (#2347) --------------------------------------------

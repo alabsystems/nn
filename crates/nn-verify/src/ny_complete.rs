@@ -154,7 +154,7 @@ mod tests {
         // `f <= 1.5` is TRUE, so its negation `f >= 1.5` must be infeasible.
         // Note IBP's relaxed upper bound of 2.0 cannot establish this.
         match solve_with_output_geq(1.5) {
-            MipResult::Unsat => {}
+            MipResult::Unsat { .. } => {}
             other => panic!("f >= 1.5 is infeasible for |x| on [-1,1], got {other:?}"),
         }
 

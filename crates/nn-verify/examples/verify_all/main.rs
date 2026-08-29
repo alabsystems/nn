@@ -20,6 +20,21 @@
 //! Config builders extracted to `configs.rs` (#571 AC1).
 //! Certificate generation added for #802 (proof certificate format).
 //! Runner functions extracted to `runner.rs` (#909).
+//!
+//! # ny_api adapter opt-ins (environment switches)
+//!
+//! Both default to off, so an unset environment reproduces the historical run
+//! exactly.
+//!
+//! * `NN_VERIFY_OP_COVERAGE=report` — run ny's conformance gate over every
+//!   translated kernel and model, add a `Coverage` column, and record the tally
+//!   into each status entry so an `Unsupported`-class op is visible in
+//!   `nn_verify_status_*.json`. `=gate` additionally refuses (fail closed) any
+//!   kernel or model containing one, before it is recorded.
+//! * `NN_VERIFY_SESSION=1` — run the session tier: group kernel configs by graph
+//!   identity, load each graph **once**, and verify every member's spec through
+//!   one `ny_session` `VerifierSession` with its sound verdict cache. Diagnostic
+//!   only; it does not affect the exit code.
 
 use std::path::Path;
 use std::process;
@@ -36,8 +51,9 @@ use configs::build_kernel_configs;
 use fusion_configs::build_fusion_configs;
 use model_configs::build_model_configs;
 use runner::{
-    record_builder_failures, run_fusion_verification, run_model_verification,
-    run_trace_model_verification, run_verification, save_certificate_bundle,
+    op_coverage_mode_from_env, record_builder_failures, run_fusion_verification,
+    run_model_verification, run_session_verification, run_trace_model_verification,
+    run_verification, save_certificate_bundle, session_tier_enabled,
 };
 use trace_model_configs::build_trace_model_configs;
 
@@ -82,15 +98,36 @@ fn main() {
     record_builder_failures(&mut status, &builder_failures);
     let total = configs.len() + num_build_failures;
 
+    // ny_api adapter opt-ins (see the module docs). Both off unless asked for.
+    let coverage = op_coverage_mode_from_env();
+    if coverage != nn_verify::pipeline::OpCoverageMode::Off {
+        println!("ny conformance op-coverage: {coverage:?}\n");
+    }
+
     let kani_path = kani_status_path.exists().then_some(kani_status_path);
-    let (passed, failed, mut bundle) = run_verification(
+    let (passed, failed, mut bundle, session_cases) = run_verification(
         &mut status,
         configs,
         num_build_failures,
         kani_path.as_deref(),
+        coverage,
     );
 
     print_tier_summary("kernels", passed, total, failed);
+
+    // Session tier (#ny_session): load-once / verify-many over the kernel
+    // graphs that were verified across several input regions. Diagnostic —
+    // deliberately excluded from the exit code (see runner_session docs).
+    if session_tier_enabled() {
+        let (groups, verified, unproven) = run_session_verification(session_cases);
+        if groups > 0 {
+            println!(
+                "{}\n{verified} spec(s) verified across {groups} session group(s), \
+                 {unproven} unproven\n",
+                "-".repeat(74)
+            );
+        }
+    }
 
     // Fusion equivalence verification (#803 AC3).
     let fusion_configs = build_fusion_configs();
@@ -102,7 +139,7 @@ fn main() {
     let model_configs = build_model_configs();
     let model_total = model_configs.len();
     let (model_passed, model_failed) =
-        run_model_verification(&mut status, model_configs, &mut bundle);
+        run_model_verification(&mut status, model_configs, &mut bundle, coverage);
     print_tier_summary("models", model_passed, model_total, model_failed);
 
     // Trace-based model verification (#2074 AC0).

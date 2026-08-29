@@ -116,10 +116,10 @@ pub use nn_verify::trace_to_graph_model_multi_input_with_boundary;
 /// `nn::verify` alone.
 pub use nn_verify::TraceGraphBoundaryResult;
 
-/// Owned gamma-build producer artifact captured from traced translation.
+/// Owned ny-build producer artifact captured from traced translation.
 /// Keeps `LayerSpec` / `TensorSpec` / weight / provenance state together so
 /// callers can inspect or rebuild later without retracing and without taking a
-/// direct dependency on `nn-verify` or `gamma-build`.
+/// direct dependency on `nn-verify` or `ny-build`.
 pub use nn_verify::GraphModel;
 
 /// Borrowed graph-build view over a traced `GraphModel`. Useful when a caller

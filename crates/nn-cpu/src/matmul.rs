@@ -436,7 +436,10 @@ fn pack_b_avx2(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2", enable = "fma")]
 #[allow(clippy::too_many_arguments)]
-#[inline(always)]
+// `#[inline]`, not `always`: a `#[target_feature]` function cannot be inlined
+// into a caller that lacks the feature, and the compiler now rejects the pair
+// outright (rust#145574). This is x86-only code that had never been compiled.
+#[inline]
 unsafe fn microkernel_4x8_avx2(
     a: &[f32],
     c: &mut [f32],

@@ -8,8 +8,11 @@
 //!
 //! Probes (each meaningful only if the bridge actually ran):
 //!
-//! * `dtype_cast_count` — wired from the bridge's `Translation` metadata
-//!   (not hardcoded 0);
+//! * `dtype_cast_count` — wired from the bridge's `Translation` metadata.
+//!   Since the ny 25dee0c5e hardening a successful translation always
+//!   reports 0 (every precision-changing cast is refused upstream), so this
+//!   is a wiring check only and the fixture's cast is the still-lowerable
+//!   F32 -> F32 identity;
 //! * the MoeGating soundness refusal — the bridge classifies MoeGating
 //!   `Unsupported` and refuses fail-closed (`VerifyError::Ny`, UnsupportedOp).
 //!   The deleted legacy translator lowered it to an unsound identity
@@ -26,24 +29,32 @@
 //!   soundness gap, closed at the cutover).
 #![cfg(feature = "ny")]
 
-use nn_core::dyn_tensor::trace::{
-    record_input, trace_graph, ComputationGraph, TraceNode, TraceOp,
-};
+use ndarray::{ArrayD, IxDyn};
+use nn_core::dyn_tensor::trace::{record_input, trace_graph, ComputationGraph, TraceNode, TraceOp};
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::layers::{Linear, Module};
 use nn_core::{DType, Device};
 use nn_verify::{trace_to_graph_model, trace_to_graph_segmented, BoundedTensor, VerifyError};
-use ndarray::{ArrayD, IxDyn};
 
 fn cpu() -> Device {
     Device::Cpu
 }
 
-/// Small Linear → (F16 downcast → F32 upcast) → ReLU → Linear MLP trace.
+/// Small Linear → ReLU → Linear MLP trace (the `to_dtype(F32)` call below
+/// records NOTHING).
 ///
-/// The F16 round-trip puts exactly ONE downcast point in the trace, so
-/// `dtype_cast_count == 1` — asserting the count proves the bridge's
-/// `Translation` metadata is wired through (not hardcoded 0).
+/// The F32 -> F32 `to_dtype` short-circuits at TRACE time: nn-core's
+/// `DynTensor::to_dtype` returns the tensor unchanged before recording a
+/// trace node when the dtype already matches, so the traced graph contains
+/// no ToDtype node at all. That is deliberate here: an F16 round-trip (the
+/// pre-hardening fixture) would be refused by the bridge's graph-wide F32
+/// gate (ny 25dee0c5e), making this test exercise dtype policy instead of
+/// routing — and the F32 identity-cast LOWERING itself is covered by the
+/// programmatic-TraceNode fixtures in trace_to_graph_error_tests, which
+/// bypass the tracer's short-circuit. The routing test asserts the
+/// short-circuit explicitly so this fixture can never silently drift back
+/// into claiming cast coverage; the MoeGating refusal below is the
+/// discriminating routing probe.
 fn build_mlp_with_cast() -> ComputationGraph {
     let w1 = DynTensor::new(&[1.0, -1.0, 0.5, 0.5], &[2, 2], &cpu()).unwrap();
     let b1 = DynTensor::new(&[0.1, -0.2], &[2], &cpu()).unwrap();
@@ -60,8 +71,9 @@ fn build_mlp_with_cast() -> ComputationGraph {
         let id = record_input(&[1, 2], DType::F32).unwrap();
         x.set_trace_id(id);
         let h = layer1.forward(&x)?;
-        let h = h.to_dtype(DType::F16)?; // downcast: the counted cast point
-        let h = h.to_dtype(DType::F32)?; // upcast: identity, not counted
+        // Records NO trace node: same-dtype casts short-circuit in nn-core
+        // before reaching the trace recorder (see the fixture doc above).
+        let h = h.to_dtype(DType::F32)?;
         let h = h.relu()?;
         let y = layer2.forward(&h)?;
         Ok(y)
@@ -132,10 +144,22 @@ fn input_box() -> BoundedTensor {
 fn trace_to_graph_model_routes_through_bridge() {
     // (a) Bridge Translation metadata is wired through the public entry.
     let graph = build_mlp_with_cast();
+    // Pin the fixture's documented vacuity: the F32->F32 to_dtype call above
+    // short-circuits at trace time, so no ToDtype node may appear here. If
+    // this assertion ever fires, the tracer started recording same-dtype
+    // casts and this fixture regains real cast coverage — update the docs.
+    assert!(
+        graph
+            .nodes()
+            .iter()
+            .all(|node| !matches!(node.op(), TraceOp::ToDtype { .. })),
+        "same-dtype to_dtype must short-circuit before the trace recorder"
+    );
     let result = trace_to_graph_model(&graph).expect("bridge-routed translation should succeed");
     assert_eq!(
-        result.dtype_cast_count, 1,
-        "bridge Translation metadata must be wired through (one F16 downcast)"
+        result.dtype_cast_count, 0,
+        "bridge Translation metadata must be wired through (always 0 since the \
+         ny 25dee0c5e hardening: every precision-changing cast refuses upstream)"
     );
     let out = result
         .graph
@@ -224,8 +248,7 @@ fn build_segmented_graph() -> ComputationGraph {
 
 #[test]
 fn trace_to_graph_segmented_routes_through_bridge() {
-    let result =
-        trace_to_graph_segmented(&build_segmented_graph()).expect("segmented translation");
+    let result = trace_to_graph_segmented(&build_segmented_graph()).expect("segmented translation");
     assert_eq!(result.segments.len(), 2, "one segment per boundary side");
 
     // Boundary metadata carries over (attached to the segment PRECEDING the

@@ -232,25 +232,46 @@ where
 /// Returns true for ops that will definitely fail translation. This avoids
 /// false positives from ops that MIGHT fail (e.g., Powf with unsupported
 /// exponents) — those are caught by the actual translation attempt.
+///
+/// ny 0.4.0 turned two former blanket refusals into PER-PARAMETERIZATION
+/// ones, so those rows now match only the parameterizations ny's own arms
+/// still refuse by name:
+///
+/// * `Topk`: `largest && sorted` lowers to `LayerType::Topk` exactly (the
+///   j-th order statistic is monotone in every input); `!largest` and
+///   `!sorted` are refused — bounds on the k largest do not enclose the k
+///   smallest, and an unspecified output order needs the hull over all k.
+/// * `MultiHeadAttention`: maskless, RoPE-free, non-GQA self-/cross-attention
+///   lowers (the projections ride the wire now); masked, RoPE-fused and
+///   grouped-query nodes are refused individually
+///   (`ny-trace-bridge` `translate_multi_head_attention`).
 fn is_known_unsupported(op: &TraceOp) -> bool {
-    matches!(
-        op,
+    match op {
+        TraceOp::Topk {
+            largest, sorted, ..
+        } => !largest || !sorted,
+        TraceOp::MultiHeadAttention {
+            num_heads,
+            num_kv_heads,
+            rope,
+            has_mask,
+            ..
+        } => *has_mask || rope.is_some() || num_kv_heads != num_heads,
         TraceOp::SwiGlu
-            | TraceOp::ScatterAdd { .. }
-            | TraceOp::IndexAdd { .. }
-            | TraceOp::IndexPut { .. }
-            | TraceOp::Topk { .. }
-            | TraceOp::Argmax { .. }
-            | TraceOp::Argmin { .. }
-            | TraceOp::ArgSort { .. }
-            | TraceOp::Compare { .. }
-            | TraceOp::CompareTensor { .. }
-            | TraceOp::Triu { .. }
-            | TraceOp::Tril { .. }
-            | TraceOp::GridSample { .. }
-            | TraceOp::MultiHeadAttention { .. }
-            | TraceOp::Custom { .. }
-    )
+        | TraceOp::ScatterAdd { .. }
+        | TraceOp::IndexAdd { .. }
+        | TraceOp::IndexPut { .. }
+        | TraceOp::Argmax { .. }
+        | TraceOp::Argmin { .. }
+        | TraceOp::ArgSort { .. }
+        | TraceOp::Compare { .. }
+        | TraceOp::CompareTensor { .. }
+        | TraceOp::Triu { .. }
+        | TraceOp::Tril { .. }
+        | TraceOp::GridSample { .. }
+        | TraceOp::Custom { .. } => true,
+        _ => false,
+    }
 }
 
 /// Scan a computation graph for all unsupported ops.
@@ -333,11 +354,14 @@ mod tests {
     fn test_with_bounds_lenient_reports_unsupported() {
         let (input, input_bounds, linear) = simple_model_input();
 
-        // Use topk which is unsupported by the translator.
+        // largest=false top-k: ny 0.4.0 lowers `largest && sorted` (so plain
+        // `topk` is no longer a valid unsupported witness) but refuses the
+        // k-SMALLEST selection by name — bounds on the k largest do not
+        // enclose it.
         let result = with_bounds(&input, &input_bounds, BoundsPolicy::Lenient, |x| {
             let h = linear.forward(x)?;
             // topk produces (values, indices) — take values only.
-            let (values, _indices) = h.topk(1, 1)?;
+            let (values, _indices) = h.topk_ext(1, 1, false, true)?;
             Ok(values)
         })
         .expect("lenient mode should not error on unsupported ops");
@@ -350,13 +374,32 @@ mod tests {
     fn test_with_bounds_strict_errors_on_unsupported() {
         let (input, input_bounds, linear) = simple_model_input();
 
+        // Same refused parameterization as the lenient twin above.
         let result = with_bounds(&input, &input_bounds, BoundsPolicy::Strict, |x| {
             let h = linear.forward(x)?;
-            let (values, _indices) = h.topk(1, 1)?;
+            let (values, _indices) = h.topk_ext(1, 1, false, true)?;
             Ok(values)
         });
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_with_bounds_default_topk_now_bounds() {
+        let (input, input_bounds, linear) = simple_model_input();
+
+        // The flip side of the refusal above: largest+sorted top-k VALUES are
+        // exactly modelled by ny 0.4.0 (order statistics are monotone), so
+        // strict mode now succeeds where it used to refuse.
+        let result = with_bounds(&input, &input_bounds, BoundsPolicy::Strict, |x| {
+            let h = linear.forward(x)?;
+            let (values, _indices) = h.topk(1, 1)?;
+            Ok(values)
+        })
+        .expect("largest+sorted topk translates on ny 0.4.0");
+
+        assert!(result.bounds.is_some());
+        assert!(result.unsupported_ops.is_empty());
     }
 
     #[test]

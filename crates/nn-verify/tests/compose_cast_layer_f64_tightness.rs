@@ -2,13 +2,16 @@
 // Author: Andrew Yates
 // SPDX-License-Identifier: Apache-2.0
 
-//! CastLayer compose tests with f64 tightness validation.
+//! ToDtype compose tests with f64 tightness validation.
 //!
-//! Tests that CastLayer (for upcasts) and Clamp (for downcasts) work correctly
-//! in the trace_to_graph pipeline with actual IBP/CROWN bound propagation.
-//! Also validates f64 tightness for CastLayer-containing pipelines.
+//! Posture (ny hardening 25dee0c5e): only the F32 -> F32 identity ToDtype
+//! lowers (as an Add(x, 0) identity); every non-F32 cast — F16/BF16/F64
+//! target or non-F32 source — is refused fail-closed because the non-F32
+//! endpoint's rounding semantics are unmodeled. These modules cover the
+//! restored identity lowering's IBP/CROWN behavior, one representative
+//! refusal per non-F32 dtype, and f64-evaluation tightness baselines.
 //!
-//! Part of #4316: CastLayer for ToDtype verification + f64 evaluation.
+//! Historical: #4316 (CastLayer for ToDtype verification + f64 evaluation).
 
 #![allow(clippy::duplicate_mod)]
 

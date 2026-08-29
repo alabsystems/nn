@@ -5,15 +5,28 @@
 //! Tensor-level verification pipeline (#703).
 //!
 //! Extracted from `pipeline.rs` to stay within the 500-line file limit.
+//!
+//! # ny_api adapters wired here
+//!
+//! * [`ny_conformance`](crate::ny_conformance) — via
+//!   [`verify_tensor_and_record_with_coverage`], opt-in through
+//!   [`OpCoverageMode`]. Default entry points pass
+//!   [`OpCoverageMode::Off`] and are byte-for-byte unchanged.
+//!
+//! The `ny_equivalence` routing lives next door in
+//! [`crate::pipeline::equivalence`]. Nothing here runs an adapter unless the
+//! caller asks for it.
 
-use ny_api::BoundedTensor;
 use nn_dsl::tensor_ir::TensorKernelDef;
+use ny_api::BoundedTensor;
 
 use crate::bound_analysis::{
     analyze_layer_bounds, layers_needing_crown, AnalysisConfig, BoundAnalysisReport,
 };
 use crate::error::VerifyError;
 use crate::graph_tensor::{tensor_kernel_to_graph_with_norm_mode, TensorParamBinding};
+use crate::ny_conformance::ModelCoverage;
+use crate::pipeline::{op_coverage_for_graph, record_op_coverage, OpCoverageMode};
 use crate::status::{ParamInputRecord, VerifyStatus};
 use crate::verify::{run_escalation, KernelVerification, PropMethod, VerifyConfig};
 
@@ -51,6 +64,14 @@ pub struct TensorPipelineResult {
     /// because collection was disabled). Callers should check this field to
     /// distinguish "not requested" from "failed".
     pub layer_bounds_error: Option<String>,
+    /// ny conformance op soundness-coverage tally for the translated model.
+    ///
+    /// `None` unless the run opted in with an [`OpCoverageMode`] other than
+    /// [`OpCoverageMode::Off`] (see [`verify_tensor_and_record_with_coverage`]).
+    /// When `Some`, the same tally was summarized into the status entry's
+    /// `soundness_justification`, which is what makes an `Unsupported`-class op
+    /// visible in `nn_verify_status_*.json`.
+    pub op_coverage: Option<ModelCoverage>,
 }
 
 /// Run the tensor verification pipeline for a `TensorKernelDef`:
@@ -107,10 +128,61 @@ pub fn verify_tensor_and_record_with_config(
     status_key: Option<&str>,
     config: &VerifyConfig,
 ) -> Result<TensorPipelineResult, VerifyError> {
+    verify_tensor_and_record_with_coverage(
+        status,
+        kernel,
+        bindings,
+        input_bounds,
+        status_key,
+        config,
+        OpCoverageMode::Off,
+    )
+}
+
+/// Tensor verification pipeline with the ny conformance op soundness-coverage
+/// stage.
+///
+/// Identical to [`verify_tensor_and_record_with_config`] except that `coverage`
+/// selects whether ny's conformance gate runs over the translated model graph:
+///
+/// * [`OpCoverageMode::Off`] — exactly [`verify_tensor_and_record_with_config`]
+///   (this is what that function passes).
+/// * [`OpCoverageMode::Report`] — every operation is classified through
+///   [`ny_api::conformance::soundness_class`](crate::ny_conformance::soundness_class),
+///   the tally lands in [`TensorPipelineResult::op_coverage`], and a one-line
+///   summary is written to the status entry's `soundness_justification`. A model
+///   containing an `Unsupported`-class op is then visible in the status output
+///   instead of only being discoverable by reading a refusal.
+/// * [`OpCoverageMode::Gate`] — additionally refuses with
+///   [`VerifyError::UnsupportedOp`] *before* propagating or recording, so no
+///   verdict is persisted for a model with a silent soundness hole.
+///
+/// The gate runs on the same `GraphNetwork` the verification propagates through,
+/// so the coverage report describes exactly the graph that produced the bounds.
+///
+/// # Errors
+///
+/// As [`verify_tensor_and_record_with_config`], plus
+/// [`VerifyError::UnsupportedOp`] when `coverage` is [`OpCoverageMode::Gate`]
+/// and the model contains an `Unsupported`-class operation.
+#[must_use = "returns a Result that may contain an error"]
+pub fn verify_tensor_and_record_with_coverage(
+    status: &mut VerifyStatus,
+    kernel: &TensorKernelDef,
+    bindings: &[TensorParamBinding],
+    input_bounds: &BoundedTensor,
+    status_key: Option<&str>,
+    config: &VerifyConfig,
+    coverage: OpCoverageMode,
+) -> Result<TensorPipelineResult, VerifyError> {
     let key = status_key.unwrap_or(&kernel.name);
 
     // 1. Translate tensor kernel to NY graph with norm mode.
     let graph = tensor_kernel_to_graph_with_norm_mode(kernel, bindings, config.norm_mode())?;
+
+    // 1b. ny conformance gate (opt-in). Runs before propagation and before any
+    //     status write so `OpCoverageMode::Gate` fails closed.
+    let op_coverage = op_coverage_for_graph(&graph, key, coverage)?;
 
     // 2. Run IBP → CROWN escalation to get bounds.
     let (verification, output_bounds) =
@@ -175,6 +247,12 @@ pub fn verify_tensor_and_record_with_config(
         Some(input_shape_raw),
     )?;
 
+    // 4b. Attach the coverage summary to the entry we just recorded, so the
+    //     soundness-hole signal is persisted next to the verdict.
+    if let Some(cov) = &op_coverage {
+        record_op_coverage(status, key, cov)?;
+    }
+
     // 5. Optionally collect per-layer bound trace for certificates (#802 AC3).
     let (layer_bounds, layer_bounds_error) = if config.collect_layer_bounds() {
         match crate::layer_bounds::extract_layer_bounds(&graph, input_bounds) {
@@ -200,6 +278,7 @@ pub fn verify_tensor_and_record_with_config(
         layer_bounds,
         bound_analysis,
         layer_bounds_error,
+        op_coverage,
     })
 }
 

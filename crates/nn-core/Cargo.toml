@@ -25,14 +25,19 @@ num-traits = { workspace = true }
 safetensors = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
-# BLAS linker symbols — when workspace feature unification enables ndarray/blas
-# (ny activates this), the Accelerate framework must be linked.
-blas-src = { workspace = true }
-accelerate-src = { workspace = true }
 
 # Optional: random tensor constructors (randn, rand_like)
 rand = { workspace = true, optional = true }
 rand_distr = { workspace = true, optional = true }
+
+# BLAS linker symbols — when workspace feature unification enables ndarray/blas
+# (ny activates this), the Accelerate framework must be linked. Accelerate is
+# an Apple framework, so the linkage deps exist only on macOS; everywhere else
+# ndarray's blas feature is never activated and dot() runs its pure-Rust
+# matmul (matrixmultiply) — same results, no system BLAS to link.
+[target.'cfg(target_os = "macos")'.dependencies]
+blas-src = { workspace = true }
+accelerate-src = { workspace = true }
 
 [[test]]
 name = "core_all"

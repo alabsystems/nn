@@ -169,7 +169,7 @@ pub fn is_fully_verifiable(net: &GraphNetwork) -> bool {
 mod tests {
     use super::*;
     use ndarray::{Array1, Array2};
-    use ny_propagate::layers::{Layer, LinearLayer, ReLULayer, WhereLayer};
+    use ny_propagate::layers::{Layer, LinearLayer, NonZeroLayer, ReLULayer};
     use ny_propagate::{GraphNode, NETWORK_INPUT};
 
     /// Build a tiny Linear -> ReLU -> Linear `GraphNetwork` directly from
@@ -220,9 +220,17 @@ mod tests {
             SoundnessClass::SoundButLoose
         );
         assert_eq!(classify_layer_type_name("MaxPool2d"), SoundnessClass::Sound);
-        // Data-dependent op stays unsupported.
+        // Where: SoundButLoose since ny 0.4.0 — `WhereLayer` ignores the
+        // condition and hulls both branches, which encloses every runtime
+        // condition value (sound, but strictly wider than either branch).
         assert_eq!(
             classify_layer_type_name("Where"),
+            SoundnessClass::SoundButLoose
+        );
+        // The genuinely data-dependent case stays unsupported: NonZero's
+        // output SHAPE moves with the bounds.
+        assert_eq!(
+            classify_layer_type_name("NonZero"),
             SoundnessClass::Unsupported
         );
     }
@@ -262,18 +270,22 @@ mod tests {
 
     #[test]
     fn unsupported_op_is_reported_as_a_hole() {
-        // Start from the clean net, then append a data-dependent op (Where) that
-        // ny cannot soundly verify, to confirm it is surfaced as a hole.
+        // Start from the clean net, then append NonZero — ny 0.4.0's canonical
+        // genuinely-unsupported layer: its OUTPUT SHAPE is a function of the
+        // tensor's values (`[rank, num_nonzero]`), so no static graph shape
+        // exists for a downstream layer to consume. (`Where`, this test's old
+        // witness, is now classified SoundButLoose: `WhereLayer` hulls both
+        // branches, which encloses every condition.)
         let mut net = fc_relu_fc_net();
         net.add_node(GraphNode::new(
-            "where_op",
-            Layer::Where(WhereLayer::default()),
-            vec!["lin2".to_string(), "lin2".to_string(), "lin2".to_string()],
+            "nonzero_op",
+            Layer::NonZero(NonZeroLayer),
+            vec!["lin2".to_string()],
         ));
 
         let coverage = model_op_coverage(&net);
         assert_eq!(coverage.unsupported, 1);
-        assert_eq!(coverage.unsupported_layers, vec!["Where".to_string()]);
+        assert_eq!(coverage.unsupported_layers, vec!["NonZero".to_string()]);
         assert!(!coverage.is_fully_verifiable());
         assert!(!is_fully_verifiable(&net));
         // The clean ops are still tallied alongside the hole.

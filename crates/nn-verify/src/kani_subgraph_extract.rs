@@ -516,6 +516,18 @@ fn ay_incompat_mha() {
         num_heads: 4,
         num_kv_heads: 4,
         head_dim: 32,
+        scale: 0.176_776_695_296_636_88, // 1/sqrt(32)
+        q_weight: WeightRef::from_shape(&[128, 128]),
+        q_bias: None,
+        k_weight: WeightRef::from_shape(&[128, 128]),
+        k_bias: None,
+        v_weight: WeightRef::from_shape(&[128, 128]),
+        v_bias: None,
+        out_weight: WeightRef::from_shape(&[128, 128]),
+        out_bias: None,
+        rope: None,
+        cross_attention: false,
+        has_mask: false,
     }));
 }
 

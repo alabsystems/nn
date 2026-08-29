@@ -512,9 +512,19 @@ fn test_map_topk() {
     );
     let ctx = empty_ctx();
     let (op, inputs) = map_node_to_trace_op(&node, &ctx, 0).unwrap();
+    // largest/sorted absent from the node → aten defaults (True, True)
+    // must be imported, not dropped.
     assert!(
-        matches!(op, TraceOp::Topk { k: 5, dim: 1 }),
-        "expected Topk {{ k: 5, dim: 1 }}, got {op:?}"
+        matches!(
+            op,
+            TraceOp::Topk {
+                k: 5,
+                dim: 1,
+                largest: true,
+                sorted: true,
+            }
+        ),
+        "expected Topk {{ k: 5, dim: 1, largest: true, sorted: true }}, got {op:?}"
     );
     assert_eq!(inputs, vec!["x"]);
 }

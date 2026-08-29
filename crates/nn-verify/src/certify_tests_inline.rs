@@ -6,12 +6,12 @@
 
 use super::*;
 use crate::certificate_types::ConstructiveProofMethod;
-use ny_api::BoundedTensor;
+use ndarray::{ArrayD, IxDyn};
 use nn_core::dyn_tensor::trace::{record_input, trace_graph, TraceOp};
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::layers::{Linear, Module};
 use nn_core::Device;
-use ndarray::{ArrayD, IxDyn};
+use ny_api::BoundedTensor;
 
 #[test]
 fn test_certify_model_linear_relu() {
@@ -147,12 +147,19 @@ fn test_certify_f32_model_has_f32only_precision() {
 }
 
 #[test]
-fn test_certify_f16_cast_model_has_f16aware_precision() {
+fn certify_f16_cast_model_refused_fail_closed() {
     use nn_core::dyn_tensor::trace::TraceNode;
     use nn_core::DType;
 
     // Input → ReLU → ToDtype(F16) → ReLU.
-    // The ToDtype(F16) Clamp layer → PrecisionModel::F16Aware { cast_count: 1 }.
+    //
+    // Posture change (ny hardening 25dee0c5e): the bridge's former F16
+    // downcast Clamp surrogate was unsound (F16 rounding semantics are
+    // unmodeled), so this model no longer certifies with
+    // PrecisionModel::F16Aware — it is refused fail-closed. The cast node
+    // records its real F16 output dtype, so the refusal comes from the
+    // bridge's graph-wide F32 gate ("only soundly supports F32 tensors"),
+    // surfacing as CertifyError::Verify(VerifyError::Ny(UnsupportedOp)).
     let nodes = vec![
         TraceNode::new(
             0,
@@ -196,18 +203,20 @@ fn test_certify_f16_cast_model_has_f16aware_precision() {
     let bounds = BoundedTensor::new(lower, upper).unwrap();
 
     let config = CertifyConfig::new("test_f16_precision");
-    let result = certify_model(&graph, &bounds, &config).unwrap();
-
-    let cert = &result.bundle.certificates[0];
-    match &cert.precision_model {
-        Some(PrecisionModel::F16Aware {
-            cast_count,
-            total_epsilon,
-        }) => {
-            assert_eq!(*cast_count, 1, "should have exactly 1 F16 cast");
-            assert_eq!(*total_epsilon, 0.0, "Phase 1: epsilon is 0.0");
+    let err = certify_model(&graph, &bounds, &config)
+        .expect_err("F16 cast model must be refused fail-closed (ny 25dee0c5e)");
+    match &err {
+        CertifyError::Verify(VerifyError::Ny(ny_api::NyError::UnsupportedOp(msg))) => {
+            assert!(
+                msg.contains("dtype F16"),
+                "refusal must name the offending dtype, got: {msg}"
+            );
+            assert!(
+                msg.contains("only soundly supports F32"),
+                "refusal must come from the bridge's graph-wide F32 gate, got: {msg}"
+            );
         }
-        other => panic!("expected F16Aware {{ cast_count: 1 }}, got {other:?}"),
+        other => panic!("expected Verify(Ny(UnsupportedOp)) mentioning dtype F16, got {other:?}"),
     }
 }
 

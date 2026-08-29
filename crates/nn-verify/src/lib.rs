@@ -8,11 +8,12 @@
 //!
 //! - **NY**: Sound overapproximation via IBP/CROWN bound propagation.
 //!   Fast, scales to large networks. Translates kernel IR to `GraphNetwork`.
-//! - **ay**: SMT verification via `ay-bindings`. Phase A (current default): generates
-//!   SMT-LIB2 with UF approximation (`SmtOutcome::Unexecuted`). Phase B: direct
-//!   in-process solving (requires `ay-smt` feature flag, tracked in #29).
-//!   Exact for pure arithmetic kernels; uses uninterpreted function (UF)
-//!   approximation for transcendental ops (sin, cos, exp). See [`ay`] module.
+//! - **ay**: SMT verification via `ay-bindings`. Default build: generates SMT-LIB2
+//!   with UF approximation and records `SmtOutcome::Unexecuted`. The non-default
+//!   `ay-smt` feature links `ay-bindings` with its `direct` feature and solves
+//!   in-process — exact for pure arithmetic kernels, while transcendental ops
+//!   (sin, cos, exp) remain uninterpreted-function approximations and stay
+//!   `Unexecuted`. See [`ay`] module.
 //!
 //! Results from both backends are persisted to per-model status files
 //! (`nn_verify_status_*.json`: demucs, kokoro, qwen3, shared, silero, whisper).
@@ -75,27 +76,52 @@ mod verify_model_macro;
 // laddered driver, deployed-precision (Metal f16) soundness, op-coverage
 // conformance, and Clean-checkable certificates. Additive; the legacy verify
 // path is untouched. ---
-/// Laddered model verification (IBP -> alpha -> CROWN -> beta -> MIP) via ny_api::ladder.
-#[cfg(feature = "ny")]
-pub mod ny_ladder;
-/// Deployed-precision (f16/bf16) sound verification via ny_api::precision.
-#[cfg(feature = "ny")]
-pub mod ny_precision;
-/// Operation soundness-coverage report via ny_api::conformance.
-#[cfg(feature = "ny")]
-pub mod ny_conformance;
-/// Load-once / verify-many sessions with a sound verdict cache via ny_api::session.
-#[cfg(feature = "ny")]
-pub mod ny_session;
 /// Proof-carrying, Clean-checkable certificates via ny_api::cert (opt-in).
 #[cfg(feature = "ny-cert")]
 pub mod ny_certify;
-/// Sound exact-rational global Lipschitz certification via ny_api::lipschitz (opt-in).
-#[cfg(feature = "ny-cert")]
-pub mod ny_lipschitz;
 /// Complete verification terminal (HiGHS MIP) via ny_api::complete (opt-in).
 #[cfg(feature = "ny-complete")]
 pub mod ny_complete;
+/// Certified stage-chaining composition (bound certificates, pipelines, mixer,
+/// audio property checks) via ny_api::composition + ny_api::materialize.
+#[cfg(feature = "ny")]
+pub mod ny_composition;
+/// Operation soundness-coverage report via ny_api::conformance.
+#[cfg(feature = "ny")]
+pub mod ny_conformance;
+/// Rich output properties (halfspace / argmax-margin reduced to sound margin>0
+/// checks) via ny_api::annotation + ny_api::constraints.
+#[cfg(feature = "ny")]
+pub mod ny_constraints;
+/// Audio/DSP verification graph builders (waveshaper, biquad, envelope
+/// follower, STFT/mel) via ny_api::dsp.
+#[cfg(feature = "ny")]
+pub mod ny_dsp;
+/// Two-network equivalence proving (||f(x) - g(x)|| < eps via a difference
+/// network) via ny_api::equivalence.
+#[cfg(feature = "ny")]
+pub mod ny_equivalence;
+/// Laddered model verification (IBP -> alpha -> CROWN -> beta -> MIP) via ny_api::ladder.
+#[cfg(feature = "ny")]
+pub mod ny_ladder;
+/// Sound exact-rational global Lipschitz certification via ny_api::lipschitz (opt-in).
+#[cfg(feature = "ny-cert")]
+pub mod ny_lipschitz;
+/// Deployed-precision (f16/bf16) sound verification via ny_api::precision.
+#[cfg(feature = "ny")]
+pub mod ny_precision;
+/// Monte-Carlo + concentration probabilistic certificates via ny_api::probabilistic.
+#[cfg(feature = "ny")]
+pub mod ny_probabilistic;
+/// Load-once / verify-many sessions with a sound verdict cache via ny_api::session.
+#[cfg(feature = "ny")]
+pub mod ny_session;
+/// Memory-efficient streaming CROWN (gradient checkpointing) via ny_api::streaming.
+#[cfg(feature = "ny")]
+pub mod ny_streaming;
+/// Permutation / finite-rotation invariance verification via ny_api::symmetry.
+#[cfg(feature = "ny")]
+pub mod ny_symmetry;
 
 /// Sound beta-CROWN (GenBaB branch-and-bound) verification path via
 /// `ny_propagate::BetaCrownVerifier`. Proves lower/upper-bound box properties by
@@ -122,9 +148,57 @@ pub mod kokoro_certificate_bundle;
 pub mod kokoro_crown_certificate;
 pub mod tighten;
 
+#[cfg(feature = "ay-smt")]
+pub mod ay;
+#[cfg(feature = "ay-smt")]
+pub mod ay_attention_mask_position_bias_dpdf;
+#[cfg(feature = "ay-smt")]
+pub mod ay_attention_mask_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_conv_stride_padding_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_gradient_computation_proofs;
+#[cfg(feature = "ay-smt")]
+pub mod ay_gradient_computation_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_matrix_decomposition;
+#[cfg(feature = "ay-smt")]
+pub mod ay_matrix_decomposition_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_normalization_layer_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_quantization_dpdf_vlm;
+#[cfg(feature = "ay-smt")]
+pub mod ay_quantization_error_bounds;
+#[cfg(feature = "ay-smt")]
+pub mod ay_real_lit;
+#[cfg(feature = "ay-smt")]
+pub mod ay_reshape_view_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_rope_position_properties;
+#[cfg(feature = "ay-smt")]
+pub mod ay_softmax_cross_entropy;
+#[cfg(feature = "ay-smt")]
+pub mod ay_softmax_cross_entropy_dpdf;
+#[cfg(feature = "ay-smt")]
+pub mod ay_softmax_cross_entropy_extended;
+/// Network synthesis with ay: solve for weights from constraints (ay as backend).
+#[cfg(feature = "ay-smt")]
+pub mod ay_synthesize;
+/// Detect SMT queries that are UNSAT for reasons unrelated to the property.
+#[cfg(feature = "ay-smt")]
+pub(crate) mod ay_vacuity;
+#[cfg(feature = "ay-smt")]
+pub mod ay_weight_init_constraints;
 pub mod junction_contract;
 #[cfg(kani)]
 mod kani_attention_safety;
+#[cfg(kani)]
+#[path = "kani_ay_fp_snake_extended.rs"]
+mod kani_ay_fp_snake_extended;
+#[cfg(kani)]
+#[path = "kani_ay_snake_decompose.rs"]
+mod kani_ay_snake_decompose;
 pub(crate) mod kani_bridge;
 #[cfg(kani)]
 #[path = "kani_dpdf_certify_proofs.rs"]
@@ -169,12 +243,6 @@ mod kani_subgraph_extract_3743;
 mod kani_subgraph_extract_issue3729;
 #[cfg(kani)]
 mod kani_verify_properties;
-#[cfg(kani)]
-#[path = "kani_ay_fp_snake_extended.rs"]
-mod kani_ay_fp_snake_extended;
-#[cfg(kani)]
-#[path = "kani_ay_snake_decompose.rs"]
-mod kani_ay_snake_decompose;
 pub mod proof_bundle;
 pub mod selective_crown;
 pub mod signing_config;
@@ -185,48 +253,6 @@ pub(crate) mod status_smt;
 pub mod subgraph_extract;
 pub(crate) mod util;
 pub(crate) mod verify_types;
-#[cfg(feature = "ay-smt")]
-pub mod ay;
-#[cfg(feature = "ay-smt")]
-pub mod ay_attention_mask_position_bias_dpdf;
-#[cfg(feature = "ay-smt")]
-pub mod ay_real_lit;
-/// Network synthesis with ay: solve for weights from constraints (ay as backend).
-#[cfg(feature = "ay-smt")]
-pub mod ay_synthesize;
-#[cfg(feature = "ay-smt")]
-pub mod ay_attention_mask_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_conv_stride_padding_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_gradient_computation_proofs;
-#[cfg(feature = "ay-smt")]
-pub mod ay_gradient_computation_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_matrix_decomposition;
-#[cfg(feature = "ay-smt")]
-pub mod ay_matrix_decomposition_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_normalization_layer_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_quantization_dpdf_vlm;
-#[cfg(feature = "ay-smt")]
-pub mod ay_quantization_error_bounds;
-#[cfg(feature = "ay-smt")]
-pub mod ay_reshape_view_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_rope_position_properties;
-#[cfg(feature = "ay-smt")]
-pub mod ay_softmax_cross_entropy;
-#[cfg(feature = "ay-smt")]
-pub mod ay_softmax_cross_entropy_dpdf;
-#[cfg(feature = "ay-smt")]
-pub mod ay_softmax_cross_entropy_extended;
-/// Detect SMT queries that are UNSAT for reasons unrelated to the property.
-#[cfg(feature = "ay-smt")]
-pub(crate) mod ay_vacuity;
-#[cfg(feature = "ay-smt")]
-pub mod ay_weight_init_constraints;
 
 // --- NY-gated modules ---
 #[cfg(feature = "ny")]
@@ -376,7 +402,7 @@ pub use status_report::{GapSummary, ModelSummary, StatusReport, Trend, Verificat
 // Subgraph extraction for ay SMT verification (#2455).
 pub use subgraph_extract::{
     extract_subgraph, find_ay_candidates, is_ay_compatible_op, validate_subgraph,
-    ExtractedSubgraph, SubgraphSpec, AYCandidateRegion,
+    AYCandidateRegion, ExtractedSubgraph, SubgraphSpec,
 };
 pub use tighten::{
     classify_tightening, compare_report_paths, compare_reports, format_tightening_diff,
@@ -387,6 +413,11 @@ pub use tighten::{
 pub use bounds::harmonic_source::HarmonicSourceBounds;
 
 // --- NY-gated re-exports ---
+#[cfg(feature = "ay-smt")]
+pub use ay::{
+    kernel_to_smt2, kernel_to_smt2_with_bounds, verify_kernel_smt, verify_kernel_smt_multi,
+    verify_kernel_smt_with_bounds, TranslatedKernel,
+};
 #[cfg(feature = "ny")]
 pub use bounds_bridge::{to_bounded_tensor, to_interval_bounds};
 #[cfg(feature = "ny")]
@@ -473,7 +504,7 @@ pub use soundness::soundness_mode_for_graph;
 pub use subblock_decompose::{decompose, decompose_at_norms, DecompositionResult, SubBlock};
 #[cfg(feature = "ny")]
 pub use tightening_loop::{
-    run_tightening_loop, TighteningConfig, TighteningResult, TighteningStep, AYCandidateRange,
+    run_tightening_loop, AYCandidateRange, TighteningConfig, TighteningResult, TighteningStep,
 };
 #[cfg(feature = "ny")]
 pub use trace_to_graph::{
@@ -496,11 +527,6 @@ pub use verify_request::VerifyRequest;
 pub use verify_trace::{verify_trace, VerifyTraceResult};
 #[cfg(feature = "ny")]
 pub use with_bounds::{with_bounds, with_bounds_multi_input, BoundsPolicy, WithBoundsResult};
-#[cfg(feature = "ay-smt")]
-pub use ay::{
-    kernel_to_smt2, kernel_to_smt2_with_bounds, verify_kernel_smt, verify_kernel_smt_multi,
-    verify_kernel_smt_with_bounds, TranslatedKernel,
-};
 
 // Re-export NY types when the feature is enabled.
 // Consumers (e.g., dvoice) should use these re-exports rather than depending

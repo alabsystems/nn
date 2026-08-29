@@ -308,7 +308,10 @@ fn arity_sdpa_causal() {
     assert!(TraceOp::SdpaCausal { scale: 0.125 }.expected_arity() == Some(3));
 }
 
-/// Prove: MultiHeadAttention has arity 3 (Q, K, V).
+/// Prove: MultiHeadAttention has VARIABLE arity — x (+ optional kv_input
+/// + optional mask), 1 to 3 inputs — so `expected_arity` is `None`, like
+/// `Sdpa`. (The old `Some(3)` claimed "Q, K, V", which was never what the
+/// fused node's inputs were.)
 #[kani::unwind(1)]
 #[kani::proof]
 #[kani::unwind(1)]
@@ -317,10 +320,22 @@ fn arity_multi_head_attention() {
         TraceOp::MultiHeadAttention {
             num_heads: 8,
             num_kv_heads: 2,
-            head_dim: 64
+            head_dim: 64,
+            scale: 0.125,
+            q_weight: WeightRef::from_shape(&[8, 8]),
+            q_bias: None,
+            k_weight: WeightRef::from_shape(&[8, 8]),
+            k_bias: None,
+            v_weight: WeightRef::from_shape(&[8, 8]),
+            v_bias: None,
+            out_weight: WeightRef::from_shape(&[8, 8]),
+            out_bias: None,
+            rope: None,
+            cross_attention: false,
+            has_mask: false,
         }
         .expected_arity()
-            == Some(3)
+            == None
     );
 }
 

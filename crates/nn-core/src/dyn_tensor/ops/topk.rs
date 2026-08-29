@@ -61,7 +61,15 @@ impl DynTensor {
         if trace::is_tracing() {
             let input_ids = Self::trace_input_ids(&[self])?;
             if let Some(id) = trace::record_op(
-                TraceOp::Topk { k, dim },
+                // Record the parameters the computation ACTUALLY used — a
+                // largest=false or sorted=false selection is a different
+                // function from the default largest+sorted one.
+                TraceOp::Topk {
+                    k,
+                    dim,
+                    largest,
+                    sorted,
+                },
                 &input_ids,
                 values.dims(),
                 values.dtype(),
