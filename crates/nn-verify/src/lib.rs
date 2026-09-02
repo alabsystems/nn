@@ -142,6 +142,7 @@ pub mod error;
 pub mod external_bounds;
 pub mod fingerprint;
 pub mod gap_detector;
+pub mod generalization;
 pub mod istft_linear_matrix;
 pub mod kokoro_certificate;
 pub mod kokoro_certificate_bundle;
@@ -359,6 +360,17 @@ pub use external_bounds::{
 pub use fingerprint::{
     diff_fingerprints, fingerprint_graph, fingerprint_graph_with_weights, fingerprint_trace,
     fingerprint_trace_with_weights, ChangeReason, ChangedRegion, SubgraphFingerprint,
+};
+pub use generalization::{
+    calculate_generalization_bound, derive_subsample_indices, ArtifactIdentity,
+    EvaluationSampling, EvidenceArtifactPaths, EvidenceArtifacts, GeneralizationAssumptions,
+    GeneralizationBound, GeneralizationBoundInputs, GeneralizationCertificate,
+    GeneralizationCertificateInputs, GeneralizationError, GeneralizationMethod,
+    GeneralizationReplayReport, GenerationReward, HypothesisEncoding, PromptRewardRecord,
+    RewardTranscript, RewardTranscriptSummary, SubsampleScheme, TrainingCorpusManifest,
+    GENERALIZATION_CERTIFICATE_VERSION, GENERALIZATION_NUMERICAL_POLICY,
+    GENERALIZATION_PAPER_REFERENCE, REWARD_TRANSCRIPT_VERSION, SUBSAMPLE_ALGORITHM,
+    TRAINING_CORPUS_MANIFEST_VERSION,
 };
 pub use junction_contract::{
     verify_junction, verify_junctions, JunctionProof, JunctionVerification, SubBlockBounds,

@@ -1,18 +1,33 @@
 # The PUBLIC snapshot's toolchain pin. Copied over the export's
 # rust-toolchain.toml by transforms.sh; the private repo keeps channel = "trust".
 #
-# WHY THIS FILE EXISTS. The private repo pins the Trust toolchain, whose
-# in-compilation verifier is FAIL-CLOSED, and pairs it with the `-Ztrust-verify=off`
-# opt-out in .cargo/config.toml — which that file itself calls "the other half of
-# the pin". The publish boundary deliberately does not export .cargo/config.toml
-# (it also carries a private rustc wrapper), so a snapshot that shipped
-# channel = "trust" would pin the verifying compiler and drop the opt-out.
+# WHY THIS FILE EXISTS. Two independent reasons, either sufficient on its own:
 #
-# That combination is unbuildable for anyone. The public-clone gate proved it on
-# 2026-08-16: `cargo check --workspace` died with 584 errors inside third-party
+#   1. A public clone has no rustup toolchain named `trust` to resolve. It is a
+#      locally linked stage, not a distributable channel, so an export pinning
+#      `channel = "trust"` fails before compiling anything.
+#   2. The private repo's verification posture lives in .cargo/config.toml, and
+#      that file does not cross the boundary: publish/manifest.txt is an
+#      ALLOWLIST and .cargo/config.toml is simply not on it. So an untouched
+#      export would pin a FAIL-CLOSED verifying compiler with the file that
+#      makes it usable left behind.
+#
+# The public-clone gate proved the combination unbuildable on 2026-08-16:
+# `cargo check --workspace` died with 584 errors inside third-party
 # `memchr-2.8.3`, on fail-closed panic-freedom obligations for absent callees —
-# before reaching a single first-party crate. A public clone also has no rustup
-# toolchain named `trust` to resolve in the first place.
+# before reaching a single first-party crate.
+#
+# CORRECTION (2026-08-30). What stood here said the boundary excludes
+# .cargo/config.toml because it "also carries a private rustc wrapper". It does
+# not, and never did: that file sets no `build.rustc-wrapper` and names no
+# wrapper script — `grep -rn 'rustc-wrapper\|RUSTC_WRAPPER'` over the repo
+# returns nothing. The claim was load-bearing for nothing, which is exactly how
+# it survived unchecked. The real reason is allowlist omission, above.
+#
+# This substitution stays correct whatever the private posture becomes —
+# including after main adopts the sanctioned host/target split now sitting on
+# branch `trust/sanctioned-verify-split` — because `trust` remains unresolvable
+# anonymously either way.
 #
 # Same shape aterm uses (publish/public-rust-toolchain.toml there, copied at
 # transforms.sh:81). Stock upstream, pinned rather than floating so the snapshot

@@ -711,6 +711,13 @@ fn first_input_or_current(input_shapes: &[Vec<usize>], current_shape: &[usize]) 
 // ---------------------------------------------------------------------------
 
 /// Conv1d output length: `floor((L_in + 2*padding - dilation*(kernel-1) - 1) / stride + 1)`
+///
+/// Every argument reaches this function from model metadata (`kernel_size` is a
+/// weight tensor's spatial dimension; `stride`/`padding`/`dilation` are node
+/// attributes), so none of them may be assumed well-formed. The arithmetic is
+/// therefore total: degenerate inputs saturate instead of wrapping or panicking.
+/// For well-formed inputs (`kernel_size >= 1`, no overflow) the result is
+/// unchanged.
 pub(super) fn conv1d_output_length(
     l_in: usize,
     kernel_size: usize,
@@ -721,15 +728,24 @@ pub(super) fn conv1d_output_length(
     if stride == 0 {
         return l_in;
     }
-    let numerator = l_in + 2 * padding;
-    let kernel_extent = dilation * (kernel_size - 1) + 1;
+    // `kernel_size == 0` is degenerate — a weight whose spatial dim is 0. Treat
+    // it as a single tap rather than underflowing on `kernel_size - 1`.
+    let taps = kernel_size.saturating_sub(1);
+    let numerator = l_in.saturating_add(padding.saturating_mul(2));
+    let kernel_extent = dilation.saturating_mul(taps).saturating_add(1);
     if numerator < kernel_extent {
         return 0;
     }
+    // `kernel_extent >= 1`, so the quotient is at most `usize::MAX - 1`.
     (numerator - kernel_extent) / stride + 1
 }
 
 /// ConvTranspose1d output length.
+///
+/// As with [`conv1d_output_length`], all arguments originate in model metadata.
+/// The trailing `- 2*padding` is a genuine underflow for ordinary attribute
+/// values (e.g. `l_in=1, kernel=1, stride=1, padding=8`), so the whole
+/// expression saturates; a length clamps at 0.
 pub(super) fn conv_transpose1d_output_length(
     l_in: usize,
     kernel_size: usize,
@@ -738,8 +754,13 @@ pub(super) fn conv_transpose1d_output_length(
     output_padding: usize,
     dilation: usize,
 ) -> usize {
-    (l_in.saturating_sub(1)) * stride + dilation * (kernel_size - 1) + output_padding + 1
-        - 2 * padding
+    let taps = kernel_size.saturating_sub(1);
+    l_in.saturating_sub(1)
+        .saturating_mul(stride)
+        .saturating_add(dilation.saturating_mul(taps))
+        .saturating_add(output_padding)
+        .saturating_add(1)
+        .saturating_sub(padding.saturating_mul(2))
 }
 
 // ---------------------------------------------------------------------------
@@ -872,8 +893,39 @@ fn current_shape_from_reshape(
 
 #[cfg(test)]
 mod tests {
-    use super::infer_output_shape;
+    use super::{conv1d_output_length, conv_transpose1d_output_length, infer_output_shape};
     use crate::dyn_tensor::trace::TraceOp;
+
+    // Regression: both conv length formulas are reached with metadata read from
+    // a model file (`kernel_size` is a weight's spatial dim, the rest are node
+    // attributes), and both used to panic under `-C overflow-checks=on`.
+    //
+    // The pre-existing Kani harnesses did not catch this: they assume
+    // `kernel_size >= 1` and `padding <= 16`, which no caller establishes.
+
+    #[test]
+    fn conv1d_output_length_is_total_on_degenerate_metadata() {
+        // `kernel_size == 0` used to underflow on `kernel_size - 1`.
+        assert_eq!(conv1d_output_length(16, 0, 1, 0, 1), 16);
+        // `2 * padding` used to overflow; it now saturates, so the numerator is
+        // `usize::MAX` and the result is `(usize::MAX - kernel_extent) + 1`
+        // with `kernel_extent == 1*(3-1) + 1 == 3`.
+        assert_eq!(conv1d_output_length(16, 3, 1, 1 << 63, 1), usize::MAX - 2);
+        // Well-formed inputs are unchanged: (16 + 2 - 2 - 1)/1 + 1 == 16.
+        assert_eq!(conv1d_output_length(16, 3, 1, 1, 1), 16);
+        assert_eq!(conv1d_output_length(16, 3, 2, 0, 1), 7);
+    }
+
+    #[test]
+    fn conv_transpose1d_output_length_is_total_on_degenerate_metadata() {
+        // Ordinary attributes, not adversarial: the trailing `- 2*padding`
+        // underflowed whenever padding outweighed the accumulated extent.
+        assert_eq!(conv_transpose1d_output_length(1, 1, 1, 8, 0, 1), 0);
+        assert_eq!(conv_transpose1d_output_length(16, 0, 1, 0, 0, 1), 16);
+        // Well-formed inputs are unchanged: (8-1)*2 + 3 + 0 + 1 - 2 == 16.
+        assert_eq!(conv_transpose1d_output_length(8, 4, 2, 1, 0, 1), 16);
+        assert_eq!(conv_transpose1d_output_length(4, 4, 4, 0, 0, 1), 16);
+    }
 
     #[test]
     fn infer_narrow_shape_clamps_open_ended_length_to_remaining_extent() {

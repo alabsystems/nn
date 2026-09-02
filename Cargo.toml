@@ -28,7 +28,7 @@ members = [
 # nn-ane, nn-swift
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["Andrew Yates <andrewyates.name@gmail.com>"]
 license = "Apache-2.0"

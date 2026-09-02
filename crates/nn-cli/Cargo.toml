@@ -14,6 +14,9 @@ path = "src/main.rs"
 [dependencies]
 nn-core = { workspace = true }
 nn-dsl = { workspace = true, features = ["plan-serde"] }
+# Statistical certificates do not require NY. Keep this direct dependency
+# feature-light even though the workspace dependency enables nn-verify defaults.
+nn-verify = { path = "../nn-verify", default-features = false }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }

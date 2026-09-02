@@ -6,7 +6,9 @@
 //!
 //! Provides HMAC-SHA256 signing and verification for any certificate type that
 //! implements [`Signable`]: [`ProofCertificate`], [`EditCertificate`], and
-//! [`FusionEquivalenceCertificate`]. A certificate's `content_hash` is a
+//! [`crate::generalization::GeneralizationCertificate`] (plus
+//! `FusionEquivalenceCertificate` when NY is enabled). A certificate's
+//! `content_hash` is a
 //! SHA-256 digest of the canonical JSON (all fields except `content_hash` and
 //! `hmac_signature`). The `hmac_signature` is an HMAC-SHA256 of that content
 //! hash, keyed with a shared secret.
@@ -134,7 +136,8 @@ pub fn compute_content_hash(cert: &impl Signable) -> Result<String, IntegrityErr
 /// Sign a certificate: compute content hash and HMAC signature.
 ///
 /// Works with any certificate type that implements [`Signable`]:
-/// [`ProofCertificate`], [`EditCertificate`], [`FusionEquivalenceCertificate`].
+/// [`ProofCertificate`], [`EditCertificate`], and
+/// [`crate::generalization::GeneralizationCertificate`].
 ///
 /// Populates `content_hash` and `hmac_signature` on the certificate.
 /// Any existing values in those fields are overwritten.

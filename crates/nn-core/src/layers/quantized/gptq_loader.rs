@@ -159,6 +159,15 @@ pub(crate) fn dequantize_gptq(
         ));
     }
 
+    // `group_size` reaches here from a model's `quantize_config.json`, so it is
+    // untrusted. Both `div_ceil` below and `i / group_size` in the dequantize
+    // loop divide by it. Reject it here so that guard dominates both divisions.
+    if group_size == 0 {
+        return Err(TensorError::ValueOutOfRange {
+            description: "dequantize_gptq: group_size must be > 0",
+        });
+    }
+
     let expected_groups = in_features.div_ceil(group_size);
     if num_groups != expected_groups {
         return Err(TensorError::DataLengthMismatch {

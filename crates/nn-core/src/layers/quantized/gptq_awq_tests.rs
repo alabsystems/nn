@@ -139,6 +139,21 @@ fn test_gptq_dequantize_simple() {
 }
 
 #[test]
+fn test_gptq_dequantize_rejects_zero_group_size() {
+    // Regression: `group_size` comes from a model's `quantize_config.json`, so
+    // it is untrusted. It divides twice — `in_features.div_ceil(group_size)`
+    // and `i / group_size` in the dequantize loop — and both used to panic on
+    // zero. Discharges the two `[divzero]` refutations in gptq_loader.rs.
+    let q_weight = DynTensor::from_vec(vec![8.0_f32; 8 * 8], &[8, 8], &Device::Cpu).unwrap();
+    let scales = DynTensor::from_vec(vec![0.1_f32; 8], &[1, 8], &Device::Cpu).unwrap();
+    let zeros = DynTensor::from_vec(vec![8.0_f32; 8], &[1, 8], &Device::Cpu).unwrap();
+
+    assert!(dequantize_gptq(&q_weight, &scales, &zeros, 0).is_err());
+    // The valid case still works.
+    assert!(dequantize_gptq(&q_weight, &scales, &zeros, 8).is_ok());
+}
+
+#[test]
 fn test_gptq_dequantize_nonzero() {
     // q=10, zp=8, scale=0.5 → (10-8)*0.5 = 1.0
     let q_data = vec![10.0_f32; 8 * 8];

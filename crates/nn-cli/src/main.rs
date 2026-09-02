@@ -31,6 +31,9 @@ use std::process;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod generalize_cli;
+use generalize_cli::GeneralizeCommand;
+
 /// nn — verified ML framework CLI.
 ///
 /// Compile exported `torch.export` artifacts to optimized Metal inference
@@ -259,6 +262,15 @@ enum Commands {
         #[arg(long)]
         persist: bool,
     },
+
+    /// Calculate or replay a compression-based population-reward certificate.
+    ///
+    /// Implements Theorem 1 and Corollary 1 of arXiv:2607.14506v1. This is a
+    /// distributional statistical guarantee, not a universal safety proof.
+    Generalize {
+        #[command(subcommand)]
+        command: GeneralizeCommand,
+    },
 }
 
 /// Compilation target backend.
@@ -432,6 +444,7 @@ fn run(cli: Cli) -> Result<()> {
             output,
             persist,
         } => cmd_optimize(plan, graph, weights, budget, cost_model, output, persist),
+        Commands::Generalize { command } => generalize_cli::run(command),
     }
 }
 

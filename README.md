@@ -1,6 +1,6 @@
 # NN — Verified ML Framework
 
-**v0.3.0** · Apache-2.0 · [github.com/alabsystems/nn](https://github.com/alabsystems/nn)
+Apache-2.0 · [github.com/alabsystems/nn](https://github.com/alabsystems/nn)
 
 A Rust-native ML framework where model code, GPU kernels, and proof tooling live together.
 
@@ -8,6 +8,8 @@ A Rust-native ML framework where model code, GPU kernels, and proof tooling live
 - **Metal as the production backend** — compiled `CompiledModel` dispatch with op fusion and weight uploads.
 - **Exported-artifact import bridge** — `torch.export` JSON + `safetensors` → optimized Metal model with a structured `ConvertReport`.
 - **Bound propagation** — `ny` IBP/CROWN over composed networks; `ay` SMT for small subgraphs.
+- **Population-reward certificates** — replayable compression-based PAC-Bayes
+  lower bounds for frozen, prefix-coded models and sealed reward transcripts.
 
 ## Install
 
@@ -132,6 +134,13 @@ items, not a Cargo feature — build under Kani to run them.
 synthetic-weight graph, **not** deployment evidence.
 `designs/architecture-certified-pipeline.md` sketches the intended end state.
 
+Statistical generalization is a separate assurance dimension from Levels 0–4.
+`nn generalize calculate` implements the population-reward bounds from
+arXiv:2607.14506v1 and `nn generalize check` replays artifact identities,
+corpus/transcript linkage, subsample selection, aggregation, and bound
+arithmetic. It does not turn an average-case distributional claim into a
+universal network-property proof.
+
 ## Status
 
 Pre-1.0. Metal is the production path, and it is macOS-only. The workspace also
@@ -139,6 +148,25 @@ builds on x86_64 Linux, where `nn device` and `nn optimize` work and the GPU
 subcommands decline up front — no CPU inference path is wired into the CLI.
 CUDA/Vulkan/CPU backends compile but have surface gaps. Verification coverage is
 partial: useful, not yet end-to-end proof-powered.
+
+`v0.3.0` is the current published tag. This snapshot is source-only and carries
+no lockfile, so it is a build target, not a reproducible one.
+
+Development builds against the Trust verifying compiler; this snapshot pins
+stock upstream Rust instead, because the `trust` channel is a locally linked
+toolchain no outside clone can resolve. Trust's in-compilation verification is
+switched off repo-wide even in the development build, so it contributes nothing
+to the levels above today — those are `nn-verify`'s own bound-propagation and
+SMT lanes plus the Kani harnesses, run as tests.
+
+Turning it back on is written and pushed but not merged: the development branch
+`trust/sanctioned-verify-split` verifies first-party crates while leaving build
+scripts, proc-macros and third-party dependencies alone, and it is proven to
+issue exactly those flags. It is blocked on compiler throughput, not on this
+code — verifying `nn-core` did not finish in over an hour of CPU, in an
+unmemoized per-statement recompute inside the verifier's VC generator. Every
+other crate depends on `nn-core`, so no crate in this workspace has yet been
+measured under verification.
 
 ## License
 
