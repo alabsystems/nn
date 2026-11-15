@@ -44,7 +44,7 @@ impl KernelPipeline {
     #[must_use = "returns a Result that may contain an error"]
     pub fn dispatch_bindings(
         &self,
-        _ctx: &MetalContext,
+        ctx: &MetalContext,
         bindings: &[BufferBinding<'_>],
         plan: &DispatchPlan,
     ) -> Result<(), MetalError> {
@@ -75,7 +75,7 @@ impl KernelPipeline {
         }
 
         // Lazy batch (#2009): encode into the thread-local lazy batch.
-        crate::gpu_scope::get_or_create_batch()
+        crate::gpu_scope::get_or_create_batch_for_context(ctx)
             .map_err(|e| MetalError::DispatchFailed(e.to_string()))?;
         let scope_result =
             crate::gpu_scope::encode_into_lazy_batch(|batch| -> Result<(), MetalError> {
@@ -155,7 +155,7 @@ impl KernelPipeline {
     #[must_use = "returns a Result that may contain an error"]
     pub fn dispatch_buffers_with_all_offsets(
         &self,
-        _ctx: &MetalContext,
+        ctx: &MetalContext,
         inputs: &[&MetalBuffer],
         input_offsets: &[usize],
         output: &MetalBuffer,
@@ -170,7 +170,7 @@ impl KernelPipeline {
         }
 
         // Lazy batch (#2009): encode into the thread-local lazy batch.
-        crate::gpu_scope::get_or_create_batch()
+        crate::gpu_scope::get_or_create_batch_for_context(ctx)
             .map_err(|e| MetalError::DispatchFailed(e.to_string()))?;
         let scope_result =
             crate::gpu_scope::encode_into_lazy_batch(|batch| -> Result<(), MetalError> {

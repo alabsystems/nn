@@ -101,10 +101,6 @@ impl KokoroModel {
     }
 }
 
-#[cfg(kani)]
-#[path = "kokoro_audio_kani_tests.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 mod tests {
     use crate::kokoro_istft::{kokoro_istft, KokoroIstftParams};

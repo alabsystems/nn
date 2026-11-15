@@ -16,7 +16,7 @@
 //!
 //! If this test compiles and passes, the candle→nn migration path works.
 //!
-//! Run: `cargo test -p nn --test candle_migration`
+//! Run: `targo --unverified test -p nn --test candle_migration`
 
 // ---------------------------------------------------------------------------
 // Step 1: Import from `nn::` — this is what dvoice consumers see.

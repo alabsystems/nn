@@ -154,7 +154,7 @@ pub enum PrecisionParseError {
     Unsupported(String),
 }
 
-/// Per-parameter input bound for differential tests and Kani harnesses.
+/// Per-parameter input bound for differential tests.
 ///
 /// Parsed from `bounds(x = "-1e4..1e4")` in the `#[kernel]` attribute.
 /// Defaults to `[-1e6, 1e6]` for f32 and `[-65504.0, 65504.0]` for f16

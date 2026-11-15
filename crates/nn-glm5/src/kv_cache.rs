@@ -15,6 +15,12 @@
 use crate::Glm5Error;
 use nn_core::Result;
 
+/// Largest layer count [`KVCache::new`] accepts.
+///
+/// Real GLM-4/5 checkpoints have under a hundred layers; the bound keeps the
+/// per-layer buffer table (allocated in `new`) a bounded allocation.
+pub const MAX_LAYERS: usize = 1 << 16;
+
 /// Flat KV cache for all transformer layers.
 ///
 /// Stores key and value vectors as contiguous `Vec<f32>` per layer.
@@ -31,6 +37,10 @@ pub struct KVCache {
     num_heads: usize,
     head_dim: usize,
     max_seq_len: usize,
+    /// Floats per token per layer: `num_heads * head_dim`, checked not to
+    /// overflow (nor `max_seq_len * token_size * 4` to exceed `isize::MAX`)
+    /// in [`KVCache::new`].
+    token_size: usize,
     /// Per-layer key storage: `keys[layer]` has length `current_len * num_heads * head_dim`.
     keys: Vec<Vec<f32>>,
     /// Per-layer value storage: same shape as keys.
@@ -48,17 +58,68 @@ impl KVCache {
     /// * `num_heads` - Number of KV attention heads per layer.
     /// * `head_dim` - Dimension of each attention head.
     /// * `max_seq_len` - Maximum sequence length (append fails beyond this).
-    #[must_use]
-    pub fn new(num_layers: usize, num_heads: usize, head_dim: usize, max_seq_len: usize) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Glm5Error::InvalidConfig`] (never panics) if:
+    /// - any of the four sizes is zero;
+    /// - `num_heads * head_dim` (floats per token) overflows `usize`;
+    /// - a full layer, `max_seq_len * num_heads * head_dim` `f32`s, would
+    ///   exceed `isize::MAX` bytes (no `Vec` could hold it, so a later
+    ///   `append` would panic on capacity overflow);
+    /// - `num_layers` exceeds [`MAX_LAYERS`] (the per-layer buffer table is
+    ///   allocated here, so its size is bounded up front).
+    ///
+    /// Decision 2026-10-02 (made by the orchestrator under the owner's
+    /// instruction to decide and prefer reversible steps): this constructor
+    /// used to be infallible and accepted any sizes, deferring the overflow
+    /// to `append` and panicking on an unallocatable `num_layers`.
+    pub fn new(
+        num_layers: usize,
+        num_heads: usize,
+        head_dim: usize,
+        max_seq_len: usize,
+    ) -> Result<Self> {
+        let invalid =
+            |reason: String| -> nn_core::TensorError { Glm5Error::InvalidConfig { reason }.into() };
+        if num_layers == 0 || num_heads == 0 || head_dim == 0 || max_seq_len == 0 {
+            return Err(invalid(format!(
+                "KVCache sizes must be non-zero: num_layers={num_layers}, \
+                 num_heads={num_heads}, head_dim={head_dim}, max_seq_len={max_seq_len}"
+            )));
+        }
+        let Some(token_size) = num_heads.checked_mul(head_dim) else {
+            return Err(invalid(format!(
+                "KVCache token size overflows: num_heads={num_heads} * head_dim={head_dim}"
+            )));
+        };
+        let max_layer_bytes = usize::MAX >> 1; // isize::MAX, the Vec allocation limit
+        let layer_bytes = max_seq_len
+            .checked_mul(token_size)
+            .and_then(|n| n.checked_mul(size_of::<f32>()));
+        if layer_bytes.is_none_or(|b| b > max_layer_bytes) {
+            return Err(invalid(format!(
+                "KVCache layer size overflows: max_seq_len={max_seq_len} * \
+                 num_heads={num_heads} * head_dim={head_dim} f32s exceeds isize::MAX bytes"
+            )));
+        }
+        if num_layers > MAX_LAYERS {
+            return Err(invalid(format!(
+                "KVCache num_layers={num_layers} exceeds the {MAX_LAYERS}-layer limit"
+            )));
+        }
+        let keys = vec![Vec::new(); num_layers];
+        let values = vec![Vec::new(); num_layers];
+        Ok(Self {
             num_layers,
             num_heads,
             head_dim,
             max_seq_len,
-            keys: vec![Vec::new(); num_layers],
-            values: vec![Vec::new(); num_layers],
+            token_size,
+            keys,
+            values,
             current_len: 0,
-        }
+        })
     }
 
     /// Append key/value data for one token at the given layer.
@@ -74,9 +135,11 @@ impl KVCache {
     /// - `value.len() != num_heads * head_dim`
     /// - Appending would exceed `max_seq_len`
     pub fn append(&mut self, layer: usize, key: &[f32], value: &[f32]) -> Result<()> {
-        let token_size = self.num_heads * self.head_dim;
+        let num_layers = self.num_layers;
+        let current_len = self.current_len;
+        let token_size = self.token_size;
 
-        if layer >= self.num_layers {
+        if layer >= num_layers {
             return Err(Glm5Error::InvalidInput {
                 reason: format!(
                     "KVCache layer index {} out of range (num_layers={})",
@@ -112,10 +175,15 @@ impl KVCache {
             .into());
         }
 
-        // Only check max_seq_len when appending to layer 0 (the first layer
-        // call per token). All layers share `current_len`, so the check on
-        // layer 0 is sufficient and avoids double-counting.
-        if layer == 0 && self.current_len >= self.max_seq_len {
+        // Every layer's append is checked, not only layer 0's: `current_len`
+        // advances on the last layer's append, so a caller that appended to
+        // the last layer alone used to grow the cache past `max_seq_len`.
+        // Within one token `current_len` does not change, so for the
+        // layer-0-first order this rejects exactly what the layer-0 check did.
+        let Some(next_len) = current_len
+            .checked_add(1)
+            .filter(|&next| next <= self.max_seq_len)
+        else {
             return Err(Glm5Error::InvalidInput {
                 reason: format!(
                     "KVCache at max sequence length ({}) — cannot append",
@@ -123,14 +191,24 @@ impl KVCache {
                 ),
             }
             .into());
-        }
+        };
 
-        self.keys[layer].extend_from_slice(key);
-        self.values[layer].extend_from_slice(value);
+        // `keys` and `values` hold exactly `num_layers` buffers (built in
+        // `new`), and `layer < num_layers` was checked above.
+        let (Some(layer_keys), Some(layer_values)) =
+            (self.keys.get_mut(layer), self.values.get_mut(layer))
+        else {
+            return Err(Glm5Error::InvalidInput {
+                reason: format!("KVCache layer index {layer} has no buffer"),
+            }
+            .into());
+        };
+        layer_keys.extend_from_slice(key);
+        layer_values.extend_from_slice(value);
 
-        // Increment current_len after the last layer finishes its append.
-        if layer == self.num_layers - 1 {
-            self.current_len += 1;
+        // Advance current_len after the last layer finishes its append.
+        if num_layers.checked_sub(1) == Some(layer) {
+            self.current_len = next_len;
         }
 
         Ok(())
@@ -140,24 +218,24 @@ impl KVCache {
     ///
     /// Returns a slice of length `current_len * num_heads * head_dim`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `layer >= num_layers`.
-    #[must_use]
-    pub fn get_keys(&self, layer: usize) -> &[f32] {
-        &self.keys[layer]
+    /// Returns `Glm5Error::InvalidInput` if `layer >= num_layers` (this was a
+    /// documented index panic before).
+    pub fn get_keys(&self, layer: usize) -> Result<&[f32]> {
+        layer_buffer(&self.keys, layer, self.num_layers)
     }
 
     /// Get all cached values for a layer.
     ///
     /// Returns a slice of length `current_len * num_heads * head_dim`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `layer >= num_layers`.
-    #[must_use]
-    pub fn get_values(&self, layer: usize) -> &[f32] {
-        &self.values[layer]
+    /// Returns `Glm5Error::InvalidInput` if `layer >= num_layers` (this was a
+    /// documented index panic before).
+    pub fn get_values(&self, layer: usize) -> Result<&[f32]> {
+        layer_buffer(&self.values, layer, self.num_layers)
     }
 
     /// Reset the cache for a new sequence.
@@ -211,6 +289,18 @@ impl KVCache {
     }
 }
 
+/// The cached buffer of `layer`, or the same `InvalidInput` error `append`
+/// returns for an out-of-range layer.
+fn layer_buffer(buffers: &[Vec<f32>], layer: usize, num_layers: usize) -> Result<&[f32]> {
+    match buffers.get(layer) {
+        Some(buffer) => Ok(buffer),
+        None => Err(Glm5Error::InvalidInput {
+            reason: format!("KVCache layer index {layer} out of range (num_layers={num_layers})"),
+        }
+        .into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,7 +311,7 @@ mod tests {
     const MAX_SEQ: usize = 16;
 
     fn make_cache() -> KVCache {
-        KVCache::new(NUM_LAYERS, NUM_HEADS, HEAD_DIM, MAX_SEQ)
+        KVCache::new(NUM_LAYERS, NUM_HEADS, HEAD_DIM, MAX_SEQ).expect("valid KVCache sizes")
     }
 
     fn make_token_data(base: f32) -> Vec<f32> {
@@ -243,11 +333,11 @@ mod tests {
         assert_eq!(cache.len(), 1);
         assert!(!cache.is_empty());
 
-        let cached_keys = cache.get_keys(0);
+        let cached_keys = cache.get_keys(0).unwrap();
         assert_eq!(cached_keys.len(), NUM_HEADS * HEAD_DIM);
         assert_eq!(cached_keys, key.as_slice());
 
-        let cached_vals = cache.get_values(0);
+        let cached_vals = cache.get_values(0).unwrap();
         assert_eq!(cached_vals.len(), NUM_HEADS * HEAD_DIM);
         assert_eq!(cached_vals, val.as_slice());
     }
@@ -275,13 +365,13 @@ mod tests {
         assert_eq!(cache.len(), 2);
 
         // Keys for layer 0 should be key1 ++ key2.
-        let all_keys = cache.get_keys(0);
+        let all_keys = cache.get_keys(0).unwrap();
         assert_eq!(all_keys.len(), 2 * token_size);
         assert_eq!(&all_keys[..token_size], key1.as_slice());
         assert_eq!(&all_keys[token_size..], key2.as_slice());
 
         // Values for layer 0 should be val1 ++ val2.
-        let all_vals = cache.get_values(0);
+        let all_vals = cache.get_values(0).unwrap();
         assert_eq!(all_vals.len(), 2 * token_size);
         assert_eq!(&all_vals[..token_size], val1.as_slice());
         assert_eq!(&all_vals[token_size..], val2.as_slice());
@@ -301,13 +391,14 @@ mod tests {
         cache.clear();
         assert_eq!(cache.len(), 0);
         assert!(cache.is_empty());
-        assert!(cache.get_keys(0).is_empty());
-        assert!(cache.get_values(0).is_empty());
+        assert!(cache.get_keys(0).unwrap().is_empty());
+        assert!(cache.get_values(0).unwrap().is_empty());
     }
 
     #[test]
     fn test_max_seq_len_enforcement() {
-        let mut cache = KVCache::new(NUM_LAYERS, NUM_HEADS, HEAD_DIM, 2);
+        let mut cache =
+            KVCache::new(NUM_LAYERS, NUM_HEADS, HEAD_DIM, 2).expect("valid KVCache sizes");
         let key = make_token_data(1.0);
         let val = make_token_data(2.0);
 
@@ -392,8 +483,8 @@ mod tests {
             cache.append(layer, &key2, &val2).unwrap();
         }
         assert_eq!(cache.len(), 1);
-        assert_eq!(cache.get_keys(0), key2.as_slice());
-        assert_eq!(cache.get_values(0), val2.as_slice());
+        assert_eq!(cache.get_keys(0).unwrap(), key2.as_slice());
+        assert_eq!(cache.get_values(0).unwrap(), val2.as_slice());
     }
 
     #[test]
@@ -404,6 +495,101 @@ mod tests {
         assert_eq!(cache.head_dim(), HEAD_DIM);
         assert_eq!(cache.max_seq_len(), MAX_SEQ);
         assert_eq!(cache.len(), 0);
+        assert!(cache.is_empty());
+    }
+
+    /// Regression: `current_len` advances on the last layer's append, and
+    /// `max_seq_len` used to be checked on layer 0 only, so appending to the
+    /// last layer alone grew the cache past `max_seq_len`.
+    #[test]
+    fn test_max_seq_len_enforced_on_every_layer() {
+        let mut cache =
+            KVCache::new(NUM_LAYERS, NUM_HEADS, HEAD_DIM, 2).expect("valid KVCache sizes");
+        let key = make_token_data(1.0);
+        let val = make_token_data(2.0);
+        let last = NUM_LAYERS - 1;
+        cache.append(last, &key, &val).unwrap();
+        cache.append(last, &key, &val).unwrap();
+        assert_eq!(cache.len(), 2);
+        assert!(cache.append(last, &key, &val).is_err());
+        assert_eq!(cache.len(), 2);
+    }
+
+    fn new_err(num_layers: usize, num_heads: usize, head_dim: usize, max_seq: usize) -> String {
+        match KVCache::new(num_layers, num_heads, head_dim, max_seq) {
+            Ok(cache) => panic!("expected KVCache::new to fail, got {cache:?}"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    /// Regression: `num_heads * head_dim` overflowing `usize` is refused by
+    /// the constructor with an error (it used to construct and defer the
+    /// overflow to `append`).
+    #[test]
+    fn test_token_size_overflow_rejected() {
+        let msg = new_err(1, usize::MAX, 2, 4);
+        assert!(msg.contains("token size overflows"), "{msg}");
+    }
+
+    /// Regression: a per-layer size past `isize::MAX` bytes (which no `Vec`
+    /// can hold, so `append` would eventually panic) is refused up front.
+    #[test]
+    fn test_layer_size_overflow_rejected() {
+        let msg = new_err(1, 1, 1, usize::MAX);
+        assert!(msg.contains("layer size overflows"), "{msg}");
+        // `max_seq * token_size` fits in usize but `* 4` bytes does not.
+        let msg = new_err(1, 1 << 31, 1 << 31, 1);
+        assert!(msg.contains("layer size overflows"), "{msg}");
+        // Exactly at the limit is accepted (no allocation happens in `new`).
+        let max_floats = (usize::MAX >> 1) / size_of::<f32>();
+        assert!(KVCache::new(1, 1, 1, max_floats).is_ok());
+        assert!(KVCache::new(1, 1, 1, max_floats + 1).is_err());
+    }
+
+    /// Regression: an unallocatable layer count is an error, not a
+    /// capacity-overflow panic in `vec![Vec::new(); num_layers]`.
+    #[test]
+    fn test_unallocatable_num_layers_rejected() {
+        let msg = new_err(usize::MAX, 1, 1, 1);
+        assert!(msg.contains("layer limit"), "{msg}");
+        let msg = new_err(MAX_LAYERS + 1, 1, 1, 1);
+        assert!(msg.contains("layer limit"), "{msg}");
+        let cache = KVCache::new(MAX_LAYERS, 1, 1, 1).expect("at the limit");
+        assert_eq!(cache.num_layers(), MAX_LAYERS);
+    }
+
+    /// Zero sizes are invalid configurations and are refused.
+    #[test]
+    fn test_zero_sizes_rejected() {
+        for (l, h, d, m) in [(0, 4, 8, 16), (2, 0, 8, 16), (2, 4, 0, 16), (2, 4, 8, 0)] {
+            let msg = new_err(l, h, d, m);
+            assert!(msg.contains("must be non-zero"), "({l},{h},{d},{m}): {msg}");
+        }
+    }
+
+    /// Regression: an out-of-range layer is an `InvalidInput` error from
+    /// `get_keys` / `get_values` (it was an index-out-of-bounds panic).
+    #[test]
+    fn test_get_out_of_range_layer_is_error() {
+        let mut cache = make_cache();
+        cache
+            .append(0, &make_token_data(1.0), &make_token_data(2.0))
+            .unwrap();
+        let err = cache.get_keys(NUM_LAYERS).unwrap_err();
+        assert!(err.to_string().contains("out of range"), "{err}");
+        assert!(cache.get_values(NUM_LAYERS).is_err());
+        assert!(cache.get_keys(usize::MAX).is_err());
+        // In-range layers are unaffected.
+        assert_eq!(cache.get_keys(0).unwrap().len(), NUM_HEADS * HEAD_DIM);
+        assert!(cache.get_values(1).unwrap().is_empty());
+    }
+
+    /// Realistic GLM sizes construct exactly as before.
+    #[test]
+    fn test_realistic_sizes_accepted() {
+        let cache = KVCache::new(61, 8, 128, 131_072).expect("GLM-5-scale cache");
+        assert_eq!(cache.num_layers(), 61);
+        assert_eq!(cache.max_seq_len(), 131_072);
         assert!(cache.is_empty());
     }
 }

@@ -277,8 +277,7 @@ pub fn rms_norm_silu_mul_fused_scalar(
 ///
 /// Returns [`KernelError::NonFiniteInput`] if any input is NaN or infinite.
 /// Returns [`KernelError::NonFiniteOutput`] if the computed
-/// result is non-finite despite all inputs being finite (e.g., extreme magnitudes
-/// outside the Kani-proved domain).
+/// result is non-finite despite all inputs being finite (e.g., extreme magnitudes).
 #[must_use = "returns a Result that may contain an error"]
 pub fn rms_norm_scalar(x: f32, rms_inv: f32, weight: f32) -> Result<f32, KernelError> {
     validate_finite_inputs(&[("x", x), ("rms_inv", rms_inv), ("weight", weight)])?;
@@ -287,97 +286,6 @@ pub fn rms_norm_scalar(x: f32, rms_inv: f32, weight: f32) -> Result<f32, KernelE
 
     checked_scalar_output(result)
 }
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-    use crate::kani_stubs::{exp_stub, sqrt_stub};
-
-    /// Proves `rms_norm_scalar` produces finite output for bounded inputs.
-    ///
-    /// Domain: x ∈ [-1e3, 1e3], rms_inv ∈ [0, 1e3], weight ∈ [-10, 10].
-    /// The `rms_inv` parameter is always non-negative (it's `1/sqrt(mean(x²)+eps)`).
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::exp, exp_stub)]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn rms_norm_scalar_finite_for_bounded_inputs() {
-        let x: f32 = kani::any();
-        let rms_inv: f32 = kani::any();
-        let weight: f32 = kani::any();
-
-        kani::assume(x.is_finite());
-        kani::assume(rms_inv.is_finite());
-        kani::assume(weight.is_finite());
-
-        kani::assume(x >= -1.0e3 && x <= 1.0e3);
-        kani::assume(rms_inv >= 0.0 && rms_inv <= 1.0e3);
-        kani::assume(weight >= -10.0 && weight <= 10.0);
-
-        let y = rms_norm_scalar(x, rms_inv, weight)
-            .expect("rms_norm_scalar must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "rms_norm_scalar must produce finite output");
-        assert!(!y.is_nan(), "rms_norm_scalar must not produce NaN");
-    }
-
-    /// Proves that zero input always produces zero output regardless of
-    /// rms_inv and weight values (within bounds).
-    ///
-    /// RMSNorm of zero: `0 * rms_inv * weight = 0`.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::exp, exp_stub)]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn rms_norm_scalar_zero_input_is_zero() {
-        let rms_inv: f32 = kani::any();
-        let weight: f32 = kani::any();
-
-        kani::assume(rms_inv.is_finite());
-        kani::assume(weight.is_finite());
-        kani::assume(rms_inv >= 0.0 && rms_inv <= 1.0e4);
-        kani::assume(weight >= -1.0e4 && weight <= 1.0e4);
-
-        let y = rms_norm_scalar(0.0, rms_inv, weight)
-            .expect("rms_norm_scalar must succeed for bounded finite inputs");
-        assert!(y == 0.0, "rms_norm_scalar(0, _, _) must be exactly 0");
-    }
-
-    /// Proves output is bounded: `|y| <= |x| * rms_inv * |weight|`.
-    ///
-    /// Since all three factors are finite and bounded, the product is bounded.
-    /// This proves the output cannot exceed the product of the input magnitudes.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::exp, exp_stub)]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn rms_norm_scalar_output_bounded() {
-        let x: f32 = kani::any();
-        let rms_inv: f32 = kani::any();
-        let weight: f32 = kani::any();
-
-        kani::assume(x.is_finite());
-        kani::assume(rms_inv.is_finite());
-        kani::assume(weight.is_finite());
-
-        kani::assume(x >= -100.0 && x <= 100.0);
-        kani::assume(rms_inv >= 0.0 && rms_inv <= 100.0);
-        kani::assume(weight >= -10.0 && weight <= 10.0);
-
-        let y = rms_norm_scalar(x, rms_inv, weight)
-            .expect("rms_norm_scalar must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "output must be finite");
-
-        // |y| <= |x| * rms_inv * |weight| <= 100 * 100 * 10 = 100000
-        assert!(
-            y.abs() <= 1.0e5 + 1.0,
-            "rms_norm_scalar output must be bounded"
-        );
-    }
-}
-
-#[cfg(kani)]
-#[path = "rms_norm_kani_builder_tests.rs"]
-mod kani_builder_proofs;
 
 #[cfg(test)]
 #[path = "rms_norm_tests.rs"]

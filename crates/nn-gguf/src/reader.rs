@@ -8,8 +8,6 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
-use memmap2::Mmap;
-
 use crate::dequant::{self, GgufDType};
 use crate::error::GgufError;
 use crate::header::GgufHeader;
@@ -30,11 +28,12 @@ const MAX_METADATA_KV_COUNT: u64 = 100_000;
 
 /// A parsed GGUF file.
 ///
-/// Created via [`GgufFile::open`] (mmap-backed, zero-copy access to tensor
-/// data) or [`GgufFile::read_from`] (stream-based, for in-memory buffers).
+/// Created via [`GgufFile::open`] (reads the file into an owned buffer) or
+/// [`GgufFile::read_from`] (stream-based, for in-memory buffers).
 ///
-/// When opened via `open`, the underlying mmap is held for the lifetime
-/// of the `GgufFile` and all `tensor_data()` slices borrow from it.
+/// When opened via `open`, the file bytes are held for the lifetime of the
+/// `GgufFile` and all `tensor_data()` slices borrow from that buffer, so
+/// tensor access stays allocation-free.
 #[derive(Debug)]
 pub struct GgufFile {
     /// File header.
@@ -45,19 +44,30 @@ pub struct GgufFile {
     pub tensors: HashMap<String, GgufTensorInfo>,
     /// Byte offset where the tensor data section starts.
     pub data_offset: u64,
-    /// Optional mmap backing. Present when opened via `GgufFile::open`.
-    mmap: Option<Mmap>,
+    /// Optional owned file bytes. Present when opened via `GgufFile::open`.
+    ///
+    /// This is an owned allocation, so its length IS its live size: nothing
+    /// outside this process can shrink it while a `tensor_data()` slice
+    /// borrows from it.
+    data: Option<Vec<u8>>,
 }
 
 impl GgufFile {
-    /// Open a GGUF file from disk, memory-mapping it for zero-copy access.
+    /// Open a GGUF file from disk, reading it into an owned buffer.
     ///
-    /// This is the preferred entry point for loading GGUF files. The file
-    /// is memory-mapped, so tensor data is accessed on demand without
-    /// copying the entire file into RAM. After opening, use
-    /// [`tensor_data`](Self::tensor_data) for zero-copy access to raw
-    /// tensor bytes, or [`read_tensor_f32`](Self::read_tensor_f32) to
-    /// dequantize to f32.
+    /// This is the preferred entry point for loading GGUF files. After
+    /// opening, use [`tensor_data`](Self::tensor_data) for allocation-free
+    /// access to raw tensor bytes, or
+    /// [`read_tensor_f32`](Self::read_tensor_f32) to dequantize to f32.
+    ///
+    /// The whole file is read into memory. `tensor_data()` then borrows from
+    /// that buffer, so per-tensor access still copies nothing.
+    ///
+    /// This deliberately does NOT memory-map the file. A mapping's length is
+    /// captured at map time, but the backing file can be truncated by another
+    /// process afterwards, at which point dereferencing the mapping is a
+    /// SIGBUS / out-of-bounds read. No check inside this process can rule that
+    /// out, so the mapped form is not provable and is not offered here.
     ///
     /// # Example
     /// ```rust,ignore
@@ -66,13 +76,9 @@ impl GgufFile {
     /// let raw = gguf.tensor_data("token_embd.weight").unwrap();
     /// ```
     pub fn open(path: impl AsRef<Path>) -> Result<Self, GgufError> {
-        let file = std::fs::File::open(path.as_ref())?;
-        // SAFETY: We hold the Mmap for the lifetime of GgufFile. The file
-        // must not be truncated while mapped; this is the standard contract
-        // for mmap-based file readers (same as safetensors, llama.cpp).
-        let mmap = unsafe { Mmap::map(&file)? };
+        let data = std::fs::read(path.as_ref())?;
 
-        let mut cursor = std::io::Cursor::new(mmap.as_ref());
+        let mut cursor = std::io::Cursor::new(data.as_slice());
         let header = GgufHeader::read_from(&mut cursor)?;
 
         // Validate declared counts before allocating capacity.
@@ -102,8 +108,8 @@ impl GgufFile {
         let alignment = 32u64;
         let data_offset = current_pos.div_ceil(alignment) * alignment;
 
-        // Validate every tensor's data region fits within the mmap.
-        let file_len = mmap.len() as u64;
+        // Validate every tensor's data region fits within the buffer.
+        let file_len = data.len() as u64;
         for (name, info) in &tensors {
             let byte_size = info.checked_byte_size()?;
             let abs_start = data_offset.checked_add(info.offset).ok_or_else(|| {
@@ -136,7 +142,7 @@ impl GgufFile {
             metadata,
             tensors,
             data_offset,
-            mmap: Some(mmap),
+            data: Some(data),
         })
     }
 
@@ -145,8 +151,8 @@ impl GgufFile {
     /// Reads the header, metadata, and tensor info. Does NOT read tensor data
     /// (that happens lazily via `read_tensor_f32`).
     ///
-    /// For file-based access with zero-copy tensor data, prefer
-    /// [`GgufFile::open`] which uses mmap.
+    /// For file-based access with allocation-free tensor data, prefer
+    /// [`GgufFile::open`].
     pub fn read_from<R: Read + Seek>(reader: &mut R) -> Result<Self, GgufError> {
         let header = GgufHeader::read_from(reader)?;
 
@@ -184,7 +190,7 @@ impl GgufFile {
             metadata,
             tensors,
             data_offset,
-            mmap: None,
+            data: None,
         })
     }
 
@@ -286,22 +292,22 @@ impl GgufFile {
         Ok((f32_data, shape))
     }
 
-    /// Get raw tensor bytes by name (zero-copy when mmap-backed).
+    /// Get raw tensor bytes by name (allocation-free).
     ///
     /// Returns `None` if the tensor is not found. Returns `Some(Err(...))`
-    /// if the file was opened via `read_from` (no mmap backing) and therefore
-    /// cannot provide a zero-copy slice.
+    /// if the file was opened via `read_from` (no retained buffer) and
+    /// therefore cannot provide a borrowed slice.
     ///
-    /// For mmap-backed files (via [`GgufFile::open`]), this returns a
-    /// borrowed slice into the memory-mapped file -- no allocation, no copy.
+    /// For files opened via [`GgufFile::open`], this returns a borrowed slice
+    /// into the owned file buffer -- no allocation, no copy.
     pub fn tensor_data(&self, name: &str) -> Option<Result<&[u8], GgufError>> {
         let info = self.tensors.get(name)?;
-        let mmap = match &self.mmap {
-            Some(m) => m,
+        let bytes: &[u8] = match &self.data {
+            Some(d) => d.as_slice(),
             None => {
                 return Some(Err(GgufError::Io(std::io::Error::new(
                     std::io::ErrorKind::Unsupported,
-                    "tensor_data() requires mmap backing (use GgufFile::open)",
+                    "tensor_data() requires a file buffer (use GgufFile::open)",
                 ))));
             }
         };
@@ -330,23 +336,22 @@ impl GgufFile {
                 }));
             }
         };
-        let bytes = mmap.as_ref();
-
-        if end as usize > bytes.len() {
-            return Some(Err(GgufError::TensorSizeMismatch {
+        // `get` carries the bounds proof the slice needs; an explicit
+        // comparison followed by an index does not.
+        match bytes.get(start as usize..end as usize) {
+            Some(slice) => Some(Ok(slice)),
+            None => Some(Err(GgufError::TensorSizeMismatch {
                 name: name.to_string(),
                 expected: byte_size,
                 actual: (bytes.len() as u64).saturating_sub(start),
-            }));
+            })),
         }
-
-        Some(Ok(&bytes[start as usize..end as usize]))
     }
 
-    /// Dequantize a tensor to f32 using the mmap backing (zero-copy read).
+    /// Dequantize a tensor to f32 using the owned file buffer.
     ///
     /// This is a convenience method that combines `tensor_data()` with
-    /// dequantization. Only available for mmap-backed files (via `open`).
+    /// dequantization. Only available for files opened via `open`.
     pub fn dequantize_tensor(&self, name: &str) -> Result<(Vec<f32>, Vec<usize>), GgufError> {
         let info = self.tensors.get(name).ok_or_else(|| {
             GgufError::Io(std::io::Error::new(
@@ -592,12 +597,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tensor_data_requires_mmap() {
+    fn test_tensor_data_requires_file_buffer() {
         let data = gguf_with_tensor();
         let mut cursor = std::io::Cursor::new(data);
         let file = GgufFile::read_from(&mut cursor).unwrap();
 
-        // tensor_data should return an error for non-mmap files.
+        // tensor_data should return an error for files with no retained buffer.
         let result = file.tensor_data("test_weight");
         assert!(result.is_some());
         assert!(result.unwrap().is_err());
@@ -624,14 +629,14 @@ mod tests {
     }
 
     #[test]
-    fn test_open_mmap_and_tensor_data() {
-        // Write gguf_with_tensor to a temp file, then open via mmap.
+    fn test_open_and_tensor_data() {
+        // Write gguf_with_tensor to a temp file, then open it.
         let data = gguf_with_tensor();
         let dir = std::env::temp_dir();
-        let path = dir.join("nn_gguf_test_mmap.gguf");
+        let path = dir.join("nn_gguf_test_open.gguf");
         std::fs::write(&path, &data).expect("write temp file");
 
-        let file = GgufFile::open(&path).expect("should open via mmap");
+        let file = GgufFile::open(&path).expect("should open");
         assert_eq!(file.header.version, 3);
         assert_eq!(file.header.tensor_count, 1);
         assert_eq!(file.architecture(), Some("llama"));
@@ -640,7 +645,7 @@ mod tests {
         let raw = file
             .tensor_data("test_weight")
             .expect("tensor should exist")
-            .expect("should be accessible via mmap");
+            .expect("should be accessible");
         assert_eq!(raw.len(), 48); // 12 * 4 bytes
 
         // Verify raw bytes decode to correct f32 values.

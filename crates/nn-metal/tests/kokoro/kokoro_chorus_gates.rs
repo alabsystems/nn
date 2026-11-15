@@ -18,7 +18,7 @@
 //!
 //! All tests gated behind `KOKORO_WEIGHTS` env var. Skips gracefully when unset.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all -- chorus_gate --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all -- chorus_gate --nocapture`
 //!
 //! Part of #4265.
 

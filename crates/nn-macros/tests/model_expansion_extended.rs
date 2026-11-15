@@ -13,8 +13,6 @@
 //! - `#[model(verify)]` with mixed verifiable/unverifiable callees
 //! - Compile function negative tests (scalar-only models)
 
-#![allow(unexpected_cfgs)]
-
 use nn_core::Tensor;
 
 // ---------------------------------------------------------------------------

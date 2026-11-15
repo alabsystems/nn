@@ -378,9 +378,8 @@ fn test_import_compile_execute_dpdf_backbone_gpu() {
 /// Full convert() pipeline: dpdf backbone import + compile + proof chain.
 ///
 /// Exercises the top-level `convert()` API with a dpdf-style vision model.
-/// Validates all three proof layers:
+/// Validates the proof layers:
 ///   L0: GPU execution produces finite output
-///   L1: Kani (None -- populated by Prover separately)
 ///   L2: IBP composition bounds (if `verify` feature is on)
 ///   L3: Reference parity (None -- no reference trace provided)
 ///
@@ -409,8 +408,7 @@ fn test_convert_dpdf_backbone_full_pipeline() {
     let result = convert(&graph_path, &weights_path, None, &cache).expect("convert() must succeed");
     let _ = std::fs::remove_dir_all(&dir);
 
-    // L1/L3: absent (no Kani, no reference trace).
-    assert!(result.proof.kernel_safety.is_none());
+    // L3: absent (no reference trace).
     assert!(result.proof.reference_parity.is_none());
 
     // Graph metadata.

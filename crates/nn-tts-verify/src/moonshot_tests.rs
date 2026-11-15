@@ -14,14 +14,16 @@ fn test_moonshot_status_constructs() {
 }
 
 #[test]
-fn test_property_7_memory_safety_at_kani_proven() {
+fn test_property_7_memory_safety_has_no_evidence() {
     let status = MoonshotStatus::from_repo();
-    // Property 7 (index 6): Memory safety — 491 Kani harnesses exist.
-    assert!(
-        status.properties[6].verified >= VerificationLevel::KaniProven,
-        "Memory safety should be KaniProven, got {:?}",
-        status.properties[6].verified
-    );
+    // Property 7 (index 6): memory safety. Its only UB/panic-freedom evidence
+    // was the Kani harnesses, retired 2026-09-29; CROWN output bounds are not
+    // evidence for it, so it stays None and carries its gap.
+    let p7 = &status.properties[6];
+    assert_eq!(p7.verified, VerificationLevel::None);
+    assert!(p7.evidence.is_empty(), "P7 evidence: {:?}", p7.evidence);
+    assert!(!p7.gaps.is_empty());
+    assert!(!status.all_have_evidence());
 }
 
 #[test]
@@ -59,7 +61,8 @@ fn test_property_3_intelligibility_at_crown_partial() {
     );
 }
 
-/// All 8 moonshot properties now have at least CrownPartial evidence.
+/// Every moonshot property except P7 (memory safety, no evidence) has at
+/// least CrownPartial evidence.
 ///
 /// Speaker (P4) reached CrownPartial via moonshot_crown_speaker.rs and
 /// pipeline.rs cross-cutting artifact. Temporal (P5) reached CrownPartial
@@ -67,9 +70,14 @@ fn test_property_3_intelligibility_at_crown_partial() {
 /// Streaming (P6) reached CrownPartial via moonshot_crown.rs bounded
 /// crossfade discontinuity.
 #[test]
-fn test_all_properties_at_least_crown_partial() {
+fn test_properties_other_than_p7_at_least_crown_partial() {
     let status = MoonshotStatus::from_repo();
-    for (i, prop) in status.properties.iter().enumerate() {
+    for (i, prop) in status
+        .properties
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != 6)
+    {
         assert!(
             prop.verified >= VerificationLevel::CrownPartial,
             "Property {} ({}) should be at least CrownPartial, got {:?}",
@@ -78,10 +86,7 @@ fn test_all_properties_at_least_crown_partial() {
             prop.verified
         );
     }
-    assert!(
-        status.all_at_least_crown_partial(),
-        "All 8 properties should now be CrownPartial+"
-    );
+    assert!(!status.all_at_least_crown_partial());
 }
 
 #[test]
@@ -98,7 +103,7 @@ fn test_all_properties_have_known_gaps() {
 }
 
 #[test]
-fn test_artifact_registry_covers_all_properties() {
+fn test_artifact_registry_covers_every_property_but_p7() {
     let artifacts = artifact_registry();
     let mut covered = [false; 8];
     for artifact in &artifacts {
@@ -108,8 +113,8 @@ fn test_artifact_registry_covers_all_properties() {
             }
         }
     }
-    for (i, c) in covered.iter().enumerate() {
-        assert!(c, "Property {} should have at least one artifact", i + 1);
+    for (i, &c) in covered.iter().enumerate() {
+        assert_eq!(c, i != 6, "Property {} artifact coverage", i + 1);
     }
 }
 
@@ -136,8 +141,7 @@ fn test_verification_level_ordering() {
     assert!(VerificationLevel::None < VerificationLevel::Empirical);
     assert!(VerificationLevel::Empirical < VerificationLevel::CrownPartial);
     assert!(VerificationLevel::CrownPartial < VerificationLevel::CrownProven);
-    assert!(VerificationLevel::CrownProven < VerificationLevel::KaniProven);
-    assert!(VerificationLevel::KaniProven < VerificationLevel::SmtProven);
+    assert!(VerificationLevel::CrownProven < VerificationLevel::SmtProven);
 }
 
 #[test]
@@ -172,7 +176,7 @@ fn test_certificate_from_status() {
     assert_eq!(cert.model_name, "dvoice-kokoro-v1");
     assert_eq!(cert.properties.len(), 8);
     assert_eq!(cert.source_hash, "abc123");
-    assert!(cert.all_proven); // All 8 properties now CrownProven+ after #1741 enrichment
+    assert!(!cert.all_proven); // P7 (memory safety) has no evidence
 }
 
 #[test]
@@ -222,7 +226,7 @@ fn test_certificate_display() {
     assert!(s.contains("Moonshot Certificate: dvoice-kokoro-v1"));
     assert!(s.contains("P1:"));
     assert!(s.contains("P8:"));
-    assert!(s.contains("all_proven=true"));
+    assert!(s.contains("all_proven=false"));
 }
 
 #[test]

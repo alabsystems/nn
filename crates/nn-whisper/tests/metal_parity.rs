@@ -14,7 +14,7 @@
 //!
 //! ```bash
 //! export WHISPER_WEIGHTS=./nn/weights/whisper-tiny
-//! cargo test -p nn-whisper --test metal_parity -- --nocapture
+//! targo --unverified test -p nn-whisper --test metal_parity -- --nocapture
 //! ```
 //!
 //! Tests skip gracefully when `WHISPER_WEIGHTS` is unset or Metal is unavailable.

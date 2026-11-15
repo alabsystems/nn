@@ -70,6 +70,19 @@ pub enum OptimError {
     #[error("checkpoint serialization error: {reason}")]
     CheckpointSerde { reason: String },
 
+    /// A gradient's shape differs from its parameter's shape.
+    ///
+    /// `GradStore::var_grads_mut` lets a caller replace any gradient, so the
+    /// optimizers check the shape before updating rather than indexing (or
+    /// broadcasting) a mismatched gradient.
+    #[error("gradient shape {got:?} does not match parameter shape {expected:?}")]
+    GradientShapeMismatch {
+        /// The parameter's shape.
+        expected: Vec<usize>,
+        /// The gradient's shape.
+        got: Vec<usize>,
+    },
+
     /// Corrupted internal optimizer state (invariant violation).
     /// This should never occur during normal operation — it indicates
     /// a bug in state initialization or checkpoint restoration.
@@ -109,6 +122,20 @@ pub(crate) fn validate_gradient(grad: &nn_core::dyn_tensor::DynTensor) -> Result
     Ok(())
 }
 
+/// Validate that a gradient has exactly its parameter's shape.
+pub(crate) fn validate_gradient_shape(
+    param_dims: &[usize],
+    grad: &nn_core::dyn_tensor::DynTensor,
+) -> Result<()> {
+    if grad.dims() != param_dims {
+        return Err(OptimError::GradientShapeMismatch {
+            expected: param_dims.to_vec(),
+            got: grad.dims().to_vec(),
+        });
+    }
+    Ok(())
+}
+
 /// Validate a learning rate: must be finite and non-negative.
 pub(crate) fn validate_lr(lr: f64) -> Result<()> {
     if !lr.is_finite() || lr < 0.0 {
@@ -118,6 +145,25 @@ pub(crate) fn validate_lr(lr: f64) -> Result<()> {
         });
     }
     Ok(())
+}
+
+/// Most parameter tensors one optimizer manages.
+///
+/// Optimizer state is allocated per parameter tensor, so the count is checked
+/// before that allocation: an out-of-range count is an `InvalidParam` error,
+/// not an allocation sized by an unchecked length. The bound (262,144) is
+/// above the tensor count of current models, including per-expert MoE
+/// checkpoints (about 10^5 tensors), and keeps each per-tensor state vector
+/// under the verified lane's 256 MiB bulk-allocation ceiling for state of up
+/// to 1 KiB per tensor.
+pub(crate) const MAX_PARAM_TENSORS: usize = 1 << 18;
+
+/// The error for a parameter list longer than [`MAX_PARAM_TENSORS`].
+pub(crate) fn too_many_params(n: usize) -> OptimError {
+    OptimError::InvalidParam {
+        param: "vars",
+        reason: format!("{n} parameter tensors exceeds the limit of {MAX_PARAM_TENSORS}"),
+    }
 }
 
 /// Validate weight decay: must be finite and non-negative.

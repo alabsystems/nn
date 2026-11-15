@@ -28,8 +28,8 @@
 //!   results to per-model status files in a single call.
 //! - **`trace_to_graph`**: Translates `DynTensor` computation traces to NY
 //!   `GraphNetwork` for IBP/CROWN verification of imperative model code.
-//! - **`certificate`**: Proof certificates — `ProofCertificate` with source hash,
-//!   Kani records, and layer bound records for deployment.
+//! - **`certificate`**: Proof certificates — `ProofCertificate` with source hash
+//!   and layer bound records for deployment.
 //! - **`overlay_composition`**: Overlay interaction verification — proves composed
 //!   model segments satisfy cross-boundary bound specifications.
 //!
@@ -192,58 +192,6 @@ pub(crate) mod ay_vacuity;
 #[cfg(feature = "ay-smt")]
 pub mod ay_weight_init_constraints;
 pub mod junction_contract;
-#[cfg(kani)]
-mod kani_attention_safety;
-#[cfg(kani)]
-#[path = "kani_ay_fp_snake_extended.rs"]
-mod kani_ay_fp_snake_extended;
-#[cfg(kani)]
-#[path = "kani_ay_snake_decompose.rs"]
-mod kani_ay_snake_decompose;
-pub(crate) mod kani_bridge;
-#[cfg(kani)]
-#[path = "kani_dpdf_certify_proofs.rs"]
-mod kani_dpdf_certify_proofs;
-#[cfg(kani)]
-mod kani_dpdf_kernels;
-#[cfg(kani)]
-mod kani_dpdf_kernels_edge;
-#[cfg(kani)]
-#[path = "kani_fingerprint.rs"]
-mod kani_fingerprint;
-#[cfg(kani)]
-mod kani_fingerprint_issue3729;
-#[cfg(kani)]
-#[path = "kani_fingerprint_subgraph.rs"]
-mod kani_fingerprint_subgraph;
-#[cfg(kani)]
-#[path = "kani_fusion_adain.rs"]
-mod kani_fusion_adain;
-#[cfg(kani)]
-mod kani_fusion_equivalence;
-#[cfg(kani)]
-mod kani_gap_detector;
-#[cfg(kani)]
-mod kani_graph_construction_proofs;
-#[cfg(kani)]
-mod kani_istft_matrix;
-#[cfg(kani)]
-mod kani_model_properties;
-#[cfg(kani)]
-mod kani_quantization_proofs;
-#[cfg(kani)]
-#[path = "kani_snake_bounds.rs"]
-mod kani_snake_bounds;
-#[cfg(kani)]
-#[path = "kani_subgraph_extract.rs"]
-mod kani_subgraph_extract;
-#[cfg(kani)]
-#[path = "kani_subgraph_extract_3743.rs"]
-mod kani_subgraph_extract_3743;
-#[cfg(kani)]
-mod kani_subgraph_extract_issue3729;
-#[cfg(kani)]
-mod kani_verify_properties;
 pub mod proof_bundle;
 pub mod selective_crown;
 pub mod signing_config;
@@ -338,8 +286,7 @@ pub use certificate::integrity::{
 };
 pub use certificate::{
     compute_bytes_hash, compute_file_hash, CertificateBundle, CertificateEnrichment,
-    CertificateError, KaniOutcome, KaniProofRecord, LayerBoundRecord, PrecisionModel,
-    ProofCertificate, CERTIFICATE_VERSION,
+    CertificateError, LayerBoundRecord, PrecisionModel, ProofCertificate, CERTIFICATE_VERSION,
 };
 pub use certificate_checker::{
     check_bundle, check_bundle_file, check_bundle_file_with_key, check_bundle_with_key,
@@ -376,7 +323,6 @@ pub use junction_contract::{
     verify_junction, verify_junctions, JunctionProof, JunctionVerification, SubBlockBounds,
     JUNCTION_MARGIN,
 };
-pub use kani_bridge::kani_record_from_file;
 pub use kokoro_certificate::{
     generate_kokoro_certificate, verify_certificate as verify_kokoro_certificate,
     CertificateConfig as KokoroCertificateConfig, CertificateVerdict as KokoroCertificateVerdict,
@@ -391,7 +337,7 @@ pub use kokoro_crown_certificate::{
     StageCrownCoverage,
 };
 pub use proof_bundle::{
-    BoundCertificate, CrownSummary, KaniSummary, ProofBundle, ProofBundleBuilder, ProofBundleError,
+    BoundCertificate, CrownSummary, ProofBundle, ProofBundleBuilder, ProofBundleError,
     VerificationMethod,
 };
 pub use selective_crown::{

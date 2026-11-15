@@ -1800,18 +1800,10 @@ fn test_imported_graph_constructor() {
 
 #[test]
 fn test_equivalence_proof_with_all_layers() {
-    use crate::convert::{CompositionBoundsReport, EquivalenceProof, KaniSafetyReport};
-    let proof = EquivalenceProof::new(
-        Some(KaniSafetyReport::new(100, 99, 1)),
-        Some(CompositionBoundsReport::new(true, Some(0.5))),
-        None,
-    );
-    assert!(proof.kernel_safety.is_some());
+    use crate::convert::{CompositionBoundsReport, EquivalenceProof};
+    let proof = EquivalenceProof::new(Some(CompositionBoundsReport::new(true, Some(0.5))), None);
     assert!(proof.composition_bounds.is_some());
     assert!(proof.reference_parity.is_none());
-    assert_eq!(proof.kernel_safety.as_ref().unwrap().harness_count, 100);
-    assert_eq!(proof.kernel_safety.as_ref().unwrap().passed, 99);
-    assert_eq!(proof.kernel_safety.as_ref().unwrap().failed, 1);
     assert!(proof.composition_bounds.as_ref().unwrap().propagation_ok);
 }
 

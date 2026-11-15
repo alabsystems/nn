@@ -5,6 +5,7 @@
 //! Unit tests for audio quality metric functions.
 
 use super::*;
+use nn_core::audio::{hz_to_mel_htk as hz_to_mel, mel_to_hz_htk as mel_to_hz};
 
 #[test]
 fn test_cosine_similarity_identical() {
@@ -118,49 +119,6 @@ fn test_sdr_db_noisy() {
 fn test_sdr_db_empty() {
     let a: [f32; 0] = [];
     assert!(sdr_db(&a, &a).is_err());
-}
-
-#[test]
-fn test_cosine_similarity_scalar_positive() {
-    let sim = cosine_similarity_scalar(3.0, 4.0);
-    assert!((sim - 1.0).abs() < 1e-10, "same sign → 1.0, got {sim}");
-}
-
-#[test]
-fn test_cosine_similarity_scalar_negative() {
-    let sim = cosine_similarity_scalar(3.0, -4.0);
-    assert!(
-        (sim - (-1.0)).abs() < 1e-10,
-        "opposite sign → -1.0, got {sim}"
-    );
-}
-
-#[test]
-fn test_cosine_similarity_scalar_zero() {
-    assert_eq!(cosine_similarity_scalar(0.0, 5.0), 0.0);
-    assert_eq!(cosine_similarity_scalar(5.0, 0.0), 0.0);
-    assert_eq!(cosine_similarity_scalar(0.0, 0.0), 0.0);
-}
-
-#[test]
-fn test_snr_scalar_values() {
-    let snr = snr_scalar(1.0, 0.1);
-    // SNR = 10*log10(1.0/0.01) = 10*log10(100) = 20 dB
-    assert!((snr - 20.0).abs() < 1e-6, "expected 20 dB, got {snr}");
-}
-
-#[test]
-fn test_rms_scalar_non_negative() {
-    assert!(rms_scalar(0.0) >= 0.0);
-    assert!(rms_scalar(1.0) >= 0.0);
-    assert!(rms_scalar(-1.0) >= 0.0);
-    assert!((rms_scalar(3.0) - 3.0).abs() < 1e-10);
-}
-
-#[test]
-fn test_power_to_db() {
-    let db = power_to_db(100.0);
-    assert!((db - 20.0).abs() < 1e-10, "10*log10(100) = 20, got {db}");
 }
 
 #[test]

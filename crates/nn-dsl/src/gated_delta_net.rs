@@ -177,7 +177,7 @@ pub fn build_gated_delta_net_decomposed(
 /// # Errors
 ///
 /// Returns error if any dimension is zero or scale is invalid.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 pub(crate) fn build_gated_delta_net_decomposed_dual(
     num_heads: usize,
     key_dim: usize,
@@ -220,10 +220,6 @@ pub(crate) fn build_gated_delta_net_decomposed_dual(
     );
     builder.build(combined)
 }
-
-#[cfg(kani)]
-#[path = "gated_delta_net_kani_builder_tests.rs"]
-mod kani_builder_proofs;
 
 #[cfg(test)]
 #[path = "gated_delta_net_tests.rs"]

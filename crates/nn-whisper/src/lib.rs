@@ -368,39 +368,3 @@ mod whisper_architecture_extended_tests;
 #[cfg(test)]
 #[path = "whisper_model_architecture_extended_tests.rs"]
 mod whisper_model_architecture_extended_tests;
-
-#[cfg(kani)]
-#[path = "kani_whisper.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "kani_lib_proofs.rs"]
-mod kani_lib_proofs;
-
-#[cfg(kani)]
-mod kani_audio_mel_proofs;
-#[cfg(kani)]
-mod kani_decoder_proofs;
-#[cfg(kani)]
-mod kani_model_config_loading_proofs;
-#[cfg(kani)]
-mod kani_safetensors_proofs;
-#[cfg(kani)]
-mod kani_tokenizer_validation_proofs;
-#[cfg(kani)]
-mod kani_quality_decode_helpers_proofs;
-#[cfg(kani)]
-#[path = "kani_whisper_extra_proofs.rs"]
-mod kani_whisper_extra_proofs;
-#[cfg(kani)]
-mod kani_whisper_shape_proofs;
-#[cfg(kani)]
-mod kani_quality_wer_proofs;
-#[cfg(kani)]
-mod kani_decode_long_proofs;
-#[cfg(kani)]
-mod kani_compression_ratio_proofs;
-#[cfg(kani)]
-mod kani_tokenizer_special_proofs;
-#[cfg(kani)]
-mod kani_beam_config_proofs;

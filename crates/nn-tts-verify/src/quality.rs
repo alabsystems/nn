@@ -350,7 +350,3 @@ fn compute_mfcc(
 
     Ok(frames)
 }
-
-#[cfg(kani)]
-#[path = "quality_kani.rs"]
-mod kani_proofs;

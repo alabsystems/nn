@@ -62,37 +62,6 @@ pub mod spectral;
 pub mod tolerance;
 pub mod trace;
 
-#[cfg(kani)]
-mod kani_compare;
-
-#[cfg(kani)]
-mod kani_compare_extended;
-
-#[cfg(kani)]
-mod kani_npy_convert;
-
-#[cfg(kani)]
-mod kani_npy_load_proofs;
-
-#[cfg(kani)]
-mod kani_load;
-
-#[cfg(kani)]
-mod kani_compare_basic;
-#[cfg(kani)]
-mod kani_load_safetensors;
-#[cfg(kani)]
-mod kani_npy_format;
-
-#[cfg(kani)]
-mod kani_trace_config;
-
-#[cfg(kani)]
-mod kani_reftest_wave11;
-
-#[cfg(all(kani, feature = "spectral"))]
-mod kani_spectral;
-
 // Re-exports for convenience.
 pub use compare::{
     compare_tensors, compare_traces, ComparisonConfig, DivergenceReport, LayerComparison,

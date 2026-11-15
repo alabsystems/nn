@@ -354,7 +354,3 @@ impl Generator {
 #[cfg(test)]
 #[path = "kokoro_decoder_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kokoro_decoder_kani_tests.rs"]
-mod kani_proofs;

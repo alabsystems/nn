@@ -31,20 +31,6 @@ fn test_certificate_with_layer_bounds() {
 }
 
 #[test]
-fn test_certificate_with_kani_status() {
-    let result = sample_verification();
-    let cert = ProofCertificate::from_verification(&result, sample_input_spec())
-        .with_kani_status(sample_kani_record());
-
-    let kani = cert.kani_status.as_ref().unwrap();
-    assert_eq!(kani.harness_count, 3);
-    assert_eq!(kani.status, KaniOutcome::Passed);
-    assert_eq!(kani.properties.len(), 3);
-    assert_eq!(kani.cbmc_version.as_deref(), Some("6.0.0"));
-    assert!(cert.validate().is_ok());
-}
-
-#[test]
 fn test_certificate_with_hashes() {
     let result = sample_verification();
     let valid_hash = "a".repeat(64); // 64 hex chars
@@ -73,7 +59,6 @@ fn test_certificate_v2_full_roundtrip() {
     let valid_hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     let cert = ProofCertificate::from_verification(&result, sample_input_spec())
         .with_layer_bounds(sample_layer_bounds())
-        .with_kani_status(sample_kani_record())
         .with_weight_hash(valid_hash.to_string())
         .with_source_hash(valid_hash.to_string())
         .with_verifier_version("NY 0.3.0".to_string())
@@ -86,7 +71,6 @@ fn test_certificate_v2_full_roundtrip() {
     let parsed: ProofCertificate = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(cert, parsed);
     assert!(parsed.layer_bounds.is_some());
-    assert!(parsed.kani_status.is_some());
     assert!(parsed.weight_hash.is_some());
     assert!(parsed.source_hash.is_some());
     assert!(parsed.verifier_version.is_some());
@@ -187,7 +171,6 @@ fn test_v1_json_deserializes_into_v2_struct() {
     assert_eq!(cert.kernel_name, "snake");
     // v2 fields should all be None (via #[serde(default)])
     assert!(cert.layer_bounds.is_none());
-    assert!(cert.kani_status.is_none());
     assert!(cert.weight_hash.is_none());
     assert!(cert.source_hash.is_none());
     assert!(cert.verifier_version.is_none());
@@ -227,7 +210,6 @@ fn test_v1_bundle_json_deserializes_into_v2() {
     assert!(bundle.validate_all().is_ok());
     // v2 fields absent in v1 JSON
     assert!(bundle.certificates[0].layer_bounds.is_none());
-    assert!(bundle.certificates[0].kani_status.is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -282,32 +264,6 @@ fn test_compute_file_hash_matches_bytes_hash() {
 fn test_compute_file_hash_nonexistent() {
     let result = compute_file_hash(Path::new("/nonexistent/path/to/file"));
     assert!(result.is_err());
-}
-
-// ---------------------------------------------------------------------------
-// KaniOutcome / KaniProofRecord serde
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_kani_outcome_roundtrip() {
-    for outcome in [
-        KaniOutcome::Passed,
-        KaniOutcome::Failed,
-        KaniOutcome::NotRun,
-        KaniOutcome::Timeout,
-    ] {
-        let json = serde_json::to_string(&outcome).expect("serialize");
-        let parsed: KaniOutcome = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(outcome, parsed);
-    }
-}
-
-#[test]
-fn test_kani_proof_record_roundtrip() {
-    let record = sample_kani_record();
-    let json = serde_json::to_string_pretty(&record).expect("serialize");
-    let parsed: KaniProofRecord = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(record, parsed);
 }
 
 // ---------------------------------------------------------------------------

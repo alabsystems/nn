@@ -31,7 +31,6 @@ fn test_certificate_from_verification() {
     assert!(!cert.generated_at.is_empty());
     // v2 fields default to None
     assert!(cert.layer_bounds.is_none());
-    assert!(cert.kani_status.is_none());
     assert!(cert.weight_hash.is_none());
     assert!(cert.source_hash.is_none());
     assert!(cert.verifier_version.is_none());

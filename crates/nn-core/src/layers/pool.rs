@@ -288,10 +288,6 @@ impl Module for AdaptiveAvgPool2d {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_pool_proofs.rs"]
-mod kani_pool_proofs;
-
 #[cfg(test)]
 #[path = "pool_tests.rs"]
 mod tests;

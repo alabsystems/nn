@@ -12,7 +12,6 @@
 //! 5. Graph node counting and dispatch count extraction
 //! 6. KernelIR construction: valid IR nodes produce correct output
 //! 7. MSL code generation: generated code contains expected Metal keywords
-//! 8. Kani harness code generation: generated code contains proof keywords
 //! 9. Fusion detection: adjacent fusible ops are grouped
 //! 10. Constant folding: known constants are evaluated at compile time
 //! 11. Dead code elimination: unused intermediates are removed
@@ -27,7 +26,6 @@ use nn_core::dyn_tensor::trace::{ComputationGraph, TraceNode, TraceOp};
 use nn_core::DType;
 
 use crate::buffer_planner::{plan_buffers, BufferPlan};
-use crate::codegen_kani::emit_kani_harness;
 use crate::codegen_msl::{emit_msl, emit_scalar_fn};
 use crate::ir::ir_pretty_print;
 use crate::ir::{
@@ -1346,58 +1344,6 @@ fn test_msl_codegen_reserved_word_rejected() {
     assert!(
         emit_msl(&kernel).is_err(),
         "MSL reserved word 'thread' as kernel name should fail"
-    );
-}
-
-// ===========================================================================
-// 8. Kani harness code generation: generated code contains proof keywords
-// ===========================================================================
-
-/// emit_kani_harness produces valid Rust with Kani proof attributes.
-#[test]
-fn test_kani_codegen_contains_proof_attribute() {
-    let kernel = build_add_one_kernel();
-    let harness = emit_kani_harness(&kernel).expect("emit_kani_harness should succeed");
-    assert!(
-        harness.contains("#[kani::proof]"),
-        "Kani harness should contain #[kani::proof]"
-    );
-    assert!(
-        harness.contains("kani::any()"),
-        "Kani harness should contain kani::any()"
-    );
-    assert!(
-        harness.contains("kani::assume"),
-        "Kani harness should contain kani::assume"
-    );
-    assert!(
-        harness.contains("is_finite"),
-        "Kani harness should check is_finite"
-    );
-}
-
-/// Kani harness for a two-param kernel has both symbolic inputs.
-#[test]
-fn test_kani_codegen_two_params() {
-    let kernel = build_max_kernel();
-    let harness = emit_kani_harness(&kernel).expect("emit_kani_harness should succeed");
-    assert!(
-        harness.contains("let x: f32") || harness.contains("let x:"),
-        "Kani harness should declare parameter x"
-    );
-    assert!(
-        harness.contains("let y: f32") || harness.contains("let y:"),
-        "Kani harness should declare parameter y"
-    );
-}
-
-/// Kani harness for a kernel with invalid IR fails.
-#[test]
-fn test_kani_codegen_invalid_ir_fails() {
-    let kernel = KernelDef::new("bad", vec![], ScalarType::F32, vec![], NodeId::new(0));
-    assert!(
-        emit_kani_harness(&kernel).is_err(),
-        "Kani harness for invalid IR should fail"
     );
 }
 

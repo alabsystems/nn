@@ -314,3 +314,67 @@ fn test_beam_search_rejects_max_length_zero() {
         "should reject max_length=0, got: {msg}"
     );
 }
+
+// -- top_k_with_log_probs --
+
+/// Every logit vector of length 1..=5 over `{-inf, -1.5, 0, 2}` (so ties and
+/// fully suppressed vocabularies occur) and every `k` in `0..=6`: the result
+/// is exactly the `min(k, n)` best indices under (logit desc, index desc),
+/// in that order, with log-softmax values that are `<= 0` and normalize to 1
+/// when the whole vocabulary is returned. `k == 0` and an all-`-inf` row take
+/// the documented `(0, -inf)` fallback that keeps the beam non-empty.
+#[test]
+fn test_top_k_with_log_probs_selects_exactly_the_best_k() {
+    use std::cmp::Ordering;
+
+    const VALUES: [f32; 4] = [f32::NEG_INFINITY, -1.5, 0.0, 2.0];
+    let ranks_before = |logits: &[f32], a: usize, b: usize| -> bool {
+        logits[a].total_cmp(&logits[b]).then(a.cmp(&b)) == Ordering::Greater
+    };
+
+    for len in 1..=5usize {
+        for code in 0..VALUES.len().pow(len as u32) {
+            let mut rest = code;
+            let logits: Vec<f32> = (0..len)
+                .map(|_| {
+                    let v = VALUES[rest % VALUES.len()];
+                    rest /= VALUES.len();
+                    v
+                })
+                .collect();
+            let all_suppressed = logits.iter().all(|&v| v == f32::NEG_INFINITY);
+
+            for k in 0..=6usize {
+                let top = beam::top_k_with_log_probs(&logits, k);
+                if k == 0 || all_suppressed {
+                    assert_eq!(top, vec![(0, f32::NEG_INFINITY)], "{logits:?} k={k}");
+                    continue;
+                }
+                assert_eq!(top.len(), k.min(len), "{logits:?} k={k}");
+                let chosen: Vec<usize> = top.iter().map(|&(i, _)| i).collect();
+                for pair in chosen.windows(2) {
+                    assert!(
+                        ranks_before(&logits, pair[0], pair[1]),
+                        "{logits:?} k={k} {top:?}"
+                    );
+                }
+                for excluded in (0..len).filter(|j| !chosen.contains(j)) {
+                    for &i in &chosen {
+                        assert!(
+                            ranks_before(&logits, i, excluded),
+                            "{logits:?} k={k} {top:?}"
+                        );
+                    }
+                }
+                for &(i, lp) in &top {
+                    assert!(lp <= 0.0, "{logits:?} k={k} {top:?}");
+                    assert_eq!(lp.is_finite(), logits[i].is_finite(), "{logits:?} {top:?}");
+                }
+                if k >= len {
+                    let mass: f32 = top.iter().map(|&(_, lp)| lp.exp()).sum();
+                    assert!((mass - 1.0).abs() < 1e-5, "{logits:?} mass={mass}");
+                }
+            }
+        }
+    }
+}

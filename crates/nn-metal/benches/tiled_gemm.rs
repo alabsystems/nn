@@ -8,7 +8,7 @@
 //! naive) with both F32 and F16 autocast. These shapes are common in
 //! attention heads (QK^T, score*V) where K < 128 and M*N < 16384.
 //!
-//! Run: `cargo bench -p nn-metal --bench tiled_gemm --no-default-features`
+//! Run: `targo --unverified bench -p nn-metal --bench tiled_gemm --no-default-features`
 //!
 //! Part of #2981, #3230. Per design:
 //! designs/2026-03-22-f16-gap-analysis-benchmark-methodology.md (D1).

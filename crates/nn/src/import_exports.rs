@@ -22,7 +22,7 @@
 // Convert / import
 pub use nn_import::{
     check_composition_bounds, import_model, CompositionBoundsReport, ConvertError,
-    EquivalenceProof, KaniSafetyReport, ParityReport,
+    EquivalenceProof, ParityReport,
 };
 #[cfg(feature = "import-metal")]
 pub use nn_import::{convert, load_kokoro, ConvertResult};

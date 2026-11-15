@@ -5,8 +5,7 @@
 //! Unit tests for `real_from_f64` and `real_from_f64_denominator`.
 //!
 //! Regression tests for boundary bugs (#161, #398/#549) and the adaptive
-//! denominator for small values. These supplement the Kani proof harnesses
-//! in `translate_real.rs` with concrete test vectors.
+//! denominator for small values.
 
 use super::{real_from_f64, real_from_f64_denominator};
 

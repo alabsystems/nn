@@ -31,6 +31,14 @@
 use crate::Qwen3Error;
 use nn_core::Result;
 
+/// Most positions a [`RoPECache`] precomputes (2^22, far above Qwen3's
+/// context lengths). Each table holds one row per position, so this bounds
+/// the per-position allocation.
+const MAX_ROPE_POSITIONS: usize = 1 << 22;
+
+/// Largest head dimension a [`RoPECache`] accepts (2^16; Qwen3 uses 128).
+const MAX_ROPE_HEAD_DIM: usize = 1 << 16;
+
 /// Precomputed sin/cos cache for Rotary Position Embeddings.
 ///
 /// Stores `cos(p * theta[i])` and `sin(p * theta[i])` for every position
@@ -66,28 +74,37 @@ impl RoPECache {
     ///
     /// # Panics
     ///
-    /// Panics if `head_dim` is zero, odd, or `max_seq_len` is zero.
+    /// Panics if `head_dim` is zero, odd, or above 65536 (2^16), or if
+    /// `max_seq_len` is zero or above 4194304 (2^22).
     #[must_use]
     pub fn new(max_seq_len: usize, head_dim: usize, base: f32) -> Self {
         assert!(
             head_dim > 0 && head_dim.is_multiple_of(2),
             "head_dim must be a positive even number"
         );
+        let half_dim = head_dim / 2;
+        // For an even `head_dim` this is `head_dim <= MAX_ROPE_HEAD_DIM`,
+        // stated on `half_dim`, the per-row table width.
+        assert!(
+            half_dim <= MAX_ROPE_HEAD_DIM / 2,
+            "head_dim must be <= {MAX_ROPE_HEAD_DIM}, got {head_dim}"
+        );
         assert!(max_seq_len > 0, "max_seq_len must be > 0");
+        assert!(
+            max_seq_len <= MAX_ROPE_POSITIONS,
+            "max_seq_len must be <= {MAX_ROPE_POSITIONS}, got {max_seq_len}"
+        );
         assert!(
             base > 0.0 && base.is_finite(),
             "base must be a positive finite number"
         );
 
-        let half_dim = head_dim / 2;
-
-        // theta[i] = 1.0 / base^(2i / head_dim)
-        let theta: Vec<f64> = (0..half_dim)
-            .map(|i| {
-                let exponent = (2 * i) as f64 / head_dim as f64;
-                1.0 / f64::from(base).powf(exponent)
-            })
-            .collect();
+        // theta[i] = 1.0 / base^(2i / head_dim), for 2i = 0, 2, .., head_dim - 2.
+        let mut theta: Vec<f64> = Vec::with_capacity(half_dim);
+        for two_i in (0..head_dim).step_by(2) {
+            let exponent = two_i as f64 / head_dim as f64;
+            theta.push(1.0 / f64::from(base).powf(exponent));
+        }
 
         let mut cos_cache = Vec::with_capacity(max_seq_len);
         let mut sin_cache = Vec::with_capacity(max_seq_len);
@@ -123,12 +140,12 @@ impl RoPECache {
     /// Panics if `position >= max_seq_len`.
     #[must_use]
     pub fn get(&self, position: usize) -> (&[f32], &[f32]) {
-        assert!(
-            position < self.max_seq_len,
-            "position {position} >= max_seq_len {}",
-            self.max_seq_len
-        );
-        (&self.cos_cache[position], &self.sin_cache[position])
+        // Both tables have exactly `max_seq_len` rows (built by `new`), so the
+        // row is present exactly when `position < max_seq_len`.
+        match (self.cos_cache.get(position), self.sin_cache.get(position)) {
+            (Some(cos), Some(sin)) => (cos, sin),
+            _ => panic!("position {position} >= max_seq_len {}", self.max_seq_len),
+        }
     }
 
     /// Get (cos, sin) slices for a contiguous range of positions.
@@ -141,13 +158,24 @@ impl RoPECache {
     /// Panics if `start + len > max_seq_len`.
     #[must_use]
     pub fn get_range(&self, start: usize, len: usize) -> (&[Vec<f32>], &[Vec<f32>]) {
-        let end = start + len;
-        assert!(
-            end <= self.max_seq_len,
-            "start ({start}) + len ({len}) = {end} > max_seq_len {}",
-            self.max_seq_len
-        );
-        (&self.cos_cache[start..end], &self.sin_cache[start..end])
+        let Some(end) = start.checked_add(len) else {
+            panic!(
+                "start ({start}) + len ({len}) overflows usize; max_seq_len {}",
+                self.max_seq_len
+            );
+        };
+        // Both tables have exactly `max_seq_len` rows (built by `new`), so the
+        // range is present exactly when `end <= max_seq_len`.
+        match (
+            self.cos_cache.get(start..end),
+            self.sin_cache.get(start..end),
+        ) {
+            (Some(cos), Some(sin)) => (cos, sin),
+            _ => panic!(
+                "start ({start}) + len ({len}) = {end} > max_seq_len {}",
+                self.max_seq_len
+            ),
+        }
     }
 
     /// Apply RoPE rotation in-place to query and key vectors.
@@ -170,19 +198,19 @@ impl RoPECache {
     pub fn apply_rope(q: &mut [f32], k: &mut [f32], cos: &[f32], sin: &[f32]) {
         let half_dim = cos.len();
         assert_eq!(sin.len(), half_dim, "cos and sin must have equal length");
-        assert_eq!(
-            q.len(),
-            2 * half_dim,
+        // `len / 2 == half_dim` with an even length is `len == 2 * half_dim`
+        // without a product that could overflow; the message widens to u128.
+        assert!(
+            q.len().is_multiple_of(2) && q.len() / 2 == half_dim,
             "q length ({}) must equal 2 * half_dim ({})",
             q.len(),
-            2 * half_dim
+            2 * half_dim as u128
         );
-        assert_eq!(
-            k.len(),
-            2 * half_dim,
+        assert!(
+            k.len().is_multiple_of(2) && k.len() / 2 == half_dim,
             "k length ({}) must equal 2 * half_dim ({})",
             k.len(),
-            2 * half_dim
+            2 * half_dim as u128
         );
 
         Self::rotate_vector(q, cos, sin);
@@ -190,13 +218,15 @@ impl RoPECache {
     }
 
     /// Rotate a single vector in-place using precomputed cos/sin.
+    ///
+    /// Pair `i` is `(x[2i], x[2i+1])`. `apply_rope` (the only caller) asserts
+    /// `x.len() == 2 * cos.len()` and `sin.len() == cos.len()`, so every pair
+    /// is rotated.
     fn rotate_vector(x: &mut [f32], cos: &[f32], sin: &[f32]) {
-        let half_dim = cos.len();
-        for i in 0..half_dim {
-            let x0 = x[2 * i];
-            let x1 = x[2 * i + 1];
-            x[2 * i] = x0 * cos[i] - x1 * sin[i];
-            x[2 * i + 1] = x0 * sin[i] + x1 * cos[i];
+        let (pairs, _) = x.as_chunks_mut::<2>();
+        for ((pair, &c), &s) in pairs.iter_mut().zip(cos).zip(sin) {
+            let [x0, x1] = *pair;
+            *pair = [x0 * c - x1 * s, x0 * s + x1 * c];
         }
     }
 
@@ -211,9 +241,21 @@ impl RoPECache {
             }
             .into());
         }
+        if head_dim > MAX_ROPE_HEAD_DIM {
+            return Err(Qwen3Error::InvalidConfig {
+                reason: format!("head_dim must be <= {MAX_ROPE_HEAD_DIM}, got {head_dim}"),
+            }
+            .into());
+        }
         if max_seq_len == 0 {
             return Err(Qwen3Error::InvalidConfig {
                 reason: "max_seq_len must be > 0".into(),
+            }
+            .into());
+        }
+        if max_seq_len > MAX_ROPE_POSITIONS {
+            return Err(Qwen3Error::InvalidConfig {
+                reason: format!("max_seq_len must be <= {MAX_ROPE_POSITIONS}, got {max_seq_len}"),
             }
             .into());
         }
@@ -578,5 +620,45 @@ mod tests {
         let mut q = [0.0f32; 4]; // wrong: should be 8
         let mut k = [0.0f32; 8];
         RoPECache::apply_rope(&mut q, &mut k, &cos, &sin);
+    }
+
+    // -- allocation bounds and overflow (verified-lane regressions) --
+
+    #[test]
+    fn test_try_new_rejects_tables_over_limit() {
+        assert!(RoPECache::try_new(MAX_ROPE_POSITIONS + 1, 8, 10_000.0).is_err());
+        assert!(RoPECache::try_new(16, MAX_ROPE_HEAD_DIM + 2, 10_000.0).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "max_seq_len must be <=")]
+    fn test_new_panics_on_max_seq_len_over_limit() {
+        let _ = RoPECache::new(MAX_ROPE_POSITIONS + 1, 8, 10_000.0);
+    }
+
+    /// Regression: `start + len` overflowing `usize` panics with the
+    /// documented range message instead of an arithmetic-overflow panic (or,
+    /// without overflow checks, a wrapped `end` that passed the bound check).
+    #[test]
+    #[should_panic(expected = "overflows usize; max_seq_len 16")]
+    fn test_get_range_panics_on_overflowing_range() {
+        let cache = RoPECache::new(16, 8, 10_000.0);
+        let _ = cache.get_range(2, usize::MAX);
+    }
+
+    #[test]
+    #[should_panic(expected = "start (10) + len (7) = 17 > max_seq_len 16")]
+    fn test_get_range_panics_past_max_seq_len() {
+        let cache = RoPECache::new(16, 8, 10_000.0);
+        let _ = cache.get_range(10, 7);
+    }
+
+    #[test]
+    fn test_get_range_up_to_max_seq_len() {
+        let cache = RoPECache::new(16, 8, 10_000.0);
+        let (cos, sin) = cache.get_range(10, 6);
+        assert_eq!((cos.len(), sin.len()), (6, 6));
+        let (cos, _) = cache.get_range(16, 0);
+        assert!(cos.is_empty());
     }
 }

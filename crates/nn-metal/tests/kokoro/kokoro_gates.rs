@@ -8,7 +8,7 @@
 //! state of the pipeline and assert thresholds that tighten as optimization
 //! phases complete. Each gate prints its measured value for CI visibility.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_gates -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_gates -- --nocapture`
 //!
 //! Part of #2925 (RTF gate), #2926 (dispatch gate), #2927 (audio quality gate).
 //! Part of #2218 (Perfect Kokoro epic).

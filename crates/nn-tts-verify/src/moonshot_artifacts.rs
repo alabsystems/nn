@@ -181,30 +181,6 @@ pub(super) fn design_phase_artifacts() -> Vec<VerificationArtifact> {
     ]
 }
 
-/// Property 7: Memory safety (Kani model checking) artifacts.
-pub(super) fn memory_safety_artifacts() -> Vec<VerificationArtifact> {
-    vec![
-        VerificationArtifact {
-            description: "491 Kani harnesses across nn workspace",
-            file: "crates/",
-            properties: &[6],
-            level: VerificationLevel::KaniProven,
-        },
-        VerificationArtifact {
-            description: "Kani bounds proofs (arithmetic, structural, ULP)",
-            file: "crates/nn-core/src/kani_bounds.rs",
-            properties: &[6],
-            level: VerificationLevel::KaniProven,
-        },
-        VerificationArtifact {
-            description: "Kani backward derivative proofs (35 harnesses)",
-            file: "crates/nn-autodiff/src/kani_backward_proofs.rs",
-            properties: &[6],
-            level: VerificationLevel::KaniProven,
-        },
-    ]
-}
-
 /// Property 8: Correct implementation (ay SMT + NY) artifacts.
 pub(super) fn correctness_artifacts() -> Vec<VerificationArtifact> {
     vec![
@@ -259,18 +235,21 @@ pub(super) fn cross_cutting_artifacts() -> Vec<VerificationArtifact> {
 }
 
 /// Full model verification artifacts (end-to-end CROWN composition).
+///
+/// These bound model outputs; they are not evidence for P7 (memory safety),
+/// so none of them lists property index 6.
 pub(super) fn full_model_artifacts() -> Vec<VerificationArtifact> {
     vec![
         VerificationArtifact {
             description: "Silero VAD full model composition (7 tests)",
             file: "crates/nn-verify/tests/compose_silero_vad_full.rs",
-            properties: &[6, 7],
+            properties: &[7],
             level: VerificationLevel::CrownProven,
         },
         VerificationArtifact {
             description: "Whisper encoder+decoder composition (11 tests)",
             file: "crates/nn-verify/tests/compose_whisper_full.rs",
-            properties: &[6, 7],
+            properties: &[7],
             level: VerificationLevel::CrownProven,
         },
         VerificationArtifact {
@@ -283,7 +262,7 @@ pub(super) fn full_model_artifacts() -> Vec<VerificationArtifact> {
         VerificationArtifact {
             description: "Qwen3 decoder composition (5 tests)",
             file: "crates/nn-verify/tests/compose_qwen3_decoder.rs",
-            properties: &[6, 7],
+            properties: &[7],
             level: VerificationLevel::CrownProven,
         },
     ]

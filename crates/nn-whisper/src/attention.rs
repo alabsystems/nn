@@ -385,11 +385,3 @@ impl MultiHeadAttention {
 #[cfg(test)]
 #[path = "attention_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_attention_proofs.rs"]
-mod kani_attention_proofs;
-
-#[cfg(kani)]
-#[path = "kani_attention_proofs_ext.rs"]
-mod kani_attention_proofs_ext;

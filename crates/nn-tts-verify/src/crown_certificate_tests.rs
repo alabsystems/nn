@@ -1046,9 +1046,7 @@ fn test_moonshot_certificate_recompute_flags() {
     let all_proven = cert.properties.iter().all(|p| {
         matches!(
             p.level,
-            VerificationLevel::CrownProven
-                | VerificationLevel::KaniProven
-                | VerificationLevel::SmtProven
+            VerificationLevel::CrownProven | VerificationLevel::SmtProven
         )
     });
     assert_eq!(cert.all_proven, all_proven);

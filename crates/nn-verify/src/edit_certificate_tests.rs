@@ -33,7 +33,6 @@ fn test_new_certificate_defaults() {
     assert!(cert.edited_weights.is_empty());
     assert!(cert.target_bounds.is_none());
     assert!(cert.preservation_bounds.is_none());
-    assert!(cert.kani_status.is_none());
     assert!(!cert.verified_at.is_empty());
     assert_eq!(cert.prop_method, PropMethod::Ibp);
     assert_eq!(cert.soundness_mode, VerificationSoundnessMode::Heuristic);
@@ -369,7 +368,6 @@ fn test_json_omits_none_fields() {
         "None fields should be omitted"
     );
     assert!(!json.contains("preservation_bounds"));
-    assert!(!json.contains("kani_status"));
     // delta_rank is Some(1) in sample_weight(), so it IS present in JSON.
     // Only check truly-None fields here.
 }

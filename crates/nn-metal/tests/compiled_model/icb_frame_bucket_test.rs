@@ -359,7 +359,7 @@ fn bench_dispatch_latency<F: FnMut()>(mut f: F) -> f64 {
 /// This is an observational benchmark, not a gate. It prints timing
 /// data for analysis but does not assert specific latency thresholds.
 ///
-/// Run with: `cargo test -p nn-metal --test compiled_model_all
+/// Run with: `targo --unverified test -p nn-metal --test compiled_model_all
 ///   test_frame_bucket_icb_latency_benchmark -- --nocapture`
 #[test]
 fn test_frame_bucket_icb_latency_benchmark() {
@@ -422,7 +422,7 @@ fn test_frame_bucket_icb_latency_benchmark() {
 /// Benchmark measuring ICB replay overhead as a fraction of total
 /// execution for the deep chain model (10 elementwise ops).
 ///
-/// Run with: `cargo test -p nn-metal --test compiled_model_all
+/// Run with: `targo --unverified test -p nn-metal --test compiled_model_all
 ///   test_frame_bucket_icb_deep_chain_benchmark -- --nocapture`
 #[test]
 fn test_frame_bucket_icb_deep_chain_benchmark() {
@@ -468,7 +468,7 @@ fn test_frame_bucket_icb_deep_chain_benchmark() {
 /// Pre-encodes models at each bucket size and measures ICB replay latency
 /// to identify any bucket sizes with anomalous overhead.
 ///
-/// Run with: `cargo test -p nn-metal --test compiled_model_all
+/// Run with: `targo --unverified test -p nn-metal --test compiled_model_all
 ///   test_frame_bucket_per_bucket_latency -- --nocapture`
 #[test]
 fn test_frame_bucket_per_bucket_latency() {

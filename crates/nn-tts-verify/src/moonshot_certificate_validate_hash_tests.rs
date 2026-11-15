@@ -220,7 +220,7 @@ fn test_bound_direction_p2_violation() {
 fn test_bound_direction_p7_violation() {
     // P7 (Memory-safe): bound >= threshold required.  Violate: bound < threshold.
     let mut cert = valid_certificate();
-    cert.properties[6].level = VerificationLevel::KaniProven;
+    cert.properties[6].level = VerificationLevel::SmtProven;
     cert.properties[6].bound_value = Some(400.0); // below threshold
     cert.properties[6].threshold = Some(500.0);
     cert.properties[6].proof_artifacts = vec!["fake.rs".to_string()];
@@ -240,7 +240,7 @@ fn test_bound_direction_p7_violation() {
 fn test_bound_direction_valid_passes() {
     // P7 with bound >= threshold should NOT produce a direction finding.
     let mut cert = valid_certificate();
-    cert.properties[6].level = VerificationLevel::KaniProven;
+    cert.properties[6].level = VerificationLevel::SmtProven;
     cert.properties[6].bound_value = Some(500.0);
     cert.properties[6].threshold = Some(500.0);
     cert.properties[6].proof_artifacts = vec!["fake.rs".to_string()];

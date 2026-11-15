@@ -264,7 +264,7 @@ fn test_layer_norm_scalar_large_gamma_amplifies() {
 
 #[test]
 fn test_layer_norm_scalar_extreme_spread_stays_finite() {
-    // x at Kani domain edge, gamma at Kani edge, tiny eps
+    // x and gamma at the tested domain edge, tiny eps
     let x = 1e3_f32;
     let mean = -1e3;
     let var = 0.0;
@@ -277,8 +277,8 @@ fn test_layer_norm_scalar_extreme_spread_stays_finite() {
 }
 
 #[test]
-fn test_layer_norm_scalar_large_but_finite_beyond_kani_domain() {
-    // Beyond Kani-proved domain but still within f32 range — returns Ok.
+fn test_layer_norm_scalar_large_but_finite_beyond_tested_domain() {
+    // Beyond the tested domain but still within f32 range — returns Ok.
     let x = 1e10_f32;
     let mean = 0.0;
     let var = 0.0;

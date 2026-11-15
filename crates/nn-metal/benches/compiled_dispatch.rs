@@ -9,7 +9,7 @@
 //! end-to-end compiled dispatch latency including buffer allocation,
 //! kernel dispatch, and flush.
 //!
-//! Run: `cargo bench -p nn-metal --bench compiled_dispatch --no-default-features`
+//! Run: `targo --unverified bench -p nn-metal --bench compiled_dispatch --no-default-features`
 //!
 //! Part of #3218.
 

@@ -737,7 +737,7 @@ impl ParityCheck {
 pub enum ParityLevel {
     /// L0: graph structure (non-empty, inputs/outputs present).
     Structure,
-    /// L1: kernel safety (Kani harnesses).
+    /// L1: kernel safety.
     KernelSafety,
     /// L2: bounds propagation (NY).
     Bounds,

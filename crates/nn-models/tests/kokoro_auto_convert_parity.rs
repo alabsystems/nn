@@ -16,7 +16,7 @@
 //!   safetensors and verify that every weight key maps to the model architecture.
 //!
 //! Run:
-//!   cargo test -p nn-models --test kokoro_auto_convert_parity -- --nocapture
+//!   targo --unverified test -p nn-models --test kokoro_auto_convert_parity -- --nocapture
 //!
 //! Part of #4276 (Kokoro auto-converter parity test).
 

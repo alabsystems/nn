@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![cfg(target_os = "macos")]
-#![allow(unexpected_cfgs)]
 
 //! End-to-end proc-macro dispatch test for issue #18.
 //!
@@ -43,7 +42,7 @@ fn issue18_domain_inputs(samples: usize) -> (Vec<f32>, Vec<f32>) {
     (x, alpha)
 }
 
-fn issue18_kani_domain_inputs() -> (Vec<f32>, Vec<f32>) {
+fn issue18_bounded_domain_inputs() -> (Vec<f32>, Vec<f32>) {
     let xs = [
         -1.0e4f32, -1.0e3, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1.0e3, 1.0e4,
     ];
@@ -111,12 +110,12 @@ fn test_generated_snake_msl_dispatch_matches_reference_issue18_domain() {
 }
 
 #[test]
-fn test_generated_snake_msl_dispatch_matches_reference_kani_domain() {
-    let (x, alpha) = issue18_kani_domain_inputs();
+fn test_generated_snake_msl_dispatch_matches_reference_bounded_domain() {
+    let (x, alpha) = issue18_bounded_domain_inputs();
     assert_eq!(
         x.len(),
         alpha.len(),
-        "Kani-domain helper must generate aligned input vectors"
+        "bounded-domain helper must generate aligned input vectors"
     );
 
     let ctx = MetalContext::new().expect("Metal context");

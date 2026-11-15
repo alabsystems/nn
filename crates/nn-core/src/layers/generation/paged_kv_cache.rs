@@ -392,10 +392,6 @@ impl PagedKvCache {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_paged_kv_cache.rs"]
-mod kani_paged_kv_cache;
-
 #[cfg(test)]
 #[path = "paged_kv_cache_tests.rs"]
 mod tests;

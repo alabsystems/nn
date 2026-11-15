@@ -28,7 +28,7 @@
 //! Run:
 //!   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
 //!   KOKORO_REFERENCE=path/to/kokoro_reference.safetensors \
-//!   cargo test -p nn-metal --test kokoro_l3_parity
+//!   targo --unverified test -p nn-metal --test kokoro_l3_parity
 //!
 //! Part of #2466 (L3 parity test).
 //! Part of #2218 (Kokoro epic).

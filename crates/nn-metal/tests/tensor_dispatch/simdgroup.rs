@@ -295,7 +295,7 @@ fn bench_linear(
 
 /// Benchmark: compiled pipeline simdgroup vs naive Linear at FFN scale.
 ///
-/// Run with: `cargo test -p nn-metal --test tensor_dispatch_simdgroup --release
+/// Run with: `targo --unverified test -p nn-metal --test tensor_dispatch_simdgroup --release
 ///            -- test_simdgroup_vs_naive_benchmark --nocapture`
 #[test]
 fn test_simdgroup_vs_naive_benchmark() {

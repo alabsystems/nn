@@ -78,20 +78,7 @@ fn make_temp_dir(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn test_equivalence_proof_all_none() {
-    let proof = nn_import::EquivalenceProof::new(None, None, None);
-    assert!(proof.kernel_safety.is_none());
-    assert!(proof.composition_bounds.is_none());
-    assert!(proof.reference_parity.is_none());
-}
-
-#[test]
-fn test_equivalence_proof_with_kani_safety() {
-    let kani = nn_import::KaniSafetyReport::new(100, 98, 2);
-    let proof = nn_import::EquivalenceProof::new(Some(kani), None, None);
-    let ks = proof.kernel_safety.as_ref().unwrap();
-    assert_eq!(ks.harness_count, 100);
-    assert_eq!(ks.passed, 98);
-    assert_eq!(ks.failed, 2);
+    let proof = nn_import::EquivalenceProof::new(None, None);
     assert!(proof.composition_bounds.is_none());
     assert!(proof.reference_parity.is_none());
 }
@@ -99,30 +86,11 @@ fn test_equivalence_proof_with_kani_safety() {
 #[test]
 fn test_equivalence_proof_with_composition_bounds() {
     let bounds = nn_import::CompositionBoundsReport::new(true, Some(1.5));
-    let proof = nn_import::EquivalenceProof::new(None, Some(bounds), None);
-    assert!(proof.kernel_safety.is_none());
+    let proof = nn_import::EquivalenceProof::new(Some(bounds), None);
     let cb = proof.composition_bounds.as_ref().unwrap();
     assert!(cb.propagation_ok);
     assert!((cb.output_width.unwrap() - 1.5).abs() < f32::EPSILON);
     assert!(proof.reference_parity.is_none());
-}
-
-#[test]
-fn test_equivalence_proof_kani_and_bounds_populated() {
-    let kani = nn_import::KaniSafetyReport::new(50, 50, 0);
-    let bounds = nn_import::CompositionBoundsReport::new(true, Some(0.8));
-    let proof = nn_import::EquivalenceProof::new(Some(kani), Some(bounds), None);
-    assert!(proof.kernel_safety.is_some());
-    assert!(proof.composition_bounds.is_some());
-    // reference_parity requires reftest feature, tested separately
-}
-
-#[test]
-fn test_kani_safety_report_zero_failures() {
-    let report = nn_import::KaniSafetyReport::new(754, 754, 0);
-    assert_eq!(report.harness_count, 754);
-    assert_eq!(report.passed, 754);
-    assert_eq!(report.failed, 0);
 }
 
 #[test]
@@ -478,7 +446,6 @@ fn test_verification_coverage_default_values() {
     assert!(coverage.composition_method.is_none());
     assert!(coverage.composition_soundness_mode.is_none());
     assert!(coverage.composition_proof_strength.is_none());
-    assert!(coverage.kani_harnesses_applicable.is_none());
     assert!(coverage.reference_parity_passed.is_none());
 }
 
@@ -586,8 +553,7 @@ mod metal_tests {
 
         let _ = std::fs::remove_dir_all(&dir);
 
-        // Proof: Kani is never inline, composition bounds skipped at VerifyLevel::None.
-        assert!(result.result.proof.kernel_safety.is_none());
+        // Proof: composition bounds skipped at VerifyLevel::None.
         assert!(result.result.proof.composition_bounds.is_none());
         assert!(result.result.proof.reference_parity.is_none());
         // Report should have valid import metrics.
@@ -735,34 +701,6 @@ mod metal_tests {
         assert!(vc.composition_method.is_none());
         assert!(vc.composition_soundness_mode.is_none());
         assert!(vc.composition_proof_strength.is_none());
-    }
-
-    #[test]
-    fn test_convert_builder_equivalence_proof_l1_always_none() {
-        let cache = init_metal();
-        let dir = make_temp_dir("proof_l1_none");
-        let graph_path = write_graph_json(&dir);
-        let weights_path = write_mlp_weights(&dir);
-
-        // L1 (Kani) is always None in the pipeline (run offline by Prover).
-        for verify_level in [
-            nn_import::VerifyLevel::None,
-            nn_import::VerifyLevel::Bounds,
-            nn_import::VerifyLevel::Full,
-        ] {
-            let result = nn_import::convert_build(&graph_path, &weights_path, &cache)
-                .optimize(nn_import::OptLevel::Full)
-                .verify(verify_level)
-                .build()
-                .unwrap_or_else(|e| panic!("build with VerifyLevel::{verify_level:?} failed: {e}"));
-
-            assert!(
-                result.result.proof.kernel_safety.is_none(),
-                "L1 Kani should always be None at VerifyLevel::{verify_level:?}"
-            );
-        }
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

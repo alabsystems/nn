@@ -62,11 +62,3 @@ pub use prove::{
 };
 pub use prove_multi::verify_kernel_smt_multi;
 pub use translated_kernel::TranslatedKernel;
-
-#[cfg(kani)]
-#[path = "ay_encoding_kani.rs"]
-mod ay_encoding_kani;
-
-#[cfg(kani)]
-#[path = "kani_ay_fp_snake.rs"]
-mod kani_ay_fp_snake;

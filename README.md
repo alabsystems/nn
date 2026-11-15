@@ -4,7 +4,7 @@ Apache-2.0 · [github.com/alabsystems/nn](https://github.com/alabsystems/nn)
 
 A Rust-native ML framework where model code, GPU kernels, and proof tooling live together.
 
-- **Kani-backed kernel verification** — write a GPU kernel in Rust; `#[nn::kernel]` emits the Metal shader, a proof harness, and a differential test.
+- **Rust-authored GPU kernels** — write a kernel in Rust; `#[nn::kernel]` emits the Metal shader and a differential test.
 - **Metal as the production backend** — compiled `CompiledModel` dispatch with op fusion and weight uploads.
 - **Exported-artifact import bridge** — `torch.export` JSON + `safetensors` → optimized Metal model with a structured `ConvertReport`.
 - **Bound propagation** — `ny` IBP/CROWN over composed networks; `ay` SMT for small subgraphs.
@@ -113,8 +113,8 @@ let output = result.result.model.execute_dyn(&cache, &[&input])?;
 
 ## Verification
 
-NN combines GPU kernel formal verification (Kani / CBMC) with neural-network
-bound propagation (`ny`, `ay`). Proofs operate on Rust source.
+NN verifies networks with bound propagation (`ny`) and SMT (`ay`). Proofs
+operate on Rust source.
 
 | Level | Method | What it catches |
 |-------|--------|----------------|
@@ -126,8 +126,7 @@ bound propagation (`ny`, `ay`). Proofs operate on Rust source.
 
 Levels 2–3 are what `verify` turns on. Level 4 emits SMT-LIB2 with
 uninterpreted-function approximation for transcendentals by default; in-process
-solving is the opt-in `nn-verify/ay-smt` feature. Kani harnesses are `#[cfg(kani)]`
-items, not a Cargo feature — build under Kani to run them.
+solving is the opt-in `nn-verify/ay-smt` feature.
 
 `silero_vad.proof.json` is a worked certificate bundle — read
 `silero_vad.proof.README.md` first: it is schema and pipeline evidence over a
@@ -152,21 +151,19 @@ partial: useful, not yet end-to-end proof-powered.
 `v0.3.0` is the current published tag. This snapshot is source-only and carries
 no lockfile, so it is a build target, not a reproducible one.
 
-Development builds against the Trust verifying compiler; this snapshot pins
-stock upstream Rust instead, because the `trust` channel is a locally linked
-toolchain no outside clone can resolve. Trust's in-compilation verification is
-switched off repo-wide even in the development build, so it contributes nothing
-to the levels above today — those are `nn-verify`'s own bound-propagation and
-SMT lanes plus the Kani harnesses, run as tests.
-
-Turning it back on is written and pushed but not merged: the development branch
-`trust/sanctioned-verify-split` verifies first-party crates while leaving build
-scripts, proc-macros and third-party dependencies alone, and it is proven to
-issue exactly those flags. It is blocked on compiler throughput, not on this
-code — verifying `nn-core` did not finish in over an hour of CPU, in an
-unmemoized per-statement recompute inside the verifier's VC generator. Every
-other crate depends on `nn-core`, so no crate in this workspace has yet been
-measured under verification.
+nn builds with the Trust verifying compiler, which `rust-toolchain.toml` pins
+here as in development: install [aterm](https://github.com/alabsystems/aterm#install),
+and atpkg installs Trust (`aterm pkg install trust` does it by hand; atpkg ships
+it for Apple-silicon macOS only, and no other platform has a public Trust
+package or supported install path today). Day-to-day builds and tests run in Trust's
+unverified lane (`targo --unverified build`, `scripts/test-capped.sh`). The release gate runs Trust's verified
+check over the workspace in its advisory lane: first-party crates are verified,
+unproved obligations count as a conditional pass, and a refuted one fails the
+gate. `scripts/verify-ready.sh` runs the same advisory check over the targets
+that currently verify with no refuted row, each held to a floor of proved
+obligations (unknown rows never count toward it). That compiler-level check is
+not what the levels above rest on — those are `nn-verify`'s own
+bound-propagation and SMT lanes.
 
 ## License
 

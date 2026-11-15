@@ -576,14 +576,6 @@ impl KokoroModel {
     }
 }
 
-#[cfg(kani)]
-#[path = "kokoro_tts_kani_tests.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "kani_kokoro_tts.rs"]
-mod kani_model_proofs;
-
 #[cfg(test)]
 #[path = "kokoro_tts_tests.rs"]
 mod tests;

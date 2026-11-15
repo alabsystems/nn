@@ -481,18 +481,6 @@ pub(super) fn load_layer_norm(
     LayerNorm::new(w, b, eps)
 }
 
-#[cfg(kani)]
-#[path = "kani_vit_proofs.rs"]
-mod kani_vit_proofs;
-
-#[cfg(kani)]
-#[path = "kani_vit.rs"]
-mod kani_vit;
-
-#[cfg(kani)]
-#[path = "kani_vit_advanced.rs"]
-mod kani_vit_advanced;
-
 #[cfg(test)]
 #[path = "vit_tests.rs"]
 mod tests;

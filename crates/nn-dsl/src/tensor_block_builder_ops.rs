@@ -394,9 +394,3 @@ impl TensorBlockBuilder {
 // Conv2d builder methods extracted to tensor_block_builder_conv2d.rs
 #[path = "tensor_block_builder_conv2d.rs"]
 mod conv2d_ops;
-
-// Kani proof harnesses for composite tensor op builders (MatMul, Attention,
-// Embedding, LSTM, Transpose, Gated DeltaNet). Part of #729 dvoice epic.
-#[cfg(kani)]
-#[path = "tensor_block_builder_ops_kani.rs"]
-mod kani_builders;

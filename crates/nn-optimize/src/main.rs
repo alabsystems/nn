@@ -36,7 +36,7 @@
 
 use std::io::Read;
 use std::path::PathBuf;
-use std::process;
+use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -100,12 +100,19 @@ enum ReportFormat {
     Json,
 }
 
-fn main() {
-    let cli = Cli::parse();
-
-    if let Err(e) = run(cli) {
-        eprintln!("error: {e:#}");
-        process::exit(1);
+/// Runs the CLI; exits 1 with the error chain on stderr when `run` fails.
+///
+/// The failure path returns `ExitCode::FAILURE` (1 on every platform this
+/// tool ships on) rather than calling `process::exit(1)`: an ordinary return
+/// runs destructors, and the `Result` match stays an exhaustive two-arm match
+/// with no diverging call beside it, which the verified lane discharges.
+fn main() -> ExitCode {
+    match run(Cli::parse()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -427,46 +434,57 @@ fn format_json_value(analysis: &FusionGapAnalysis) -> serde_json::Value {
 /// The `report` subcommand entry point.
 fn cmd_report(input: &std::path::Path, format: &ReportFormat) -> Result<()> {
     let analyses = load_analyses(input)?;
+    print!("{}", render_report(&analyses, format)?);
+    Ok(())
+}
 
+/// Render the dashboard for `analyses` in `format`, exactly as `report`
+/// prints it to stdout.
+///
+/// With more than one analysis each one is labelled with its 1-based ordinal
+/// (`=== Segment: 1 ===`, `## Segment 1`); text segments are separated by a
+/// blank line. The ordinals come from the inclusive range `1..=len`, which
+/// cannot overflow, rather than from `enumerate()`'s index plus one.
+fn render_report(analyses: &[FusionGapAnalysis], format: &ReportFormat) -> Result<String> {
+    let mut out = String::new();
     match format {
         ReportFormat::Text => {
-            if analyses.len() == 1 {
-                print!("{}", format_text(&analyses[0], None));
+            if let [only] = analyses {
+                out.push_str(&format_text(only, None));
             } else {
-                for (i, a) in analyses.iter().enumerate() {
-                    let label = format!("{}", i + 1);
-                    print!("{}", format_text(a, Some(&label)));
-                    if i + 1 < analyses.len() {
-                        println!();
+                let count = analyses.len();
+                for (ordinal, a) in (1..=count).zip(analyses) {
+                    out.push_str(&format_text(a, Some(&ordinal.to_string())));
+                    if ordinal < count {
+                        out.push('\n');
                     }
                 }
             }
         }
         ReportFormat::Markdown => {
-            println!("# nn Optimization Dashboard\n");
-            if analyses.len() == 1 {
-                print!("{}", format_markdown(&analyses[0], None));
+            out.push_str("# nn Optimization Dashboard\n\n");
+            if let [only] = analyses {
+                out.push_str(&format_markdown(only, None));
             } else {
-                for (i, a) in analyses.iter().enumerate() {
-                    let label = format!("{}", i + 1);
-                    print!("{}", format_markdown(a, Some(&label)));
+                for (ordinal, a) in (1..=analyses.len()).zip(analyses) {
+                    out.push_str(&format_markdown(a, Some(&ordinal.to_string())));
                 }
             }
         }
         ReportFormat::Json => {
-            let output = if analyses.len() == 1 {
-                format_json_value(&analyses[0])
+            let output = if let [only] = analyses {
+                format_json_value(only)
             } else {
                 let arr: Vec<_> = analyses.iter().map(format_json_value).collect();
                 serde_json::json!(arr)
             };
             let pretty =
                 serde_json::to_string_pretty(&output).context("failed to serialize report")?;
-            println!("{pretty}");
+            out.push_str(&pretty);
+            out.push('\n');
         }
     }
-
-    Ok(())
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -803,5 +821,65 @@ mod tests {
         assert!(result.is_ok());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- render_report: ordinals and separators ----
+
+    #[test]
+    fn test_render_report_text_numbers_segments_from_one_and_separates_them() {
+        let analyses = vec![sample_analysis(), sample_analysis(), sample_analysis()];
+        let out = render_report(&analyses, &ReportFormat::Text).unwrap();
+        let mut expected = String::new();
+        expected.push_str(&format_text(&analyses[0], Some("1")));
+        expected.push('\n');
+        expected.push_str(&format_text(&analyses[1], Some("2")));
+        expected.push('\n');
+        expected.push_str(&format_text(&analyses[2], Some("3")));
+        assert_eq!(out, expected);
+        assert!(out.contains("=== Segment: 1 ==="));
+        assert!(out.contains("=== Segment: 3 ==="));
+        assert!(!out.contains("=== Segment: 0 ==="));
+        assert!(!out.contains("=== Segment: 4 ==="));
+        // No separator after the last segment.
+        assert!(out.ends_with(&format_text(&analyses[2], Some("3"))));
+    }
+
+    #[test]
+    fn test_render_report_single_analysis_is_unlabelled() {
+        let analyses = vec![sample_analysis()];
+        let text = render_report(&analyses, &ReportFormat::Text).unwrap();
+        assert_eq!(text, format_text(&analyses[0], None));
+        let md = render_report(&analyses, &ReportFormat::Markdown).unwrap();
+        assert_eq!(
+            md,
+            format!(
+                "# nn Optimization Dashboard\n\n{}",
+                format_markdown(&analyses[0], None)
+            )
+        );
+        let json = render_report(&analyses, &ReportFormat::Json).unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(reparsed.is_object());
+        assert!(json.ends_with('\n'));
+    }
+
+    #[test]
+    fn test_render_report_markdown_numbers_segments_from_one() {
+        let analyses = vec![sample_analysis(), sample_analysis()];
+        let out = render_report(&analyses, &ReportFormat::Markdown).unwrap();
+        let expected = format!(
+            "# nn Optimization Dashboard\n\n{}{}",
+            format_markdown(&analyses[0], Some("1")),
+            format_markdown(&analyses[1], Some("2"))
+        );
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_render_report_json_array_for_many() {
+        let analyses = vec![sample_analysis(), sample_analysis()];
+        let out = render_report(&analyses, &ReportFormat::Json).unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(reparsed.as_array().map(Vec::len), Some(2));
     }
 }

@@ -181,10 +181,6 @@ impl std::fmt::Display for HexDecodeError {
     }
 }
 
-#[cfg(kani)]
-#[path = "signing_config_kani.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 mod tests {
     use super::*;

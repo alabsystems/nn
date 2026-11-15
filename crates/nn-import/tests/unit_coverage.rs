@@ -635,8 +635,7 @@ fn test_kokoro_name_mapping_closure() {
 
 #[test]
 fn test_equivalence_proof_all_none() {
-    let proof = nn_import::EquivalenceProof::new(None, None, None);
-    assert!(proof.kernel_safety.is_none());
+    let proof = nn_import::EquivalenceProof::new(None, None);
     assert!(proof.composition_bounds.is_none());
     assert!(proof.reference_parity.is_none());
 }
@@ -644,15 +643,9 @@ fn test_equivalence_proof_all_none() {
 #[test]
 fn test_equivalence_proof_with_populated_reports() {
     let proof = nn_import::EquivalenceProof::new(
-        Some(nn_import::KaniSafetyReport::new(100, 98, 2)),
         Some(nn_import::CompositionBoundsReport::new(true, Some(1.5))),
         None,
     );
-    let ks = proof.kernel_safety.unwrap();
-    assert_eq!(ks.harness_count, 100);
-    assert_eq!(ks.passed, 98);
-    assert_eq!(ks.failed, 2);
-
     let cb = proof.composition_bounds.unwrap();
     assert!(cb.propagation_ok);
     assert!((cb.output_width.unwrap() - 1.5).abs() < f32::EPSILON);

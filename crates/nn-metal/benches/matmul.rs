@@ -8,7 +8,7 @@
 //! inference (Kokoro, Whisper, Qwen3). Covers both the simdgroup-tiled
 //! path and the naive fallback path.
 //!
-//! Run: `cargo bench -p nn-metal --bench matmul --no-default-features`
+//! Run: `targo --unverified bench -p nn-metal --bench matmul --no-default-features`
 //!
 //! Part of #3218.
 

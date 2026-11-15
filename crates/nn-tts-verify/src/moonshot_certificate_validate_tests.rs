@@ -124,9 +124,7 @@ fn test_aggregate_flag_mismatch_all_proven() {
     let has_unproven = cert.properties.iter().any(|p| {
         !matches!(
             p.level,
-            VerificationLevel::CrownProven
-                | VerificationLevel::KaniProven
-                | VerificationLevel::SmtProven
+            VerificationLevel::CrownProven | VerificationLevel::SmtProven
         )
     });
     if has_unproven {
@@ -267,38 +265,6 @@ fn test_validation_display_format() {
         display.contains("Certificate"),
         "Display should mention 'Certificate', got: {display}"
     );
-}
-
-#[test]
-fn test_kani_scan_real_workspace() {
-    // This test validates against the real crates/ directory
-    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent());
-
-    if let Some(root) = repo_root {
-        let crates_dir = root.join("crates");
-        if crates_dir.is_dir() {
-            let mut cert = valid_certificate();
-            // Set P7 to KaniProven with a count
-            cert.properties[6].level = VerificationLevel::KaniProven;
-            cert.properties[6].bound_value = Some(400.0); // approximate
-            cert.properties[6].threshold = Some(400.0);
-            cert.recompute_aggregate_flags();
-
-            let result = validate_certificate(&cert, root);
-            // Should have scanned and found harnesses
-            assert!(
-                result.kani_scan_count.is_some(),
-                "Should have performed Kani scan"
-            );
-            let count = result.kani_scan_count.unwrap();
-            assert!(
-                count > 100,
-                "Expected >100 Kani harnesses in workspace, found {count}"
-            );
-        }
-    }
 }
 
 // --- Source hash + bound direction tests (extracted) -------------------------

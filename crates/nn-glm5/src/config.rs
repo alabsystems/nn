@@ -7,6 +7,11 @@
 use crate::Glm5Error;
 use nn_core::Result;
 
+/// Most decoder layers a configuration may declare. Real GLM checkpoints have
+/// well under 100; the bound keeps the per-layer allocation in
+/// [`crate::Glm5Model::load`] sized by a validated count.
+pub(crate) const MAX_NUM_LAYERS: usize = 4096;
+
 /// GLM-4/5 model configuration.
 ///
 /// Maps to HuggingFace `config.json` fields. Defaults match GLM-4-9B.
@@ -207,6 +212,15 @@ impl Glm5Config {
         if self.num_layers == 0 {
             return Err(Glm5Error::InvalidConfig {
                 reason: "num_layers must be > 0".into(),
+            }
+            .into());
+        }
+        if self.num_layers > MAX_NUM_LAYERS {
+            return Err(Glm5Error::InvalidConfig {
+                reason: format!(
+                    "num_layers ({}) exceeds the limit of {MAX_NUM_LAYERS}",
+                    self.num_layers
+                ),
             }
             .into());
         }

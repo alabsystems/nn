@@ -257,7 +257,10 @@ impl GradScaler {
             self.scale = (self.scale * self.backoff_factor).max(self.min_scale);
             self.growth_tracker = 0;
         } else {
-            self.growth_tracker += 1;
+            // `load_state` and the reset below keep `growth_tracker <
+            // growth_interval`, so this never saturates; saturating keeps the
+            // counter total for any state.
+            self.growth_tracker = self.growth_tracker.saturating_add(1);
             if self.growth_tracker >= self.growth_interval {
                 self.scale = (self.scale * self.growth_factor).min(self.max_scale);
                 self.growth_tracker = 0;

@@ -281,18 +281,17 @@ pub fn layer_norm_ref(
 ///
 /// This is the scalar kernel that each element of the tensor undergoes
 /// after the reduction passes compute `mean` and `var`. Exposed for
-/// Kani proof harnesses and differential testing.
+/// differential testing.
 ///
 /// # Errors
 ///
 /// Returns [`KernelError::NonFiniteInput`] if any input is NaN or infinite.
 /// Returns [`KernelError::NonFiniteOutput`] if the computed
-/// result is non-finite despite all inputs being finite (e.g., extreme magnitudes
-/// outside the Kani-proved domain).
+/// result is non-finite despite all inputs being finite (e.g., extreme magnitudes).
 ///
-/// # Safety invariants (proved by Kani)
+/// # Safety invariants
 ///
-/// - Finite output for finite inputs within the proved domain
+/// - Finite output for finite inputs within the domain
 ///   (x ∈ [-1e3, 1e3], var ∈ [0, 1e6], eps ∈ [1e-8, 1], gamma ∈ [-10, 10]).
 /// - Output is bounded when inputs are bounded.
 #[must_use = "returns a Result that may contain an error"]
@@ -306,14 +305,6 @@ pub fn layer_norm_scalar(
 ) -> Result<f32, KernelError> {
     affine_normalize_scalar(x, mean, var, eps, gamma, beta)
 }
-
-#[cfg(kani)]
-#[path = "layer_norm_kani.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "layer_norm_kani_builder_tests.rs"]
-mod kani_builder_proofs;
 
 #[cfg(test)]
 #[path = "layer_norm_tests.rs"]

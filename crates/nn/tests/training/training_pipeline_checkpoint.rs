@@ -6,7 +6,7 @@
 //!
 //! Split from `training_pipeline.rs` for 500-line compliance (#1544 D10).
 //!
-//! Run: `cargo test -p nn --test training_pipeline_checkpoint --features training`
+//! Run: `targo --unverified test -p nn --test training_pipeline_checkpoint --features training`
 
 #![cfg(feature = "training")]
 

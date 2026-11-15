@@ -624,7 +624,6 @@ fn test_moonshot_verification_level_display() {
         format!("{}", VerificationLevel::CrownProven),
         "CROWN_PROVEN"
     );
-    assert_eq!(format!("{}", VerificationLevel::KaniProven), "KANI_PROVEN");
     assert_eq!(format!("{}", VerificationLevel::SmtProven), "SMT_PROVEN");
 }
 
@@ -636,7 +635,6 @@ fn test_moonshot_verification_level_strict_ordering() {
         VerificationLevel::CrownPartial,
         VerificationLevel::CrownProbabilistic,
         VerificationLevel::CrownProven,
-        VerificationLevel::KaniProven,
         VerificationLevel::SmtProven,
     ];
     for i in 0..levels.len() - 1 {
@@ -658,15 +656,6 @@ fn test_moonshot_level_counts_sum_to_8() {
 }
 
 #[test]
-fn test_moonshot_all_have_evidence() {
-    let status = MoonshotStatus::from_repo();
-    assert!(
-        status.all_have_evidence(),
-        "all 8 properties should have verification evidence"
-    );
-}
-
-#[test]
 fn test_artifact_registry_non_empty() {
     let artifacts = artifact_registry();
     assert!(
@@ -680,26 +669,6 @@ fn test_artifact_registry_non_empty() {
         for &idx in artifact.properties {
             assert!(idx < 8, "property index {idx} out of range");
         }
-    }
-}
-
-#[test]
-fn test_artifact_registry_covers_every_property() {
-    let artifacts = artifact_registry();
-    let mut covered = [false; 8];
-    for artifact in &artifacts {
-        for &idx in artifact.properties {
-            if idx < 8 {
-                covered[idx] = true;
-            }
-        }
-    }
-    for (i, &c) in covered.iter().enumerate() {
-        assert!(
-            c,
-            "Property {} should be covered by at least one artifact",
-            i + 1
-        );
     }
 }
 

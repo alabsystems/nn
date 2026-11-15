@@ -62,12 +62,6 @@ pub fn build_gelu_kernel() -> Result<KernelDef, LowerError> {
 /// Returns [`KernelError::NonFiniteInput`] if x is NaN or infinite.
 /// Returns [`KernelError::NonFiniteOutput`] if the computed result is non-finite.
 #[must_use = "returns a Result that may contain an error"]
-#[cfg_attr(kani, kani::requires(
-    x.is_finite() && x >= -100.0 && x <= 100.0
-))]
-#[cfg_attr(kani, kani::ensures(|result: &Result<f32, KernelError>|
-    matches!(result, Ok(v) if v.is_finite())
-))]
 pub fn gelu_scalar(x: f32) -> Result<f32, KernelError> {
     validate_finite_inputs(&[("x", x)])?;
     checked_scalar_output(gelu_eval(x))
@@ -142,60 +136,6 @@ pub(crate) fn gelu_ref(x: &[f32]) -> Result<Vec<f32>, KernelError> {
     }
     x.iter().map(|&xi| gelu_scalar(xi)).collect()
 }
-
-#[cfg(all(kani, feature = "kani-stubbing"))]
-mod kani_proofs {
-    //! Kani proof harnesses for GELU kernel correctness.
-    //!
-    //! Uses `exp_stub` / `exp_det_stub` to work around CBMC's inaccurate
-    //! `f32::exp()` model (#239). Same pattern as silu_mul.
-
-    use super::*;
-    use crate::kani_stubs::{exp_det_stub, exp_stub};
-
-    /// Prove GELU produces finite output for bounded inputs.
-    ///
-    /// Domain: x in [-100, 100].
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    #[kani::stub(f32::exp, exp_stub)]
-    fn gelu_finite_for_bounded_inputs() {
-        let x: f32 = kani::any();
-        kani::assume(x.is_finite() && x >= -100.0 && x <= 100.0);
-
-        let result = gelu_scalar(x).expect("gelu_scalar must succeed for bounded finite inputs");
-        assert!(result.is_finite(), "gelu must produce finite output");
-    }
-
-    /// Prove GELU bounds algorithm is structurally correct.
-    ///
-    /// Domain: x in [-5, 5]. Covers `GELU_ARGMIN` (-0.752) and the
-    /// transition zone.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    #[kani::stub(f32::exp, exp_det_stub)]
-    fn gelu_bounds_sound() {
-        let x: f32 = kani::any();
-        let x_lo: f32 = kani::any();
-        let x_hi: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x_lo.is_finite() && x_hi.is_finite());
-        kani::assume(x >= -5.0 && x <= 5.0);
-        kani::assume(x_lo >= -5.0 && x_lo <= x && x <= x_hi && x_hi <= 5.0);
-
-        let result = gelu_scalar(x).expect("gelu_scalar must succeed for bounded finite inputs");
-        let (lower, upper) = gelu_scalar_bounds(x_lo, x_hi).expect("finite inputs");
-
-        assert!(result >= lower - 1e-5, "gelu output must be >= lower bound");
-        assert!(result <= upper + 1e-5, "gelu output must be <= upper bound");
-    }
-}
-
-#[cfg(kani)]
-#[path = "gelu_kani_builder.rs"]
-mod kani_builder_proofs;
 
 #[cfg(test)]
 #[path = "gelu_tests.rs"]

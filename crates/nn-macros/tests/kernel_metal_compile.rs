@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![cfg(target_os = "macos")]
-#![allow(unexpected_cfgs)]
 
 use nn_metal::compile_msl_pipeline;
 

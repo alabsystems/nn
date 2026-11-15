@@ -4,9 +4,9 @@
 
 //! Performance benchmarks with throughput reporting for core DynTensor operations.
 //!
-//! Run with: `cargo test -p nn-core --test performance_benchmarks -- --nocapture`
+//! Run with: `targo --unverified test -p nn-core --test performance_benchmarks -- --nocapture`
 //!
-//! Unlike the criterion benchmarks (`cargo bench`), these report mean/min/max
+//! Unlike the criterion benchmarks (`targo --unverified bench`), these report mean/min/max
 //! times and GFLOPS throughput in a human-readable table. Useful for quick
 //! one-shot performance snapshots without criterion's statistical machinery.
 //!

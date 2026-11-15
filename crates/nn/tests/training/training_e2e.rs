@@ -11,7 +11,7 @@
 //! All prior training tests optimize scalar functions (minimize x²) without
 //! going through matmul→activation→loss→backward on real weight matrices.
 //!
-//! Run: `cargo test -p nn --test training_e2e --features training`
+//! Run: `targo --unverified test -p nn --test training_e2e --features training`
 
 #![cfg(feature = "training")]
 

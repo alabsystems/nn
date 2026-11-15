@@ -52,57 +52,6 @@ pub(crate) fn dim_as_i64(val: usize, context: &str) -> Result<i64, VerifyError> 
     })
 }
 
-/// Convert `i64` shape dimension to `usize` with non-negativity validation.
-///
-/// Rejects negative values that would wrap to huge `usize` values, producing
-/// incorrect graph topologies or enormous buffer allocations. This is the
-/// inverse of [`dim_as_i64`].
-///
-/// Runtime consumers (the legacy in-crate trace translator) were deleted at
-/// the ny-trace-bridge cutover; only the Kani proofs remain.
-#[cfg(kani)]
-pub(crate) fn checked_i64_to_usize(val: i64, context: &str) -> Result<usize, VerifyError> {
-    usize::try_from(val).map_err(|_| {
-        StructuralError::ShapeConstraint {
-            context: format!("{context}: i64 value {val} is negative (cannot convert to usize)"),
-        }
-        .into()
-    })
-}
-
-/// Convert `f64` scale/threshold to `usize` with finiteness and non-negativity checks.
-///
-/// Rejects NaN (Rust saturates to 0), negative values, and non-integral values
-/// that would silently truncate. Used for scale factors and threshold counts.
-///
-/// Runtime consumers (the legacy in-crate trace translator) were deleted at
-/// the ny-trace-bridge cutover; only the Kani proofs remain.
-#[cfg(kani)]
-pub(crate) fn checked_f64_to_usize(val: f64, context: &str) -> Result<usize, VerifyError> {
-    if !val.is_finite() {
-        return Err(StructuralError::ShapeConstraint {
-            context: format!("{context}: f64 value {val} is non-finite"),
-        }
-        .into());
-    }
-    if val < 0.0 {
-        return Err(StructuralError::ShapeConstraint {
-            context: format!("{context}: f64 value {val} is negative"),
-        }
-        .into());
-    }
-    let rounded = val.round();
-    if (rounded - val).abs() > 1e-6 {
-        return Err(StructuralError::ShapeConstraint {
-            context: format!("{context}: f64 value {val} is not integral"),
-        }
-        .into());
-    }
-    // Safe: rounded is finite, non-negative, and integral. For practical tensor
-    // shapes (< 2^53), f64 → usize cast is exact. Values > 2^53 would saturate.
-    Ok(rounded as usize)
-}
-
 /// How a tensor input is treated during tensor-level verification.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -380,7 +329,3 @@ mod softmax;
 mod transpose;
 #[path = "graph_tensor_zero_pad.rs"]
 mod zero_pad;
-
-#[cfg(kani)]
-#[path = "graph_tensor_kani.rs"]
-mod kani_proofs;

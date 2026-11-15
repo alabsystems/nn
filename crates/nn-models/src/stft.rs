@@ -202,15 +202,3 @@ impl From<StftError> for nn_core::TensorError {
 #[cfg(test)]
 #[path = "stft_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "stft_overlap_add_kani_tests.rs"]
-mod kani_stft_ola_proofs;
-
-#[cfg(kani)]
-#[path = "stft_signal_kani_tests.rs"]
-mod kani_stft_signal_proofs;
-
-#[cfg(kani)]
-#[path = "stft_mel_kani_tests.rs"]
-mod kani_stft_mel_proofs;

@@ -409,25 +409,6 @@ mod tests;
 #[cfg(test)]
 mod tests_scatter;
 
-#[cfg(kani)]
-#[path = "kani_accumulate_proofs.rs"]
-mod kani_accumulate_proofs;
-#[cfg(kani)]
-#[path = "kani_dpdf_gather_scatter_proofs.rs"]
-mod kani_dpdf_gather_scatter_proofs;
-#[cfg(kani)]
-#[path = "kani_dpdf_vlm_indexing_safety.rs"]
-mod kani_dpdf_vlm_indexing_safety;
-#[cfg(kani)]
-#[path = "kani_indexing_dpdf_extended.rs"]
-mod kani_indexing_dpdf_extended;
-#[cfg(kani)]
-#[path = "kani_selection_proofs.rs"]
-mod kani_selection_proofs;
-#[cfg(kani)]
-#[path = "kani_where_cond_proofs.rs"]
-mod kani_where_cond_proofs;
-
 #[cfg(test)]
 #[path = "tests_index_put.rs"]
 mod tests_index_put;

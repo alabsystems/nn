@@ -10,8 +10,7 @@
 //! code paths: zero-crossing, π-spanning, 2π-spanning, half-π, negative freq,
 //! and asymmetric x ranges.
 //!
-//! Part of #659. Compensates for inherent Kani infeasibility of RoPE bounds
-//! soundness proofs (trig stub limitation — see #659 finding 2).
+//! Part of #659.
 
 use nn_dsl::{rope_cos_scalar, rope_cos_scalar_bounds, rope_sin_scalar, rope_sin_scalar_bounds};
 

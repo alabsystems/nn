@@ -10,7 +10,7 @@
 //!
 //! Extracted from training_ops_extra.rs for 500-line compliance.
 //!
-//! Run: `cargo test -p nn --test training_ops_extra_lstm --features training`
+//! Run: `targo --unverified test -p nn --test training_ops_extra_lstm --features training`
 
 #![cfg(feature = "training")]
 

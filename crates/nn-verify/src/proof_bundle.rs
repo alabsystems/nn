@@ -6,8 +6,8 @@
 //! machine-checkable proof certificates.
 //!
 //! A `ProofBundle` aggregates all verification evidence for a model:
-//! bound certificates (from NY IBP/CROWN/AlphaCROWN), Kani harness
-//! summaries, and CROWN verification summaries. The bundle serializes to JSON
+//! bound certificates (from NY IBP/CROWN/AlphaCROWN) and CROWN verification
+//! summaries. The bundle serializes to JSON
 //! via serde, enabling auditors to check the certificate without re-running
 //! the verifier.
 //!
@@ -24,7 +24,6 @@
 //!         method: VerificationMethod::Crown,
 //!         is_tight: true,
 //!     })
-//!     .set_kani_summary(754, 754, 0, 0)
 //!     .set_crown_summary(51, 26, 14, 11)
 //!     .build()
 //!     .expect("valid bundle");
@@ -77,19 +76,6 @@ pub struct BoundCertificate {
     pub is_tight: bool,
 }
 
-/// Summary of Kani formal verification for the model.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KaniSummary {
-    /// Total number of Kani proof harnesses.
-    pub total_harnesses: usize,
-    /// Number of harnesses that passed verification.
-    pub passed: usize,
-    /// Number of harnesses that failed verification.
-    pub failed: usize,
-    /// Number of harnesses that timed out.
-    pub timeout: usize,
-}
-
 /// Summary of NY CROWN verification for the model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrownSummary {
@@ -106,8 +92,8 @@ pub struct CrownSummary {
 /// A complete proof bundle for a verified model.
 ///
 /// Contains all verification evidence needed for offline auditing:
-/// model identity (hash + name), bound certificates, Kani and CROWN
-/// summaries, creation metadata. Serializes to JSON for deployment.
+/// model identity (hash + name), bound certificates, CROWN summary,
+/// creation metadata. Serializes to JSON for deployment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ProofBundle {
@@ -117,8 +103,6 @@ pub struct ProofBundle {
     pub model_name: String,
     /// Per-kernel bound certificates from NY verification.
     pub bound_certificates: Vec<BoundCertificate>,
-    /// Summary of Kani formal verification harnesses.
-    pub kani_summary: Option<KaniSummary>,
     /// Summary of NY CROWN verification entries.
     pub gamma_crown_summary: Option<CrownSummary>,
     /// ISO 8601 timestamp of bundle creation.
@@ -137,7 +121,6 @@ impl ProofBundle {
     /// - No NaN values in any bound certificate's input/output bounds
     /// - Input bounds are not inverted (lower <= upper)
     /// - Output bounds are not inverted (lower <= upper)
-    /// - Kani summary counts are consistent (passed + failed + timeout <= total)
     /// - CROWN summary counts are consistent (sound + heuristic + vacuous <= total)
     pub fn validate(&self) -> Result<(), ProofBundleError> {
         // Model hash must be valid SHA-256
@@ -201,17 +184,6 @@ impl ProofBundle {
             if cert.kernel_name.is_empty() {
                 return Err(ProofBundleError::EmptyKernelName {
                     certificate_index: i,
-                });
-            }
-        }
-
-        // Validate Kani summary consistency
-        if let Some(ref kani) = self.kani_summary {
-            let sum = kani.passed + kani.failed + kani.timeout;
-            if sum > kani.total_harnesses {
-                return Err(ProofBundleError::InconsistentKaniSummary {
-                    total: kani.total_harnesses,
-                    sum,
                 });
             }
         }
@@ -304,7 +276,6 @@ pub struct ProofBundleBuilder {
     model_name: String,
     model_hash: String,
     bound_certificates: Vec<BoundCertificate>,
-    kani_summary: Option<KaniSummary>,
     gamma_crown_summary: Option<CrownSummary>,
     nn_version: String,
 }
@@ -320,7 +291,6 @@ impl ProofBundleBuilder {
             model_name: model_name.to_string(),
             model_hash: model_hash.to_string(),
             bound_certificates: Vec::new(),
-            kani_summary: None,
             gamma_crown_summary: None,
             nn_version: env!("CARGO_PKG_VERSION").to_string(),
         }
@@ -330,24 +300,6 @@ impl ProofBundleBuilder {
     #[must_use]
     pub fn add_bound_certificate(mut self, cert: BoundCertificate) -> Self {
         self.bound_certificates.push(cert);
-        self
-    }
-
-    /// Set the Kani verification summary.
-    #[must_use]
-    pub fn set_kani_summary(
-        mut self,
-        total_harnesses: usize,
-        passed: usize,
-        failed: usize,
-        timeout: usize,
-    ) -> Self {
-        self.kani_summary = Some(KaniSummary {
-            total_harnesses,
-            passed,
-            failed,
-            timeout,
-        });
         self
     }
 
@@ -387,7 +339,6 @@ impl ProofBundleBuilder {
             model_hash: self.model_hash,
             model_name: self.model_name,
             bound_certificates: self.bound_certificates,
-            kani_summary: self.kani_summary,
             gamma_crown_summary: self.gamma_crown_summary,
             created_at: now_iso8601(),
             nn_version: self.nn_version,
@@ -443,22 +394,10 @@ pub enum ProofBundleError {
     #[error("certificate[{certificate_index}] has empty kernel name")]
     EmptyKernelName { certificate_index: usize },
 
-    /// Kani summary counts exceed total.
-    #[error("kani summary inconsistent: passed + failed + timeout ({sum}) > total ({total})")]
-    InconsistentKaniSummary { total: usize, sum: usize },
-
     /// CROWN summary counts exceed total.
     #[error("crown summary inconsistent: sound + heuristic + vacuous ({sum}) > total ({total})")]
     InconsistentCrownSummary { total: usize, sum: usize },
 }
-
-#[cfg(kani)]
-#[path = "proof_bundle_kani.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "kani_proof_bundle.rs"]
-mod kani_proof_bundle;
 
 #[cfg(test)]
 #[path = "proof_bundle_tests.rs"]

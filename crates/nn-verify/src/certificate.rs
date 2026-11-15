@@ -17,9 +17,14 @@
 //! ## Version History
 //!
 //! - **v1:** Input spec, output bounds, method, soundness mode, SMT outcome.
-//! - **v2:** Per-layer bound traces, Kani proof records, weight/source SHA-256
-//!   fingerprints, verifier version. All v2 fields are `Option` so v1 JSON
-//!   deserializes into v2 structs without error.
+//! - **v2:** Per-layer bound traces, weight/source SHA-256 fingerprints,
+//!   verifier version. All v2 fields are `Option` so v1 JSON deserializes into
+//!   v2 structs without error. (v2 also carried a `kani_status` record; the
+//!   Kani lane was retired 2026-09-29 and the field is ignored on read. A
+//!   signed (v4+) certificate whose content hash covered a `kani_status`
+//!   therefore fails its integrity check: the dropped field changes the
+//!   canonical form. That is fail-closed, not "old signed certificates still
+//!   verify".)
 //! - **v3:** SMT proof artifacts (Alethe proof text, proof verdict). Enables
 //!   machine-checkable proofs: an auditor can validate the SMT UNSAT proof
 //!   independently of the solver. All v3 fields are `Option` for backward compat.
@@ -60,8 +65,7 @@ pub use bundle::{CertificateBundle, CertificateError};
 
 // Re-export v2 types and fingerprinting functions so callers use `certificate::` path.
 pub use crate::certificate_types::{
-    compute_bytes_hash, compute_file_hash, KaniOutcome, KaniProofRecord, LayerBoundRecord,
-    PrecisionModel,
+    compute_bytes_hash, compute_file_hash, LayerBoundRecord, PrecisionModel,
 };
 
 /// Proof certificate for a single verified kernel.
@@ -110,9 +114,6 @@ pub struct ProofCertificate {
     /// Per-layer bound trace enabling independent IBP re-checking.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub layer_bounds: Option<Vec<LayerBoundRecord>>,
-    /// Kani formal verification status for this kernel.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub kani_status: Option<KaniProofRecord>,
     /// SHA-256 hex digest of the model weights used during verification.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub weight_hash: Option<String>,
@@ -212,7 +213,6 @@ impl ProofCertificate {
             smt_outcome: None,
             generated_at: now_iso8601(),
             layer_bounds: None,
-            kani_status: None,
             weight_hash: None,
             source_hash: None,
             verifier_version: None,
@@ -247,13 +247,6 @@ impl ProofCertificate {
             self.ibp_fallback_count = Some(total - crown);
         }
         self.layer_bounds = Some(bounds);
-        self
-    }
-
-    /// Attach Kani proof status from `kani_status.json`.
-    #[must_use]
-    pub fn with_kani_status(mut self, status: KaniProofRecord) -> Self {
-        self.kani_status = Some(status);
         self
     }
 
@@ -459,10 +452,6 @@ pub use integrity::{
 
 // Re-export so test modules can access via `use super::*`.
 pub use crate::status::ParamInputRecord;
-
-#[cfg(kani)]
-#[path = "kani_certificate.rs"]
-mod kani_certificate;
 
 #[cfg(test)]
 #[path = "certificate_test_helpers.rs"]

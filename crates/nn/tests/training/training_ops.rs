@@ -9,7 +9,7 @@
 //! BatchNorm, InstanceNorm, ConvTranspose1d, and Dropout tests are in
 //! `training_ops_extra.rs`.
 //!
-//! Run: `cargo test -p nn --test training_ops --features training`
+//! Run: `targo --unverified test -p nn --test training_ops --features training`
 
 #![cfg(feature = "training")]
 

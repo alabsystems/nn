@@ -166,20 +166,23 @@ impl CosineSchedule {
 
 impl LrSchedule for CosineSchedule {
     fn lr_at_step(&self, step: usize) -> f64 {
-        // Warmup phase
-        if self.warmup_steps > 0 && step < self.warmup_steps {
-            return self.base_lr * (step as f64 / self.warmup_steps as f64);
+        let warmup_steps = self.warmup_steps;
+        let total_steps = self.total_steps;
+
+        // Warmup phase: here `step < warmup_steps`; past it, `warmup_steps <= step`.
+        if step < warmup_steps {
+            return self.base_lr * (step as f64 / warmup_steps as f64);
         }
 
         // Past total steps: clamp to min_lr
-        if step >= self.total_steps {
+        if step >= total_steps {
             return self.min_lr;
         }
 
-        // Cosine annealing phase
-        // warmup_steps < total_steps is enforced by new(), so this is always > 0.
-        let decay_steps = self.total_steps - self.warmup_steps;
-        let progress = (step - self.warmup_steps) as f64 / decay_steps as f64;
+        // Cosine annealing phase: warmup_steps <= step < total_steps, so
+        // decay_steps > 0 and neither subtraction can underflow.
+        let decay_steps = total_steps - warmup_steps;
+        let progress = (step - warmup_steps) as f64 / decay_steps as f64;
         self.min_lr
             + 0.5 * (self.base_lr - self.min_lr) * (1.0 + (progress * std::f64::consts::PI).cos())
     }

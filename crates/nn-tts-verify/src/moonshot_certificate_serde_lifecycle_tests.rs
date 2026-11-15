@@ -119,19 +119,13 @@ fn serde_test_dispatch(proven: usize, total: usize) -> ImplementationCorrectness
 
 // --- Phase 28: Gap-filling lifecycle tests ---
 
-/// Gap 1: All 6 evidence sources -> serde round-trip -> validate with no structural errors.
+/// Gap 1: All 5 evidence sources -> serde round-trip -> validate with no structural errors.
 #[test]
-fn test_all_6_evidence_sources_serde_then_validate() {
+fn test_all_5_evidence_sources_serde_then_validate() {
     let dim = 32;
     let (pipeline_cert, bundle) = serde_test_crown_bundle(dim);
     let timing = serde_test_timing_cert(&pipeline_cert);
     let speaker = serde_test_speaker(dim);
-    let kani = KaniVerificationEvidence {
-        harnesses_passed: 500,
-        harnesses_total: 500,
-        harness_files: vec!["crates/nn-core/src/kani_bounds.rs".to_string()],
-        all_passed: true,
-    };
     let smt = SmtVerificationEvidence {
         kernels_proven: 20,
         kernels_total: 20,
@@ -145,14 +139,13 @@ fn test_all_6_evidence_sources_serde_then_validate() {
             .crown_bundle(&bundle)
             .timing(&timing)
             .speaker(&speaker)
-            .kani(&kani)
             .smt(&smt)
             .dispatch_plan(&dispatch)
             .build();
 
     // Serde round-trip
-    let json = cert.to_json_serde().expect("serialize all-6");
-    let de = MoonshotCertificate::from_json(&json).expect("deserialize all-6");
+    let json = cert.to_json_serde().expect("serialize all-5");
+    let de = MoonshotCertificate::from_json(&json).expect("deserialize all-5");
 
     // Validate: no structural errors
     let result = validate_certificate(&de, std::path::Path::new("/nonexistent"));
@@ -163,11 +156,11 @@ fn test_all_6_evidence_sources_serde_then_validate() {
         .collect();
     assert!(
         structural_errors.is_empty(),
-        "structural errors after all-6 round-trip: {structural_errors:?}"
+        "structural errors after all-5 round-trip: {structural_errors:?}"
     );
 
-    // Check enrichment survived
-    assert_eq!(de.properties[6].level, VerificationLevel::KaniProven);
+    // Check enrichment survived (P7 has no evidence source)
+    assert_eq!(de.properties[6].level, VerificationLevel::None);
     assert_eq!(de.properties[7].level, VerificationLevel::SmtProven);
     assert!(de.verification_dim.is_some());
 }
@@ -215,38 +208,6 @@ fn test_crown_enriched_serde_then_validate() {
     );
 }
 
-/// Gap 3: Deliberately inflated Kani count should trigger a validation warning.
-#[test]
-fn test_stale_kani_count_triggers_validation_warning() {
-    let status = MoonshotStatus::from_repo();
-    let cert = MoonshotCertificate::from_status(&status, "kani-stale", "spec", "hash_k");
-
-    // Inflate Kani harness count far beyond any realistic workspace count
-    let inflated_kani = KaniVerificationEvidence {
-        harnesses_passed: 999_999,
-        harnesses_total: 999_999,
-        harness_files: vec!["nonexistent.rs".to_string()],
-        all_passed: true,
-    };
-    let enriched = cert.with_kani_results(&inflated_kani);
-
-    let json = enriched.to_json_serde().expect("serialize inflated");
-    let de = MoonshotCertificate::from_json(&json).expect("deserialize inflated");
-
-    // Validate against a nonexistent workspace root so artifact checks
-    // produce warnings about missing files — the inflated count itself
-    // passes structural validation (it's just a number), but the artifact
-    // file "nonexistent.rs" won't exist.
-    let result = validate_certificate(&de, std::path::Path::new("/nonexistent"));
-
-    // Should have at least one finding (artifact doesn't exist).
-    // This test confirms validation runs end-to-end on inflated evidence.
-    assert!(
-        !result.findings.is_empty(),
-        "inflated Kani evidence should produce at least one finding"
-    );
-}
-
 /// Gap 4: Evidence presence (verification_dim, proof_artifacts, ay/ paths) survives round-trip.
 #[test]
 fn test_evidence_presence_detectable_after_round_trip() {
@@ -290,19 +251,13 @@ fn test_evidence_presence_detectable_after_round_trip() {
     );
 }
 
-/// Gap 5: Display and to_json() output with all 6 enrichment sources are well-formed.
+/// Gap 5: Display and to_json() output with all 5 enrichment sources are well-formed.
 #[test]
 fn test_display_and_json_with_all_enrichments() {
     let dim = 64;
     let (pipeline_cert, bundle) = serde_test_crown_bundle(dim);
     let timing = serde_test_timing_cert(&pipeline_cert);
     let speaker = serde_test_speaker(dim);
-    let kani = KaniVerificationEvidence {
-        harnesses_passed: 500,
-        harnesses_total: 500,
-        harness_files: vec!["crates/nn-core/src/kani_bounds.rs".to_string()],
-        all_passed: true,
-    };
     let smt = SmtVerificationEvidence {
         kernels_proven: 20,
         kernels_total: 20,
@@ -315,7 +270,6 @@ fn test_display_and_json_with_all_enrichments() {
         .crown_bundle(&bundle)
         .timing(&timing)
         .speaker(&speaker)
-        .kani(&kani)
         .smt(&smt)
         .dispatch_plan(&dispatch)
         .build();
@@ -325,10 +279,6 @@ fn test_display_and_json_with_all_enrichments() {
     assert!(
         display.contains("display-test"),
         "Display should contain model name"
-    );
-    assert!(
-        display.contains("KANI_PROVEN"),
-        "Display should mention KANI_PROVEN level, got: {display}"
     );
     assert!(
         display.contains("SMT_PROVEN"),
@@ -374,7 +324,7 @@ fn test_save_load_round_trip() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// save() + load() with full enrichment (all 6 evidence sources).
+/// save() + load() with full enrichment (all 5 evidence sources).
 #[test]
 fn test_save_load_enriched_certificate() {
     let dir = std::env::temp_dir().join(format!("moonshot_cert_enr_{}", std::process::id()));
@@ -385,7 +335,6 @@ fn test_save_load_enriched_certificate() {
     let (pipeline_cert, bundle) = serde_test_crown_bundle(dim);
     let timing = serde_test_timing_cert(&pipeline_cert);
     let speaker = serde_test_speaker(dim);
-    let kani = super::test_kani_evidence();
     let smt = super::test_smt_evidence();
     let dispatch = serde_test_dispatch(5, 5);
 
@@ -393,7 +342,6 @@ fn test_save_load_enriched_certificate() {
         .crown_bundle(&bundle)
         .timing(&timing)
         .speaker(&speaker)
-        .kani(&kani)
         .smt(&smt)
         .dispatch_plan(&dispatch)
         .build();
@@ -403,7 +351,7 @@ fn test_save_load_enriched_certificate() {
 
     assert_eq!(loaded.model_name, "enriched-persist");
     assert_eq!(loaded.verification_dim, Some(dim));
-    assert_eq!(loaded.properties[6].level, VerificationLevel::KaniProven);
+    assert_eq!(loaded.properties[6].level, VerificationLevel::None);
     assert_eq!(loaded.properties[7].level, VerificationLevel::SmtProven);
     assert!(loaded.properties[0].bound_value.is_some());
 

@@ -14,7 +14,7 @@
 //! ```rust,ignore
 //! use nn_gguf::GgufFile;
 //!
-//! // Open with mmap for zero-copy access:
+//! // Open the file (read into an owned buffer):
 //! let gguf = GgufFile::open("model.gguf")?;
 //! println!("Architecture: {:?}", gguf.architecture());
 //! println!("Tensors: {}", gguf.tensor_names().len());

@@ -15,7 +15,7 @@
 //! pipeline certificate to give end-to-end guarantees.
 //!
 //! Run with:
-//!   cargo test -p nn-tts-verify --test pipeline_disentanglement --features NY
+//!   targo --unverified test -p nn-tts-verify --test pipeline_disentanglement --features NY
 //!
 //! Part of #1738: Compositional Verification of Prosody Controls.
 

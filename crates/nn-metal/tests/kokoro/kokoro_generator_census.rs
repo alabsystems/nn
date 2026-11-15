@@ -9,7 +9,7 @@
 //! dispatch pairs (fusion candidates). This data drives which NativeOp
 //! fusions to implement next.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_generator_census -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_generator_census -- --nocapture`
 //!
 //! Part of #4264.
 

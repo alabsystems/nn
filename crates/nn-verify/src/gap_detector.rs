@@ -181,8 +181,7 @@ pub(crate) fn method_is_crown(method: &str) -> bool {
 /// Extracted classification logic for a single pipeline stage.
 ///
 /// This function captures the exact decision rules used inside `detect_gaps`
-/// without requiring `serde_json::Value`, making it amenable to Kani
-/// model-checking with symbolic inputs.
+/// without requiring `serde_json::Value`.
 ///
 /// # Arguments
 /// * `primary_valid` — whether the primary status entry has status "verified" or "bounds_computed"
@@ -224,9 +223,9 @@ pub(crate) fn classify_entry(
 
 /// Compute gap and vacuous counts from a slice of gap results.
 ///
-/// Extracted from `detect_gaps` to enable Kani proof that the counts
-/// match the per-entry predicates.
-#[cfg_attr(not(kani), allow(dead_code))]
+/// Extracted from `detect_gaps` so tests can check that the counts match
+/// the per-entry predicates.
+#[allow(dead_code)]
 pub(crate) fn count_gaps_and_vacuous(results: &[StageGapResult]) -> (usize, usize) {
     let total_gaps = results.iter().filter(|r| !r.has_any_bounds()).count();
     let vacuous_count = results.iter().filter(|r| r.is_vacuous).count();
@@ -296,7 +295,7 @@ pub fn detect_gaps(status: &serde_json::Value) -> GapReport {
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
 
-        // Delegate to classify_entry — the Kani-provable core logic.
+        // Delegate to classify_entry — the core decision logic.
         let (has_ibp, has_crown, has_analytical, is_vacuous, has_any_bounds) = classify_entry(
             is_valid_entry(primary_entry),
             is_valid_entry(crown_entry),

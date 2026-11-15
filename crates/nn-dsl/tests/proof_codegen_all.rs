@@ -5,18 +5,18 @@
 #![allow(dead_code, unreachable_pub)]
 
 //! Consolidated proof and codegen tests: proof coverage, codegen coverage,
-//! Kani precision properties, RoPE bounds, fusion equivalence, and error unification.
+//! precision properties, RoPE bounds, fusion equivalence, and error unification.
 
 #[path = "proof_codegen/adain_fusion_equivalence.rs"]
 mod adain_fusion_equivalence;
 #[path = "proof_codegen/codegen_coverage.rs"]
 mod codegen_coverage;
-#[path = "proof_codegen/kani_precision_properties.rs"]
-mod kani_precision_properties;
 #[path = "proof_codegen/lower_sum_reduce.rs"]
 mod lower_sum_reduce;
 #[path = "proof_codegen/nn_dsl_error_unification.rs"]
 mod nn_dsl_error_unification;
+#[path = "proof_codegen/precision_properties.rs"]
+mod precision_properties;
 #[path = "proof_codegen/proof_coverage.rs"]
 mod proof_coverage;
 #[path = "proof_codegen/proof_coverage_codegen.rs"]

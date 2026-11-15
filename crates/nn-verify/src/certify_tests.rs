@@ -185,7 +185,6 @@ fn test_certify_config_with_enrichment() {
     config.enrichment = Some(CertificateEnrichment {
         source_path: None,
         weight_path: None,
-        kani_status_path: None,
         layer_bounds: None,
         verifier_version: Some("NY-0.9.0".to_string()),
         smt_record: None,

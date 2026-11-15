@@ -482,7 +482,3 @@ pub use norm::{batch_norm, embedding, group_norm, layer_norm, lstm, rms_norm, La
 #[cfg(test)]
 #[path = "var_builder_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "var_builder_loaders_kani.rs"]
-mod kani_proofs;

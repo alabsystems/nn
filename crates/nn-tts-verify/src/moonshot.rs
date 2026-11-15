@@ -9,8 +9,8 @@
 //! speaker consistency, temporal boundedness, streaming safety, memory safety,
 //! and implementation correctness.
 //!
-//! Each property maps to concrete verification artifacts (CROWN bounds, Kani
-//! harnesses, ay SMT proofs) already present in the nn workspace.
+//! Each property maps to concrete verification artifacts (CROWN bounds, ay SMT
+//! proofs) already present in the nn workspace.
 
 use std::fmt;
 
@@ -34,8 +34,6 @@ pub enum VerificationLevel {
     CrownProbabilistic,
     /// CROWN bounds are tight and the property is proven.
     CrownProven,
-    /// Kani model-checks the Rust implementation.
-    KaniProven,
     /// ay SMT proves the mathematical specification.
     SmtProven,
 }
@@ -48,7 +46,6 @@ impl fmt::Display for VerificationLevel {
             Self::CrownPartial => write!(f, "CROWN_PARTIAL"),
             Self::CrownProbabilistic => write!(f, "CROWN_PROBABILISTIC"),
             Self::CrownProven => write!(f, "CROWN_PROVEN"),
-            Self::KaniProven => write!(f, "KANI_PROVEN"),
             Self::SmtProven => write!(f, "SMT_PROVEN"),
         }
     }
@@ -98,7 +95,6 @@ pub fn artifact_registry() -> Vec<VerificationArtifact> {
     artifacts.extend(audio_quality_artifacts());
     artifacts.extend(intelligibility_artifacts());
     artifacts.extend(design_phase_artifacts());
-    artifacts.extend(memory_safety_artifacts());
     artifacts.extend(correctness_artifacts());
     artifacts.extend(cross_cutting_artifacts());
     artifacts.extend(full_model_artifacts());
@@ -113,7 +109,7 @@ pub(crate) const PROPERTY_NAMES: [&str; 8] = [
     "Speaker-consistent (embedding distance < ε)",
     "Temporally bounded (< 100ms on M4 Max)",
     "Streaming-safe (bounded chunk discontinuity)",
-    "Memory-safe (Kani verified)",
+    "Memory-safe",
     "Correct implementation (ay/tRust verified)",
 ];
 
@@ -140,7 +136,7 @@ const PROPERTY_GAPS: [&[&str]; 8] = [
     // 5: Streaming-safe — D=192 CrownProven via composed 3-stage pipeline
     &["Extend D=192 CROWN composition to full Kokoro decoder crossfade graph"],
     // 6: Memory-safe
-    &["Coverage audit — some backward rules lack Kani harnesses"],
+    &["No UB/panic-freedom evidence since the Kani harnesses were retired (2026-09-29)"],
     // 7: Correct implementation
     &["ay coverage of non-linear ops (only linear kernels currently proven)"],
 ];
@@ -192,14 +188,13 @@ impl MoonshotStatus {
     }
 
     /// Count properties at each verification level.
-    pub fn level_counts(&self) -> [(VerificationLevel, usize); 7] {
+    pub fn level_counts(&self) -> [(VerificationLevel, usize); 6] {
         let levels = [
             VerificationLevel::None,
             VerificationLevel::Empirical,
             VerificationLevel::CrownPartial,
             VerificationLevel::CrownProbabilistic,
             VerificationLevel::CrownProven,
-            VerificationLevel::KaniProven,
             VerificationLevel::SmtProven,
         ];
         levels.map(|level| {
@@ -267,12 +262,11 @@ impl fmt::Display for MoonshotStatus {
 #[path = "moonshot_certificate.rs"]
 mod certificate;
 pub use certificate::{
-    build_certificate_from_workspace, build_full_certificate,
-    build_full_certificate_with_all_evidence, compute_workspace_source_hash, is_valid_sha256_hex,
-    validate_certificate, CertificateDeserializeError, CertificateEvidenceSummary,
-    CertificateValidation, FindingSeverity, FullCertificateBuilder, KaniVerificationEvidence,
-    MoonshotCertificate, PropertyCertificate, SmtVerificationEvidence, SourceHashError,
-    ValidationFinding, CERTIFICATE_SCHEMA_VERSION,
+    build_full_certificate, build_full_certificate_with_all_evidence,
+    compute_workspace_source_hash, is_valid_sha256_hex, validate_certificate,
+    CertificateDeserializeError, CertificateEvidenceSummary, CertificateValidation,
+    FindingSeverity, FullCertificateBuilder, MoonshotCertificate, PropertyCertificate,
+    SmtVerificationEvidence, SourceHashError, ValidationFinding, CERTIFICATE_SCHEMA_VERSION,
 };
 
 #[cfg(test)]

@@ -1028,7 +1028,6 @@ fn test_status_report_from_verify_status_single_model() {
 fn test_status_report_to_text_contains_sections() {
     let report = StatusReport::from_status_files(std::path::Path::new("/nonexistent/42"))
         .expect("empty report")
-        .with_kani_count(500)
         .with_gap_summary(GapSummary {
             stages_checked: 8,
             gaps: 2,
@@ -1036,7 +1035,6 @@ fn test_status_report_to_text_contains_sections() {
         });
     let text = report.to_text();
     assert!(text.contains("nn Verification Status Report"));
-    assert!(text.contains("Kani harnesses: 500"));
     assert!(text.contains("Gaps: 2"));
     assert!(text.contains("Vacuous: 1"));
 }
@@ -1057,9 +1055,6 @@ fn test_status_report_display_equals_to_text() {
 #[test]
 fn test_trend_default_all_none() {
     let t = Trend::default();
-    assert!(t.prev_kani_harnesses.is_none());
-    assert!(t.current_kani_harnesses.is_none());
-    assert!(t.kani_delta.is_none());
     assert!(t.prev_total_sound.is_none());
     assert!(t.current_total_sound.is_none());
     assert!(t.sound_delta.is_none());
@@ -1068,9 +1063,6 @@ fn test_trend_default_all_none() {
 #[test]
 fn test_trend_serde_roundtrip() {
     let t = Trend {
-        prev_kani_harnesses: Some(1000),
-        current_kani_harnesses: Some(1100),
-        kani_delta: Some(100),
         prev_total_sound: Some(50),
         current_total_sound: Some(55),
         sound_delta: Some(5),

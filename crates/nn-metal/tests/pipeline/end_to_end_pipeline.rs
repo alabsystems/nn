@@ -17,15 +17,13 @@
 //! # Pipeline stages demonstrated
 //!
 //! 1. **Proc-macro expansion** (`#[kernel]`): Rust source -> MSL constant +
-//!    Kani harness + differential test + metadata
+//!    differential test + metadata
 //! 2. **Rust reference**: The original function runs on CPU
 //! 3. **Metal GPU dispatch**: Generated MSL compiles and runs on GPU
 //! 4. **Differential comparison**: Rust and GPU outputs match within precision
 //!    budget
 //! 5. **NY bounds verification**: Formal proof that output is bounded
 //!    for all inputs in range
-//! 6. **Kani harness generation**: Formal verification source for exhaustive
-//!    model checking (shown, not run — `cargo kani` runs these)
 //!
 //! # Using this as a template
 //!
@@ -34,9 +32,6 @@
 //! 2. The proc-macro generates MSL and verification artifacts automatically
 //! 3. Use `KernelPipeline::from_descriptor` with the generated descriptor
 //! 4. Use `VerifyRequest` builder to prove bounds for your input domain
-//! 5. Run `cargo kani` to model-check the generated harness
-
-#![allow(unexpected_cfgs)]
 
 // ============================================================================
 // Stage 1: Define kernel with the #[kernel] proc-macro
@@ -47,7 +42,6 @@
 // - Lowers the function body to KernelIR (DAG of typed scalar ops)
 // - Translates the IR to MSL and emits it as `const SNAKE_MSL: &str`
 // - Generates `const SNAKE_DESCRIPTOR: KernelDescriptor` bundling MSL + metadata
-// - Generates a `#[cfg(kani)]` verification harness
 // - Generates a `#[cfg(test)]` differential test (Rust vs Metal)
 // - Emits metadata (node count, param count, precision tier)
 //
@@ -194,26 +188,6 @@ fn test_gamma_crown_bounds_verification() {
         verification.output_lower,
         verification.output_upper,
     );
-}
-
-/// Stage 7: Kani harness source inspection.
-///
-/// Kani harnesses run under `cargo kani`, not at test time. Here we verify
-/// the harness source was generated correctly by the codegen pipeline.
-///
-/// What the Kani harness proves (when run): For ALL possible f32 inputs,
-/// the kernel does not overflow, produce NaN, or violate finiteness assertions.
-#[test]
-fn test_kani_harness_generation() {
-    let kernel_def = snake_kernel_def();
-    let kani_source = nn_dsl::emit_kani_harness(&kernel_def).expect("Kani harness generation");
-
-    assert!(kani_source.contains("kani::proof"), "must have proof attr");
-    assert!(
-        kani_source.contains("kani::any"),
-        "must use symbolic inputs"
-    );
-    assert!(kani_source.contains("snake"), "must reference kernel name");
 }
 
 /// Validate that proc-macro metadata is consistent with the kernel source.

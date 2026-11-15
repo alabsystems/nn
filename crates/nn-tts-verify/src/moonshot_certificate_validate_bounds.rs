@@ -20,7 +20,7 @@ use super::{FindingSeverity, MoonshotCertificate, ValidationFinding, Verificatio
 /// - P4 (Speaker-consistent): bound < threshold   (L2 distance below ε)
 /// - P5 (Temporally bounded): bound <= threshold  (worst-case time within limit)
 /// - P6 (Streaming-safe):    bound <= threshold   (click bound within threshold)
-/// - P7 (Memory-safe):       bound >= threshold   (harnesses passed >= total)
+/// - P7 (Memory-safe):       bound >= threshold   (no evidence source fills P7 today)
 /// - P8 (Correct impl):      bound >= threshold   (kernels proven >= total)
 #[derive(Debug, Clone, Copy)]
 enum BoundDirection {
@@ -42,7 +42,7 @@ const PROPERTY_DIRECTIONS: [BoundDirection; 8] = [
     BoundDirection::StrictLess,     // P4: Speaker-consistent
     BoundDirection::LessOrEqual,    // P5: Temporally bounded
     BoundDirection::LessOrEqual,    // P6: Streaming-safe
-    BoundDirection::GreaterOrEqual, // P7: Memory-safe (Kani)
+    BoundDirection::GreaterOrEqual, // P7: Memory-safe
     BoundDirection::GreaterOrEqual, // P8: Correct impl (ay)
 ];
 

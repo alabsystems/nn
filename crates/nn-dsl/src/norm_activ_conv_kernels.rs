@@ -127,7 +127,7 @@ pub fn build_weight_mul_kernel() -> Result<KernelDef, LowerError> {
     )
 }
 
-// --- Scalar reference implementations for Kani verification ---
+// --- Scalar reference implementations ---
 
 /// Fused NormActivConv1d+LeakyReLU per-tap scalar reference.
 ///
@@ -271,14 +271,6 @@ pub fn norm_snake_scalar(
     let sin_val = (a * y).sin();
     checked_scalar_output(y + (1.0 / a) * sin_val * sin_val)
 }
-
-#[cfg(kani)]
-#[path = "norm_activ_conv_leaky_relu_kani.rs"]
-mod kani_leaky_relu_proofs;
-
-#[cfg(kani)]
-#[path = "norm_activ_conv_snake_kani.rs"]
-mod kani_snake_proofs;
 
 #[cfg(test)]
 #[path = "norm_activ_conv_kernels_tests.rs"]

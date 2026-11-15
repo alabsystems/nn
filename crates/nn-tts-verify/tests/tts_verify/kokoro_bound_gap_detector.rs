@@ -13,7 +13,7 @@
 //! - Regressions where a previously-CROWN segment loses CROWN support
 //! - Segments where model construction fails (weight naming drift)
 //!
-//! Run: `cargo test -p nn-tts-verify --test kokoro_bound_gap_detector --features NY -- --nocapture`
+//! Run: `targo --unverified test -p nn-tts-verify --test kokoro_bound_gap_detector --features NY -- --nocapture`
 //!
 //! Part of #2930 (Automated bound propagation gap detector).
 //! Part of #2218 (Perfect Kokoro epic).

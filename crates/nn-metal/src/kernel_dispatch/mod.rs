@@ -263,9 +263,9 @@ fn checked_output_bytes(output_elems: usize, elem_size: usize) -> Result<usize, 
 
 /// Pure dispatch-size conversion, matching [`KernelPipeline::total_u32`].
 ///
-/// Extracted for Kani verification — the Metal-dependent method delegates
-/// to `u32::try_from` with the same semantics.
-#[cfg_attr(not(kani), allow(dead_code))]
+/// The Metal-dependent method delegates to `u32::try_from` with the same
+/// semantics.
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn check_dispatch_size(total: usize) -> Option<u32> {
     u32::try_from(total).ok()
@@ -310,47 +310,5 @@ mod tests {
     fn test_dispatch_size_overflow() {
         assert_eq!(check_dispatch_size(u32::MAX as usize + 1), None);
         assert_eq!(check_dispatch_size(usize::MAX), None);
-    }
-}
-
-#[cfg(kani)]
-mod proofs {
-    use super::check_dispatch_size;
-    use crate::dispatch_plan::threadgroup_width_1d;
-
-    /// Proves dispatch size conversion succeeds iff total fits in u32,
-    /// and the converted value equals the original.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn dispatch_size_fits_u32_roundtrip() {
-        let total: usize = kani::any();
-        kani::assume(total <= u32::MAX as usize);
-        let converted = check_dispatch_size(total).expect("should fit in u32");
-        assert_eq!(converted as usize, total);
-    }
-
-    /// Proves dispatch size conversion fails for values above u32::MAX.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn dispatch_size_rejects_overflow() {
-        let total: usize = kani::any();
-        kani::assume(total > u32::MAX as usize);
-        assert!(check_dispatch_size(total).is_none());
-    }
-
-    /// Proves threadgroup width is always in [1, 64] for non-zero totals,
-    /// and never exceeds the total element count.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn threadgroup_width_bounded_and_nonzero() {
-        let total: u32 = kani::any();
-        kani::assume(total > 0);
-        let width = threadgroup_width_1d(total);
-        assert!(width >= 1);
-        assert!(width <= 64);
-        assert!(width <= total);
     }
 }

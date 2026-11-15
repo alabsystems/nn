@@ -12,17 +12,9 @@ static FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
 fn test_equivalence_proof_defaults_to_none() {
-    let proof = EquivalenceProof::new(None, None, None);
-    assert!(proof.kernel_safety.is_none());
+    let proof = EquivalenceProof::new(None, None);
     assert!(proof.composition_bounds.is_none());
     assert!(proof.reference_parity.is_none());
-}
-
-#[test]
-fn test_kani_safety_report() {
-    let report = KaniSafetyReport::new(538, 535, 3);
-    assert_eq!(report.harness_count, 538);
-    assert_eq!(report.passed, 535);
 }
 
 #[test]
@@ -768,10 +760,6 @@ fn test_convert_matches_manual_import_and_compile_for_exported_mlp() {
     assert_eq!(result.model.output_shape(), manual_model.output_shape());
     assert_eq!(result.model.output_dtype(), DType::F32);
     assert!(
-        result.proof.kernel_safety.is_none(),
-        "Kani not run in tests"
-    );
-    assert!(
         result.proof.reference_parity.is_none(),
         "no reference trace provided"
     );
@@ -838,11 +826,7 @@ fn test_convert_mlp_full_pipeline() {
 
     let _ = std::fs::remove_dir_all(&dir);
 
-    // Proof chain: L1 (Kani) is None (not run), L2 may or may not be populated.
-    assert!(
-        result.proof.kernel_safety.is_none(),
-        "Kani not run in tests"
-    );
+    // Proof chain: L3 is absent; L2 may or may not be populated.
     assert!(
         result.proof.reference_parity.is_none(),
         "no reference trace provided"
@@ -1000,8 +984,7 @@ fn test_convert_kokoro_decoder_full_pipeline() {
     let result = convert(&graph_path, &weights_path, None, &cache).expect("convert() failed");
     let _ = std::fs::remove_dir_all(&dir);
 
-    // L1/L3: absent (no Kani, no reference trace).
-    assert!(result.proof.kernel_safety.is_none());
+    // L3: absent (no reference trace).
     assert!(result.proof.reference_parity.is_none());
 
     // L2: IBP composition bounds must propagate for Kokoro decoder.

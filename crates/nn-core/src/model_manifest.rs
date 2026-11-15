@@ -22,7 +22,7 @@
 
 /// Trait for models to declare their graph structure statically.
 ///
-/// Implementing this trait lets verification tools (NY, ay, Kani)
+/// Implementing this trait lets verification tools (NY, ay)
 /// inspect model metadata at compile time without constructing an instance.
 ///
 /// # Example

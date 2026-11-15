@@ -117,7 +117,7 @@ impl fmt::Display for DpdfProperty {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum PropertyStatus {
-    /// Formally proven (CROWN tight, Kani, or ay).
+    /// Formally proven (CROWN tight or ay).
     Proven,
     /// Heuristic evidence (IBP or partial CROWN bounds, may be vacuously wide).
     Heuristic,
@@ -145,7 +145,7 @@ impl fmt::Display for PropertyStatus {
 /// Deployment certificate for dpdf models.
 ///
 /// Aggregates per-property verification status, compose test counts,
-/// Kani harness counts, ay proof counts, and covered model names.
+/// ay proof counts, and covered model names.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct DpdfCertificate {
@@ -153,8 +153,6 @@ pub struct DpdfCertificate {
     pub properties: Vec<(DpdfProperty, PropertyStatus, String)>,
     /// Number of NY compose tests that passed.
     pub compose_test_count: usize,
-    /// Number of Kani harnesses that passed.
-    pub kani_harness_count: usize,
     /// Number of ay SMT proofs that passed.
     pub ay_proof_count: usize,
     /// Model families covered (e.g. "granite_docling", "doclayout_yolo").
@@ -183,7 +181,6 @@ impl DpdfCertificate {
     pub fn new(
         properties: Vec<(DpdfProperty, PropertyStatus, String)>,
         compose_test_count: usize,
-        kani_harness_count: usize,
         ay_proof_count: usize,
         models_covered: Vec<String>,
         generated_at: String,
@@ -191,7 +188,6 @@ impl DpdfCertificate {
         Self {
             properties,
             compose_test_count,
-            kani_harness_count,
             ay_proof_count,
             models_covered,
             generated_at,
@@ -224,8 +220,7 @@ impl DpdfCertificate {
         Ok(Self {
             properties,
             compose_test_count: total,
-            kani_harness_count: 0, // filled by caller if Kani data available
-            ay_proof_count: 0,     // filled by caller if ay data available
+            ay_proof_count: 0, // filled by caller if ay data available
             models_covered: models,
             generated_at: current_date(),
         })
@@ -373,7 +368,6 @@ impl DpdfCertificate {
 
         out.push_str("\n## Summary\n\n");
         out.push_str(&format!("- Compose tests: {}\n", self.compose_test_count));
-        out.push_str(&format!("- Kani harnesses: {}\n", self.kani_harness_count));
         out.push_str(&format!("- ay proofs: {}\n", self.ay_proof_count));
         out.push_str(&format!(
             "- Models covered: {}\n",

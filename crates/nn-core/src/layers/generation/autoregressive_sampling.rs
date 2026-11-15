@@ -43,7 +43,7 @@ pub(super) fn top_k_indices(values: &[f32], k: usize) -> Vec<usize> {
 /// Filter probabilities by nucleus (top-p): keep the smallest set of tokens
 /// whose cumulative probability exceeds `p`, sorted by descending probability.
 /// Returns renormalized (index, probability) pairs.
-#[cfg(any(feature = "rand", test, kani))]
+#[cfg(any(feature = "rand", test))]
 pub(super) fn top_p_filter(mut probs: Vec<(usize, f32)>, p: f32) -> Vec<(usize, f32)> {
     if probs.is_empty() {
         return probs;

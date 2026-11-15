@@ -23,7 +23,7 @@ fn test_kokoro_no_compiled_segment_gaps() {
 
     // This is an integration gate over the *fully verified* Kokoro pipeline: it
     // requires a complete, current `nn_verify_status_kokoro.json` produced by
-    // `cargo run -p nn-verify --example verify_all` (plus the kokoro production
+    // `targo --unverified run -p nn-verify --example verify_all` (plus the kokoro production
     // compose suite). It is a generated, gitignored artifact — a bare
     // `cargo test`/`nextest` run does not create it. Skip cleanly when absent
     // (mirrors gap_detector_tests::test_detect_gaps_real_status_file) rather than
@@ -33,7 +33,7 @@ fn test_kokoro_no_compiled_segment_gaps() {
     if !status_path.exists() {
         eprintln!(
             "Skipping: {} not found. Run \
-             `cargo run -p nn-verify --example verify_all` (+ kokoro production \
+             `targo --unverified run -p nn-verify --example verify_all` (+ kokoro production \
              suite) to generate a complete status file.",
             status_path.display()
         );

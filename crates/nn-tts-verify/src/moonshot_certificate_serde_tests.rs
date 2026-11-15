@@ -56,37 +56,6 @@ fn test_serde_round_trip_from_status() {
 }
 
 #[test]
-fn test_serde_round_trip_with_kani_evidence() {
-    let status = MoonshotStatus::from_repo();
-    let cert = MoonshotCertificate::from_status(&status, "test-model", "English text", "abc123");
-
-    let kani_evidence = KaniVerificationEvidence {
-        harnesses_passed: 475,
-        harnesses_total: 475,
-        harness_files: vec![
-            "crates/nn-core/src/kani_bounds.rs".to_string(),
-            "crates/nn-autodiff/src/kani_backward_proofs.rs".to_string(),
-        ],
-        all_passed: true,
-    };
-
-    let enriched = cert.with_kani_results(&kani_evidence);
-    let json = enriched
-        .to_json_serde()
-        .expect("serialization should succeed");
-    let deserialized =
-        MoonshotCertificate::from_json(&json).expect("deserialization should succeed");
-
-    assert_eq!(
-        deserialized.properties[6].level,
-        VerificationLevel::KaniProven
-    );
-    assert_eq!(deserialized.properties[6].bound_value, Some(475.0));
-    assert_eq!(deserialized.properties[6].threshold, Some(475.0));
-    assert_eq!(deserialized.properties[6].proof_artifacts.len(), 2);
-}
-
-#[test]
 fn test_serde_round_trip_with_smt_evidence() {
     let status = MoonshotStatus::from_repo();
     let cert = MoonshotCertificate::from_status(&status, "test-model", "English text", "abc123");
@@ -136,8 +105,6 @@ fn test_serde_round_trip_all_proven() {
     for (i, prop) in cert.properties.iter_mut().enumerate() {
         prop.level = if i < 6 {
             VerificationLevel::CrownProven
-        } else if i == 6 {
-            VerificationLevel::KaniProven
         } else {
             VerificationLevel::SmtProven
         };
@@ -168,7 +135,6 @@ fn test_verification_level_serde_round_trip() {
         VerificationLevel::Empirical,
         VerificationLevel::CrownPartial,
         VerificationLevel::CrownProven,
-        VerificationLevel::KaniProven,
         VerificationLevel::SmtProven,
     ];
 
@@ -177,27 +143,6 @@ fn test_verification_level_serde_round_trip() {
         let deserialized: VerificationLevel = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(*level, deserialized, "round-trip failed for {level}");
     }
-}
-
-#[test]
-fn test_kani_evidence_serde_round_trip() {
-    let evidence = KaniVerificationEvidence {
-        harnesses_passed: 300,
-        harnesses_total: 475,
-        harness_files: vec![
-            "crates/nn-core/src/kani_bounds.rs".to_string(),
-            "crates/nn-autodiff/src/kani_backward_proofs.rs".to_string(),
-        ],
-        all_passed: false,
-    };
-
-    let json = serde_json::to_string_pretty(&evidence).expect("serialize");
-    let deserialized: KaniVerificationEvidence = serde_json::from_str(&json).expect("deserialize");
-
-    assert_eq!(deserialized.harnesses_passed, 300);
-    assert_eq!(deserialized.harnesses_total, 475);
-    assert_eq!(deserialized.harness_files.len(), 2);
-    assert!(!deserialized.all_passed);
 }
 
 #[test]
@@ -326,14 +271,6 @@ fn test_double_round_trip() {
 // submodule.
 
 // Shared helpers used by lifecycle_tests submodule via `super::`.
-fn test_kani_evidence() -> KaniVerificationEvidence {
-    KaniVerificationEvidence {
-        harnesses_passed: 459,
-        harnesses_total: 459,
-        harness_files: vec!["crates/nn-core/src/kani_bounds.rs".to_string()],
-        all_passed: true,
-    }
-}
 
 fn test_smt_evidence() -> SmtVerificationEvidence {
     SmtVerificationEvidence {

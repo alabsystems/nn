@@ -53,7 +53,7 @@ pub fn build_relu_kernel() -> Result<KernelDef, LowerError> {
 ///
 /// Returns [`KernelError::NonFiniteInput`] if input is NaN or infinite.
 /// Returns [`KernelError::NonFiniteOutput`] if the computed result is non-finite.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn relu_scalar(x: f32) -> Result<f32, KernelError> {
     validate_finite_inputs(&[("x", x)])?;
@@ -72,7 +72,7 @@ pub(crate) fn relu_scalar(x: f32) -> Result<f32, KernelError> {
 ///
 /// Returns [`KernelError::NonFiniteBound`] if any input is NaN or infinity.
 /// Returns [`KernelError::InvertedBounds`] if `x_lo > x_hi`.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn relu_scalar_bounds(x_lo: f32, x_hi: f32) -> Result<(f32, f32), KernelError> {
     validate_bounds_pairs(&[(x_lo, x_hi)])?;
@@ -98,97 +98,6 @@ pub(crate) fn relu_ref(x: &[f32]) -> Result<Vec<f32>, KernelError> {
         });
     }
     x.iter().map(|&xi| relu_scalar(xi)).collect()
-}
-
-#[cfg(kani)]
-mod kani_proofs {
-    //! Kani proof harnesses for ReLU kernel correctness.
-    //!
-    //! ReLU uses only `f32::max(0.0)` — pure comparison, no transcendentals.
-    //! No stubs needed (unlike sigmoid/gelu/tanh which use exp/tanh).
-
-    use super::*;
-
-    /// Prove ReLU produces finite non-negative output for all finite inputs.
-    ///
-    /// Domain: all finite f32 values.
-    /// Properties: output is finite, output >= 0.0.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn relu_finite_nonnegative_for_all_finite_inputs() {
-        let x: f32 = kani::any();
-        kani::assume(x.is_finite());
-
-        let result = relu_scalar(x).expect("relu_scalar must succeed for finite inputs");
-        assert!(result.is_finite(), "relu must produce finite output");
-        assert!(result >= 0.0, "relu output must be >= 0");
-    }
-
-    /// Prove ReLU is idempotent: relu(relu(x)) == relu(x).
-    ///
-    /// Since relu(x) >= 0, applying relu again is a no-op.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn relu_idempotent() {
-        let x: f32 = kani::any();
-        kani::assume(x.is_finite());
-
-        let first = relu_scalar(x).expect("relu_scalar must succeed");
-        let second = relu_scalar(first).expect("relu_scalar must succeed on non-negative");
-
-        assert_eq!(first.to_bits(), second.to_bits(), "relu must be idempotent");
-    }
-
-    /// Prove ReLU bounds algorithm is sound: for any x in [lo, hi],
-    /// relu(x) is within [relu(lo), relu(hi)].
-    ///
-    /// Exploits monotonicity of max(·, 0): if lo <= x <= hi,
-    /// then max(lo, 0) <= max(x, 0) <= max(hi, 0).
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn relu_bounds_sound() {
-        let x: f32 = kani::any();
-        let x_lo: f32 = kani::any();
-        let x_hi: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x_lo.is_finite() && x_hi.is_finite());
-        kani::assume(x_lo <= x && x <= x_hi);
-
-        let result = relu_scalar(x).expect("relu_scalar must succeed");
-        let (lower, upper) = relu_scalar_bounds(x_lo, x_hi).expect("finite ordered inputs");
-
-        assert!(
-            result >= lower,
-            "relu output must be >= lower bound (monotone)"
-        );
-        assert!(
-            result <= upper,
-            "relu output must be <= upper bound (monotone)"
-        );
-    }
-
-    /// Prove ReLU rejects NaN input.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn relu_rejects_nan() {
-        let result = relu_scalar(f32::NAN);
-        assert!(result.is_err(), "relu must reject NaN");
-    }
-
-    /// Prove ReLU rejects infinite input.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn relu_rejects_infinity() {
-        let result_pos = relu_scalar(f32::INFINITY);
-        let result_neg = relu_scalar(f32::NEG_INFINITY);
-        assert!(result_pos.is_err(), "relu must reject +inf");
-        assert!(result_neg.is_err(), "relu must reject -inf");
-    }
 }
 
 #[cfg(test)]

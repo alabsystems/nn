@@ -37,7 +37,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::certificate::now_iso8601;
-use crate::certificate_types::{validate_sha256_hex, KaniProofRecord};
+use crate::certificate_types::validate_sha256_hex;
 use crate::error::VerifyError;
 use crate::soundness_compat::{default_soundness_mode, VerificationSoundnessMode};
 use crate::status::OutputBoundsRecord;
@@ -69,9 +69,6 @@ pub struct EditCertificate {
     /// Preservation bounds (what the edit should NOT break).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub preservation_bounds: Option<OutputBoundsRecord>,
-    /// Kani status for numerical safety of the edit operation.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub kani_status: Option<KaniProofRecord>,
     /// ISO 8601 timestamp of verification.
     pub verified_at: String,
     /// Propagation method used (IBP or CROWN).
@@ -123,7 +120,7 @@ pub enum EditType {
 impl EditCertificate {
     /// Create a new edit certificate with the given model hashes and method.
     ///
-    /// Use builder methods (`with_*`) to attach bounds and Kani status.
+    /// Use builder methods (`with_*`) to attach bounds.
     #[must_use]
     pub fn new(
         original_model_hash: String,
@@ -136,7 +133,6 @@ impl EditCertificate {
             edited_weights: Vec::new(),
             target_bounds: None,
             preservation_bounds: None,
-            kani_status: None,
             verified_at: now_iso8601(),
             prop_method,
             soundness_mode: VerificationSoundnessMode::Heuristic,
@@ -170,13 +166,6 @@ impl EditCertificate {
     #[must_use]
     pub fn with_preservation_bounds(mut self, bounds: OutputBoundsRecord) -> Self {
         self.preservation_bounds = Some(bounds);
-        self
-    }
-
-    /// Attach Kani proof status.
-    #[must_use]
-    pub fn with_kani_status(mut self, status: KaniProofRecord) -> Self {
-        self.kani_status = Some(status);
         self
     }
 

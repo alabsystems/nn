@@ -285,10 +285,6 @@ pub fn report_to_json(report: &BoundAnalysisReport) -> Result<String, serde_json
 mod drift;
 pub use drift::estimate_norm_chain_precision_drift;
 
-#[cfg(kani)]
-#[path = "kani_bound_widening.rs"]
-mod kani_bound_widening;
-
 #[cfg(test)]
 #[path = "bound_analysis_tests.rs"]
 mod tests;

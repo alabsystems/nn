@@ -312,7 +312,3 @@ fn normalize_coeffs(
 #[cfg(test)]
 #[path = "biquad_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "biquad_kani.rs"]
-mod kani_proofs;

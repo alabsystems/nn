@@ -17,6 +17,11 @@ use crate::error::MetalError;
 pub enum WeightError {
     #[error("failed to open weight file: {0}")]
     Io(#[from] std::io::Error),
+    /// The mapped file failed first-party structural validation (truncated,
+    /// bad header length, missing `{` magic, or a tensor range outside or
+    /// not tiling the data region). Checked before the file is used.
+    #[error("invalid safetensors file: {reason}")]
+    InvalidFile { reason: String },
     #[error("failed to parse safetensors: {0}")]
     Parse(#[from] safetensors::SafeTensorError),
     #[error("Metal error: {0}")]

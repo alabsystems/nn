@@ -264,19 +264,6 @@ impl DynTensor {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_conv3d_proofs.rs"]
-mod kani_conv3d_proofs;
-#[cfg(kani)]
-#[path = "kani_dpdf_conv_transpose2d_proofs.rs"]
-mod kani_dpdf_conv_transpose2d_proofs;
-#[cfg(kani)]
-#[path = "kani_params.rs"]
-mod kani_params;
-#[cfg(kani)]
-#[path = "kani_pool.rs"]
-mod kani_pool_conv;
-
 #[cfg(test)]
 #[path = "conv3d_tests.rs"]
 mod conv3d_tests;

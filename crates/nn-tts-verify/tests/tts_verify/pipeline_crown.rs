@@ -11,7 +11,7 @@
 //! This is the first test producing pipeline certificates from real
 //! NY verification output — not synthetic uniform bounds.
 //!
-//! Run with: `cargo test -p nn-tts-verify --test pipeline_crown --features NY`
+//! Run with: `targo --unverified test -p nn-tts-verify --test pipeline_crown --features NY`
 //!
 //! Part of #1725: Formally Verified End-to-End TTS Pipeline.
 

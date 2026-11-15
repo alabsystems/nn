@@ -866,13 +866,11 @@ fn report_text_contains_expected_sections() {
         1.0,
         VerificationSoundnessMode::Sound,
     )]);
-    let report = StatusReport::from_verify_status("kokoro", &status)
-        .with_kani_count(10000)
-        .with_gap_summary(GapSummary {
-            stages_checked: 10,
-            gaps: 0,
-            vacuous: 2,
-        });
+    let report = StatusReport::from_verify_status("kokoro", &status).with_gap_summary(GapSummary {
+        stages_checked: 10,
+        gaps: 0,
+        vacuous: 2,
+    });
 
     let text = report.to_text();
     assert!(
@@ -881,7 +879,6 @@ fn report_text_contains_expected_sections() {
     );
     assert!(text.contains("Total entries: 1"), "missing total");
     assert!(text.contains("sound"), "missing soundness");
-    assert!(text.contains("Kani harnesses: 10000"), "missing kani count");
     assert!(text.contains("Gaps: 0"), "missing gap info");
     assert!(text.contains("Vacuous: 2"), "missing vacuous info");
     assert!(text.contains("kokoro"), "missing model name");
@@ -908,7 +905,6 @@ fn report_empty_models_produces_zero_entries() {
         StatusReport::from_status_files(Path::new("/nonexistent/dir/xyz")).expect("empty report");
     assert_eq!(report.total_entries(), 0);
     assert!(report.models.is_empty());
-    assert_eq!(report.kani_count, None);
     assert_eq!(report.gap_summary, None);
     assert_eq!(report.trend, None);
 }

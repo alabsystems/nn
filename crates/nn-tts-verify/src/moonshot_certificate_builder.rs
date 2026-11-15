@@ -4,7 +4,7 @@
 
 //! Unified builder for moonshot proof certificates.
 //!
-//! [`FullCertificateBuilder`] composes all 8 moonshot property evidence sources
+//! [`FullCertificateBuilder`] composes the moonshot property evidence sources
 //! into a single [`MoonshotCertificate`]. This replaces the manual chaining
 //! pattern where callers must know the correct order of `.with_*()` calls.
 //!
@@ -15,15 +15,12 @@
 //!     .crown_bundle(&bundle)
 //!     .timing(&timing_cert)
 //!     .speaker(&speaker_evidence)
-//!     .kani(&kani_evidence)
 //!     .smt(&smt_evidence)
 //!     .dispatch_plan(&dispatch_evidence)
 //!     .build();
 //! ```
 
-use std::path::Path;
-
-use super::{KaniVerificationEvidence, MoonshotCertificate, SmtVerificationEvidence};
+use super::{MoonshotCertificate, SmtVerificationEvidence};
 use crate::moonshot_crown::{
     ImplementationCorrectnessEvidence, MoonshotCrownBundle, SpeakerConsistencyEvidence,
 };
@@ -41,9 +38,11 @@ use crate::MoonshotStatus;
 /// 2. Constructive proofs for CROWN properties (P1-P4, #4254)
 /// 3. Timing certificate (P5, may override CROWN's P5 result)
 /// 4. Speaker evidence (P4, may override CROWN's P4 result)
-/// 5. Kani evidence (P7)
-/// 6. SMT evidence (P8)
-/// 7. Dispatch plan correctness (P8, only upgrades)
+/// 5. SMT evidence (P8)
+/// 6. Dispatch plan correctness (P8, only upgrades)
+///
+/// P7 (memory safety) has had no evidence source since its Kani harnesses were
+/// retired (2026-09-29); it stays `None`, so no certificate is `all_proven`.
 pub struct FullCertificateBuilder<'a> {
     model_name: &'a str,
     input_specification: &'a str,
@@ -51,7 +50,6 @@ pub struct FullCertificateBuilder<'a> {
     crown_bundle: Option<&'a MoonshotCrownBundle>,
     timing_cert: Option<&'a TimingCertificate>,
     speaker_evidence: Option<&'a SpeakerConsistencyEvidence>,
-    kani_evidence: Option<&'a KaniVerificationEvidence>,
     smt_evidence: Option<&'a SmtVerificationEvidence>,
     dispatch_evidence: Option<&'a ImplementationCorrectnessEvidence>,
     /// Constructive proof Lean4 sources for CROWN-based properties (P1-P4).
@@ -80,7 +78,6 @@ impl<'a> FullCertificateBuilder<'a> {
             crown_bundle: None,
             timing_cert: None,
             speaker_evidence: None,
-            kani_evidence: None,
             smt_evidence: None,
             dispatch_evidence: None,
             constructive_proofs: None,
@@ -105,13 +102,6 @@ impl<'a> FullCertificateBuilder<'a> {
     #[must_use]
     pub fn speaker(mut self, evidence: &'a SpeakerConsistencyEvidence) -> Self {
         self.speaker_evidence = Some(evidence);
-        self
-    }
-
-    /// Provide Kani verification evidence for P7 (memory safety).
-    #[must_use]
-    pub fn kani(mut self, evidence: &'a KaniVerificationEvidence) -> Self {
-        self.kani_evidence = Some(evidence);
         self
     }
 
@@ -182,17 +172,12 @@ impl<'a> FullCertificateBuilder<'a> {
             cert = cert.with_speaker_results(speaker);
         }
 
-        // 5. Kani evidence (P7)
-        if let Some(kani) = self.kani_evidence {
-            cert = cert.with_kani_results(kani);
-        }
-
-        // 6. SMT evidence (P8)
+        // 5. SMT evidence (P8)
         if let Some(smt) = self.smt_evidence {
             cert = cert.with_smt_results(smt);
         }
 
-        // 7. Dispatch plan correctness (P8 — only upgrades)
+        // 6. Dispatch plan correctness (P8 — only upgrades)
         if let Some(dispatch) = self.dispatch_evidence {
             cert = cert.with_dispatch_plan_correctness(dispatch);
         }
@@ -209,7 +194,6 @@ impl<'a> FullCertificateBuilder<'a> {
             has_crown: self.crown_bundle.is_some(),
             has_timing: self.timing_cert.is_some(),
             has_speaker: self.speaker_evidence.is_some(),
-            has_kani: self.kani_evidence.is_some(),
             has_smt: self.smt_evidence.is_some(),
             has_dispatch_plan: self.dispatch_evidence.is_some(),
             has_constructive_proofs: self.constructive_proofs.is_some(),
@@ -218,7 +202,6 @@ impl<'a> FullCertificateBuilder<'a> {
                 self.crown_bundle.is_some(),
                 self.timing_cert.is_some(),
                 self.speaker_evidence.is_some(),
-                self.kani_evidence.is_some(),
                 self.smt_evidence.is_some(),
                 self.dispatch_evidence.is_some(),
                 self.constructive_proofs.is_some(),
@@ -239,8 +222,6 @@ pub struct CertificateEvidenceSummary {
     pub has_timing: bool,
     /// Speaker evidence provided (P4).
     pub has_speaker: bool,
-    /// Kani evidence provided (P7).
-    pub has_kani: bool,
     /// SMT evidence provided (P8).
     pub has_smt: bool,
     /// Dispatch plan evidence provided (P8).
@@ -249,7 +230,7 @@ pub struct CertificateEvidenceSummary {
     pub has_constructive_proofs: bool,
     /// Number of constructive proof entries provided.
     pub constructive_proof_count: usize,
-    /// Total number of evidence sources provided (0-7).
+    /// Total number of evidence sources provided (0-6).
     pub total_sources: usize,
 }
 
@@ -265,7 +246,6 @@ pub struct CertificateEvidenceSummary {
 /// * `input_specification` — Input domain description.
 /// * `source_hash` — SHA-256 of source code at verification time.
 /// * `crown_bundle` — CROWN results for P1-P6.
-/// * `kani_evidence` — Kani results for P7.
 /// * `smt_evidence` — ay SMT results for P8.
 /// * `dispatch_evidence` — Dispatch plan analysis for P8 (complementary).
 pub fn build_full_certificate(
@@ -273,13 +253,11 @@ pub fn build_full_certificate(
     input_specification: &str,
     source_hash: &str,
     crown_bundle: &MoonshotCrownBundle,
-    kani_evidence: &KaniVerificationEvidence,
     smt_evidence: &SmtVerificationEvidence,
     dispatch_evidence: Option<&ImplementationCorrectnessEvidence>,
 ) -> MoonshotCertificate {
     let mut builder = FullCertificateBuilder::new(model_name, input_specification, source_hash)
         .crown_bundle(crown_bundle)
-        .kani(kani_evidence)
         .smt(smt_evidence);
 
     if let Some(dispatch) = dispatch_evidence {
@@ -292,7 +270,7 @@ pub fn build_full_certificate(
 /// Convenience function to build a complete 8-property certificate with all
 /// evidence sources including timing, speaker, and attention.
 ///
-/// This is the "everything" entry point used when all 6 evidence sources are
+/// This is the "everything" entry point used when all 5 evidence sources are
 /// available. For partial evidence, use [`FullCertificateBuilder`] directly.
 pub fn build_full_certificate_with_all_evidence(
     model_name: &str,
@@ -301,7 +279,6 @@ pub fn build_full_certificate_with_all_evidence(
     crown_bundle: &MoonshotCrownBundle,
     timing_cert: &TimingCertificate,
     speaker_evidence: &SpeakerConsistencyEvidence,
-    kani_evidence: &KaniVerificationEvidence,
     smt_evidence: &SmtVerificationEvidence,
     dispatch_evidence: &ImplementationCorrectnessEvidence,
 ) -> MoonshotCertificate {
@@ -309,75 +286,20 @@ pub fn build_full_certificate_with_all_evidence(
         .crown_bundle(crown_bundle)
         .timing(timing_cert)
         .speaker(speaker_evidence)
-        .kani(kani_evidence)
         .smt(smt_evidence)
         .dispatch_plan(dispatch_evidence)
         .build()
-}
-
-/// Build a certificate with P7 evidence sourced from `kani_status.json` and
-/// workspace scan, using [`KaniVerificationEvidence::from_kani_status_or_scan`].
-///
-/// This is the recommended entry point when Kani results live on disk rather
-/// than being pre-constructed. The function reads `kani_status.json` for
-/// actual pass/fail results and falls back to a workspace source scan if the
-/// file is unavailable.
-///
-/// # Arguments
-///
-/// * `model_name` — Pipeline being certified.
-/// * `input_specification` — Input domain description.
-/// * `source_hash` — SHA-256 of source code at verification time.
-/// * `kani_status_path` — Path to `kani_status.json`.
-/// * `crates_dir` — Path to workspace `crates/` directory for harness scan.
-/// * `assume_all_pass_fallback` — If `kani_status.json` is unavailable and
-///   falling back to workspace scan, whether to assume all harnesses pass.
-/// * `crown_bundle` — CROWN results for P1-P6 (optional).
-/// * `smt_evidence` — ay SMT results for P8 (optional).
-/// * `dispatch_evidence` — Dispatch plan analysis for P8 (optional).
-pub fn build_certificate_from_workspace(
-    model_name: &str,
-    input_specification: &str,
-    source_hash: &str,
-    kani_status_path: &Path,
-    crates_dir: &Path,
-    assume_all_pass_fallback: bool,
-    crown_bundle: Option<&MoonshotCrownBundle>,
-    smt_evidence: Option<&SmtVerificationEvidence>,
-    dispatch_evidence: Option<&ImplementationCorrectnessEvidence>,
-) -> MoonshotCertificate {
-    let kani_evidence = KaniVerificationEvidence::from_kani_status_or_scan(
-        kani_status_path,
-        crates_dir,
-        assume_all_pass_fallback,
-    );
-
-    let mut builder = FullCertificateBuilder::new(model_name, input_specification, source_hash)
-        .kani(&kani_evidence);
-
-    if let Some(crown) = crown_bundle {
-        builder = builder.crown_bundle(crown);
-    }
-    if let Some(smt) = smt_evidence {
-        builder = builder.smt(smt);
-    }
-    if let Some(dispatch) = dispatch_evidence {
-        builder = builder.dispatch_plan(dispatch);
-    }
-
-    builder.build()
 }
 
 impl std::fmt::Display for CertificateEvidenceSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Evidence: {}/7 sources (CROWN={}, timing={}, speaker={}, Kani={}, SMT={}, dispatch={}, proofs={}({}))",
+            "Evidence: {}/6 sources (CROWN={}, timing={}, speaker={}, SMT={}, dispatch={}, proofs={}({}))",
             self.total_sources,
             if self.has_crown { "Y" } else { "N" },
             if self.has_timing { "Y" } else { "N" },
             if self.has_speaker { "Y" } else { "N" },
-            if self.has_kani { "Y" } else { "N" },
             if self.has_smt { "Y" } else { "N" },
             if self.has_dispatch_plan { "Y" } else { "N" },
             if self.has_constructive_proofs { "Y" } else { "N" },

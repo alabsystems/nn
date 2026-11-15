@@ -20,9 +20,9 @@
 //!
 //! Issue: #737.
 
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use crate::kernel_error::KernelError;
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use crate::kernel_util::{checked_slice_output, validate_finite_slice};
 use crate::tensor_ir::{
     TensorIRError, TensorIRLayerError, TensorKernelDef, TensorNode, TensorNodeId, TensorOpKind,
@@ -118,7 +118,7 @@ pub(crate) fn resolve_softmax_axis(axis: i32, rank: usize) -> usize {
     }
 }
 
-#[cfg(any(test, kani))]
+#[cfg(test)]
 /// Compute softmax over a 1D slice (numerically stable log-sum-exp).
 ///
 /// `softmax(x)[i] = exp(x[i] - max(x)) / sum(exp(x[j] - max(x)) for all j)`
@@ -156,154 +156,6 @@ pub(crate) fn softmax_ref(x: &[f32]) -> Result<Vec<f32>, KernelError> {
 
     checked_slice_output(&result)?;
     Ok(result)
-}
-
-#[cfg(kani)]
-mod kani_builder_proofs {
-    //! Kani proof harnesses for the softmax IR builder.
-    //!
-    //! Same pattern as conv1d/conv_transpose_1d/causal_conv1d/linear builder
-    //! harnesses: prove no-panic and output shape correct.
-
-    use super::*;
-
-    /// Prove `build_softmax` never panics for bounded params.
-    ///
-    /// Domain: rank in [0, 4], each dim in [0, 4], axis in [-4, 4].
-    /// Reduced from [0, 8] and added unwind(16) for CBMC Vec heap
-    /// unwinding tractability (#767 AC3).
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(16)]
-    fn softmax_build_no_panic() {
-        let rank: usize = kani::any();
-        kani::assume(rank <= 4);
-
-        let d0: usize = kani::any();
-        let d1: usize = kani::any();
-        let d2: usize = kani::any();
-        let d3: usize = kani::any();
-        kani::assume(d0 <= 4);
-        kani::assume(d1 <= 4);
-        kani::assume(d2 <= 4);
-        kani::assume(d3 <= 4);
-
-        let shape: &[usize] = match rank {
-            0 => &[],
-            1 => &[d0],
-            2 => &[d0, d1],
-            3 => &[d0, d1, d2],
-            4 => &[d0, d1, d2, d3],
-            _ => unreachable!(),
-        };
-
-        let axis: i32 = kani::any();
-        kani::assume(axis >= -4 && axis <= 4);
-
-        // Must not panic — returns Err for invalid params.
-        let _ = build_softmax("kani_test", shape, axis);
-    }
-
-    /// Prove `build_softmax` output shape matches input shape.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    fn softmax_output_shape_preserved() {
-        let d0: usize = kani::any();
-        let d1: usize = kani::any();
-        kani::assume(d0 >= 1 && d0 <= 64);
-        kani::assume(d1 >= 1 && d1 <= 64);
-
-        let shape = [d0, d1];
-
-        // axis=-1 is always valid for rank >= 1.
-        let def = build_softmax("kani_test", &shape, -1).expect("valid params must succeed");
-        let out_node = &def.nodes[def.output.index()];
-        assert_eq!(out_node.shape.len(), 2, "output rank must match input");
-        assert_eq!(out_node.shape[0], d0, "output dim 0 must match input");
-        assert_eq!(out_node.shape[1], d1, "output dim 1 must match input");
-    }
-}
-
-#[cfg(all(kani, feature = "kani-stubbing"))]
-mod kani_proofs {
-    //! Kani proof harnesses for softmax reference implementation.
-    //!
-    //! Softmax is a vector operation, so we use fixed small sizes (2, 3)
-    //! to keep CBMC tractable. Uses `exp_stub` to work around CBMC's
-    //! inaccurate `f32::exp()` model (#239).
-    //!
-    //! ## Proof strategy
-    //!
-    //! Softmax with `exp_stub` (nondeterministic positive finite) proves:
-    //! 1. **Output in [0, 1]**: Each `exp(x_i) / sum(exp(x_j))` is a ratio of
-    //!    positive values where the numerator ≤ denominator, so output ∈ (0, 1].
-    //! 2. **Finiteness**: Sum of positive finite values is finite (for small N);
-    //!    division of finite by finite is finite.
-    //!
-    //! Sum-to-one requires deterministic exp (actual exp or det_stub), since
-    //! nondeterministic exp values don't satisfy the algebraic identity.
-
-    use super::*;
-    use crate::kani_stubs::exp_stub;
-
-    /// Prove softmax outputs are in [0, 1] for 2-element input.
-    ///
-    /// Domain: x in [-100, 100].
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(5)]
-    #[kani::stub(f32::exp, exp_stub)]
-    fn softmax_output_in_unit_interval_n2() {
-        let x0: f32 = kani::any();
-        let x1: f32 = kani::any();
-        kani::assume(x0.is_finite() && x0 >= -100.0 && x0 <= 100.0);
-        kani::assume(x1.is_finite() && x1 >= -100.0 && x1 <= 100.0);
-
-        let result = softmax_ref(&[x0, x1]).expect("softmax_ref must succeed for bounded inputs");
-
-        assert_eq!(result.len(), 2, "output length must match input");
-        for (i, &v) in result.iter().enumerate() {
-            assert!(v.is_finite(), "softmax output [{i}] must be finite");
-            assert!(v >= 0.0, "softmax output [{i}] must be >= 0");
-            assert!(v <= 1.0, "softmax output [{i}] must be <= 1");
-        }
-    }
-
-    /// Prove softmax outputs are in [0, 1] for 3-element input.
-    ///
-    /// Domain: x in [-100, 100].
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::unwind(6)]
-    #[kani::stub(f32::exp, exp_stub)]
-    fn softmax_output_in_unit_interval_n3() {
-        let x0: f32 = kani::any();
-        let x1: f32 = kani::any();
-        let x2: f32 = kani::any();
-        kani::assume(x0.is_finite() && x0 >= -100.0 && x0 <= 100.0);
-        kani::assume(x1.is_finite() && x1 >= -100.0 && x1 <= 100.0);
-        kani::assume(x2.is_finite() && x2 >= -100.0 && x2 <= 100.0);
-
-        let result =
-            softmax_ref(&[x0, x1, x2]).expect("softmax_ref must succeed for bounded inputs");
-
-        assert_eq!(result.len(), 3, "output length must match input");
-        for (i, &v) in result.iter().enumerate() {
-            assert!(v.is_finite(), "softmax output [{i}] must be finite");
-            assert!(v >= 0.0, "softmax output [{i}] must be >= 0");
-            assert!(v <= 1.0, "softmax output [{i}] must be <= 1");
-        }
-    }
-
-    /// Prove softmax rejects empty input.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(2)]
-    #[kani::stub(f32::exp, exp_stub)]
-    fn softmax_rejects_empty_input() {
-        let result = softmax_ref(&[]);
-        assert!(result.is_err(), "softmax must reject empty input");
-    }
 }
 
 #[cfg(test)]

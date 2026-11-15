@@ -263,7 +263,3 @@ pub(super) fn power_spectrogram(
 
     Ok(power)
 }
-
-#[cfg(kani)]
-#[path = "kani_audio_fft_proofs.rs"]
-mod kani_audio_fft_proofs;

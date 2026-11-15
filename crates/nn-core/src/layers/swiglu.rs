@@ -111,10 +111,6 @@ impl Module for SwiGlu {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_swiglu_act_embed_proofs.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "swiglu_tests.rs"]
 mod tests;

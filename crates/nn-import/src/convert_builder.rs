@@ -14,8 +14,8 @@
 //! today. That means NY bounds reporting when `verify` is enabled,
 //! including the current composition-bounds method/soundness/proof-strength
 //! classification when it is available, plus optional reference parity when
-//! `reftest` is enabled and a reference trace is supplied. It does not run
-//! Kani inline, does not accept raw ONNX or raw PyTorch input, and does not
+//! `reftest` is enabled and a reference trace is supplied. It does not
+//! accept raw ONNX or raw PyTorch input, and does not
 //! turn `build()` into a complete proof-powered compiler.
 //!
 //! # Examples
@@ -88,7 +88,7 @@ pub enum VerifyLevel {
     /// - optional reference parity when `reftest` is enabled and a
     ///   [`ConvertBuilder::reference_trace`] is provided
     ///
-    /// It does not run Kani inline, does not ingest raw PyTorch or ONNX
+    /// It does not ingest raw PyTorch or ONNX
     /// inputs, and does not by itself provide a complete proof-powered
     /// compiler.
     Full,
@@ -232,8 +232,8 @@ impl<'a> ConvertBuilder<'a> {
     /// model (same as the legacy one-shot `convert()`) and the detailed
     /// [`ConvertReport`]. Report fields are populated only for checks that
     /// actually ran: NY bounds require `verify`, reference parity
-    /// requires `reftest` plus [`ConvertBuilder::reference_trace`], and L1
-    /// Kani remains an external/offline input today. Successful builds record
+    /// requires `reftest` plus [`ConvertBuilder::reference_trace`]. Successful
+    /// builds record
     /// a compiled Metal artifact in the report; the provenance setters describe
     /// how the exported-artifact intake was obtained.
     pub fn build(self) -> Result<ConvertResultWithReport, super::ConvertError> {
@@ -368,11 +368,7 @@ impl<'a> ConvertBuilder<'a> {
             None => None,
         };
 
-        let proof = EquivalenceProof::new(
-            None, // L1: Populated by Prover via Kani
-            composition_bounds,
-            reference_parity,
-        );
+        let proof = EquivalenceProof::new(composition_bounds, reference_parity);
 
         let convert_result = ConvertResult {
             model,

@@ -79,18 +79,6 @@ fn test_speaker_evidence(dim: usize) -> SpeakerConsistencyEvidence {
     }
 }
 
-fn test_kani_evidence(passed: usize, total: usize) -> KaniVerificationEvidence {
-    KaniVerificationEvidence {
-        harnesses_passed: passed,
-        harnesses_total: total,
-        harness_files: vec![
-            "crates/nn-core/src/kani_bounds.rs".to_string(),
-            "crates/nn-autodiff/src/kani_backward_proofs.rs".to_string(),
-        ],
-        all_passed: passed == total && total > 0,
-    }
-}
-
 fn test_smt_evidence(proven: usize, total: usize) -> SmtVerificationEvidence {
     SmtVerificationEvidence {
         kernels_proven: proven,
@@ -122,7 +110,6 @@ fn test_builder_with_all_evidence_all_proven() {
     let (pipeline_cert, bundle) = test_crown_bundle(dim);
     let timing = test_timing_cert(&pipeline_cert, dim);
     let speaker = test_speaker_evidence(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
     let dispatch = test_dispatch_evidence(5, 5);
 
@@ -130,7 +117,6 @@ fn test_builder_with_all_evidence_all_proven() {
         .crown_bundle(&bundle)
         .timing(&timing)
         .speaker(&speaker)
-        .kani(&kani)
         .smt(&smt)
         .dispatch_plan(&dispatch)
         .build();
@@ -140,12 +126,10 @@ fn test_builder_with_all_evidence_all_proven() {
     assert_eq!(cert.source_hash, "sha256hash");
     assert_eq!(cert.properties.len(), 8);
 
-    // P7 should be KaniProven.
-    assert_eq!(
-        cert.properties[6].level,
-        VerificationLevel::KaniProven,
-        "P7 must be KaniProven"
-    );
+    // P7 (memory safety) has no evidence source, so it stays None and the
+    // certificate is not all-proven.
+    assert_eq!(cert.properties[6].level, VerificationLevel::None);
+    assert!(!cert.all_proven);
 
     // P8 should be SmtProven (dispatch only upgrades, SMT is higher).
     assert_eq!(
@@ -154,8 +138,8 @@ fn test_builder_with_all_evidence_all_proven() {
         "P8 must be SmtProven"
     );
 
-    // All properties should be at least Empirical (evidence was provided for all).
-    for (i, prop) in cert.properties.iter().enumerate() {
+    // Every property that has an evidence source is at least Empirical.
+    for (i, prop) in cert.properties.iter().enumerate().filter(|(i, _)| *i != 6) {
         assert!(
             prop.level >= VerificationLevel::Empirical,
             "P{} should be at least Empirical with all evidence, got {:?}",
@@ -175,35 +159,18 @@ fn test_builder_crown_only() {
         .build();
 
     // CROWN bundle sets P1-P3, P6; P7/P8 retain base levels from artifact registry.
-    // The artifact registry may already set P7/P8 to KaniProven/SmtProven, so we
-    // just verify the builder didn't change them from the from_repo() baseline.
+    // The artifact registry may already set P8 to SmtProven, so we just verify
+    // the builder didn't change them from the from_repo() baseline.
     let baseline = FullCertificateBuilder::new("model", "input", "hash").build();
     assert_eq!(
         cert.properties[6].level, baseline.properties[6].level,
-        "P7 should match baseline (no Kani evidence provided)"
+        "P7 should match baseline"
     );
     assert_eq!(
         cert.properties[7].level, baseline.properties[7].level,
         "P8 should match baseline (no SMT evidence provided)"
     );
     assert_eq!(cert.verification_dim, Some(dim));
-}
-
-#[test]
-fn test_builder_kani_only() {
-    let kani = test_kani_evidence(500, 500);
-
-    let cert = FullCertificateBuilder::new("model", "input", "hash")
-        .kani(&kani)
-        .build();
-
-    assert_eq!(
-        cert.properties[6].level,
-        VerificationLevel::KaniProven,
-        "P7 with all Kani passed should be KaniProven"
-    );
-    // No CROWN bundle → P1-P6 at base level.
-    assert_eq!(cert.verification_dim, None);
 }
 
 #[test]
@@ -276,7 +243,6 @@ fn test_evidence_summary_all_sources() {
     let (pipeline_cert, bundle) = test_crown_bundle(dim);
     let timing = test_timing_cert(&pipeline_cert, dim);
     let speaker = test_speaker_evidence(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
     let dispatch = test_dispatch_evidence(5, 5);
 
@@ -284,7 +250,6 @@ fn test_evidence_summary_all_sources() {
         .crown_bundle(&bundle)
         .timing(&timing)
         .speaker(&speaker)
-        .kani(&kani)
         .smt(&smt)
         .dispatch_plan(&dispatch)
         .evidence_summary();
@@ -292,25 +257,23 @@ fn test_evidence_summary_all_sources() {
     assert!(summary.has_crown);
     assert!(summary.has_timing);
     assert!(summary.has_speaker);
-    assert!(summary.has_kani);
     assert!(summary.has_smt);
     assert!(summary.has_dispatch_plan);
-    assert_eq!(summary.total_sources, 6);
+    assert_eq!(summary.total_sources, 5);
 }
 
 #[test]
 fn test_evidence_summary_partial() {
-    let kani = test_kani_evidence(500, 500);
+    let smt = test_smt_evidence(14, 14);
 
     let summary = FullCertificateBuilder::new("model", "input", "hash")
-        .kani(&kani)
+        .smt(&smt)
         .evidence_summary();
 
     assert!(!summary.has_crown);
     assert!(!summary.has_timing);
     assert!(!summary.has_speaker);
-    assert!(summary.has_kani);
-    assert!(!summary.has_smt);
+    assert!(summary.has_smt);
     assert!(!summary.has_dispatch_plan);
     assert_eq!(summary.total_sources, 1);
 }
@@ -321,23 +284,19 @@ fn test_evidence_summary_empty() {
 
     assert_eq!(summary.total_sources, 0);
     assert!(!summary.has_crown);
-    assert!(!summary.has_kani);
     assert!(!summary.has_smt);
 }
 
 #[test]
 fn test_evidence_summary_display() {
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
 
     let summary = FullCertificateBuilder::new("model", "input", "hash")
-        .kani(&kani)
         .smt(&smt)
         .evidence_summary();
 
     let s = format!("{summary}");
-    assert!(s.contains("2/7 sources"));
-    assert!(s.contains("Kani="));
+    assert!(s.contains("1/6 sources"));
     assert!(s.contains("SMT="));
 }
 
@@ -347,14 +306,13 @@ fn test_evidence_summary_display() {
 fn test_build_full_certificate_convenience() {
     let dim = 64;
     let (_pipeline_cert, bundle) = test_crown_bundle(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
 
-    let cert = build_full_certificate("model", "input", "hash", &bundle, &kani, &smt, None);
+    let cert = build_full_certificate("model", "input", "hash", &bundle, &smt, None);
 
     assert_eq!(cert.model_name, "model");
     assert_eq!(cert.properties.len(), 8);
-    assert_eq!(cert.properties[6].level, VerificationLevel::KaniProven,);
+    assert_eq!(cert.properties[6].level, VerificationLevel::None);
     assert_eq!(cert.properties[7].level, VerificationLevel::SmtProven,);
 }
 
@@ -362,19 +320,10 @@ fn test_build_full_certificate_convenience() {
 fn test_build_full_certificate_with_dispatch() {
     let dim = 64;
     let (_pipeline_cert, bundle) = test_crown_bundle(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
     let dispatch = test_dispatch_evidence(5, 5);
 
-    let cert = build_full_certificate(
-        "model",
-        "input",
-        "hash",
-        &bundle,
-        &kani,
-        &smt,
-        Some(&dispatch),
-    );
+    let cert = build_full_certificate("model", "input", "hash", &bundle, &smt, Some(&dispatch));
 
     // SMT all-proven + dispatch all-proven → SmtProven holds.
     assert_eq!(cert.properties[7].level, VerificationLevel::SmtProven,);
@@ -386,7 +335,6 @@ fn test_build_full_certificate_with_all_evidence_convenience() {
     let (pipeline_cert, bundle) = test_crown_bundle(dim);
     let timing = test_timing_cert(&pipeline_cert, dim);
     let speaker = test_speaker_evidence(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
     let dispatch = test_dispatch_evidence(5, 5);
 
@@ -397,15 +345,13 @@ fn test_build_full_certificate_with_all_evidence_convenience() {
         &bundle,
         &timing,
         &speaker,
-        &kani,
         &smt,
         &dispatch,
     );
 
     assert_eq!(cert.model_name, "full-model");
-    // all_proven depends on whether synthetic CROWN bounds produce CrownProven
-    // for P1-P6; P7 and P8 should be KaniProven and SmtProven respectively.
-    assert_eq!(cert.properties[6].level, VerificationLevel::KaniProven,);
+    // P7 has no evidence source; P8 is SmtProven.
+    assert_eq!(cert.properties[6].level, VerificationLevel::None);
     assert_eq!(cert.properties[7].level, VerificationLevel::SmtProven,);
 }
 
@@ -415,20 +361,17 @@ fn test_build_full_certificate_with_all_evidence_convenience() {
 fn test_builder_matches_manual_chaining() {
     let dim = 64;
     let (_pipeline_cert, bundle) = test_crown_bundle(dim);
-    let kani = test_kani_evidence(500, 500);
     let smt = test_smt_evidence(14, 14);
 
     // Manual chaining (old pattern).
     let status = MoonshotStatus::from_repo();
     let manual = MoonshotCertificate::from_status(&status, "model", "input", "hash");
     let manual = manual.with_crown_results(&bundle);
-    let manual = manual.with_kani_results(&kani);
     let manual = manual.with_smt_results(&smt);
 
     // Builder (new pattern).
     let built = FullCertificateBuilder::new("model", "input", "hash")
         .crown_bundle(&bundle)
-        .kani(&kani)
         .smt(&smt)
         .build();
 
@@ -447,8 +390,3 @@ fn test_builder_matches_manual_chaining() {
     assert_eq!(manual.all_at_least_partial, built.all_at_least_partial);
     assert_eq!(manual.verification_dim, built.verification_dim);
 }
-
-// --- build_certificate_from_workspace tests (extracted) --------------------
-
-#[path = "moonshot_certificate_builder_workspace_tests.rs"]
-mod workspace_tests;

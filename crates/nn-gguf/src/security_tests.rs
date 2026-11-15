@@ -324,7 +324,7 @@ fn test_data_offset_overflow_in_tensor_data() {
 // ---------------------------------------------------------------
 
 #[test]
-fn test_tensor_data_beyond_file_bounds_mmap() {
+fn test_tensor_data_beyond_file_bounds() {
     // Create a GGUF with a tensor that claims a large offset, but the
     // file doesn't actually contain that much data.
     let mut data = gguf_header(1, 0);
@@ -334,7 +334,7 @@ fn test_tensor_data_beyond_file_bounds_mmap() {
     // Only provide 64 bytes of data (not enough for 4096).
     data.extend_from_slice(&[0u8; 64]);
 
-    let path = std::env::temp_dir().join("nn_gguf_sec_oob_mmap.gguf");
+    let path = std::env::temp_dir().join("nn_gguf_sec_oob_open.gguf");
     std::fs::write(&path, &data).unwrap();
 
     let result = GgufFile::open(&path);
@@ -492,7 +492,7 @@ fn test_valid_file_with_tensor_still_works() {
 }
 
 #[test]
-fn test_valid_file_mmap_with_tensor_still_works() {
+fn test_valid_file_open_with_tensor_still_works() {
     let mut data = gguf_header(1, 1);
     append_string_metadata(&mut data, "general.architecture", "llama");
     append_tensor_info(&mut data, "weight", &[4, 3], GgufDType::F32, 0);
@@ -812,9 +812,9 @@ fn test_dequant_q4_0_exact_buffer_still_works() {
     }
 }
 
-/// Test that the mmap path rejects a tensor whose data region is truncated.
+/// Test that `open` rejects a tensor whose data region is truncated.
 #[test]
-fn test_mmap_truncated_tensor_data_rejected() {
+fn test_truncated_tensor_data_rejected() {
     let mut data = gguf_header(1, 0);
     // Tensor with shape [256], F32, offset=0. Needs 1024 bytes.
     append_tensor_info(&mut data, "trunc", &[256], GgufDType::F32, 0);

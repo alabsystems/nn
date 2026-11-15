@@ -7,9 +7,6 @@
 //! These are the pure mathematical functions underlying dvoice V1/V2 gate
 //! pass conditions. Each uses f64 accumulators for numerical stability and
 //! handles edge cases (zero vectors, perfect reconstruction, silent reference).
-//!
-//! Kani proofs verify: finite output for finite input, correct output ranges,
-//! division-by-zero guards, and normalization correctness.
 
 use crate::error::TtsVerifyError;
 
@@ -138,52 +135,6 @@ pub fn sdr_db(candidate: &[f32], reference: &[f32]) -> Result<f64, TtsVerifyErro
 
     Ok(10.0 * (s_target_power / e_power).log10())
 }
-
-// -- Scalar helpers for Kani verification and tests --------------------------
-// Used by #[cfg(kani)] proofs in dsp_kani_proofs.rs and #[cfg(test)] in
-// dsp_quality_metrics_tests.rs. Not called from production code paths.
-
-#[allow(dead_code)]
-pub(crate) fn cosine_similarity_scalar(a: f32, b: f32) -> f64 {
-    let af = f64::from(a);
-    let bf = f64::from(b);
-    let dot = af * bf;
-    let denom = (af * af * bf * bf).sqrt();
-    if denom == 0.0 {
-        return 0.0;
-    }
-    (dot / denom).clamp(-1.0, 1.0)
-}
-
-#[allow(dead_code)]
-pub(crate) fn snr_scalar(signal: f32, noise: f32) -> f64 {
-    let sig_power = f64::from(signal) * f64::from(signal);
-    let noise_power = f64::from(noise) * f64::from(noise);
-    if sig_power == 0.0 {
-        return 0.0;
-    }
-    if noise_power == 0.0 {
-        return f64::INFINITY;
-    }
-    10.0 * (sig_power / noise_power).log10()
-}
-
-#[allow(dead_code)]
-pub(crate) fn rms_scalar(x: f32) -> f64 {
-    let xf = f64::from(x);
-    (xf * xf).sqrt()
-}
-
-#[allow(dead_code)]
-pub(crate) fn power_to_db(power: f64) -> f64 {
-    10.0 * power.log10()
-}
-
-// Used by dsp_kani_proofs.rs and dsp_quality_metrics_tests.rs
-#[allow(unused_imports)]
-pub(crate) use nn_core::audio::hz_to_mel_htk as hz_to_mel;
-#[allow(unused_imports)]
-pub(crate) use nn_core::audio::mel_to_hz_htk as mel_to_hz;
 
 #[cfg(test)]
 #[path = "dsp_quality_metrics_tests.rs"]

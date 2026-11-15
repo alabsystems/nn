@@ -30,7 +30,7 @@
 //!
 //! Run:
 //!   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-metal --test kokoro_all kokoro_rtf_production -- --nocapture
+//!   targo --unverified test -p nn-metal --test kokoro_all kokoro_rtf_production -- --nocapture
 //!
 //! Optional artifact output:
 //!   KOKORO_RTF_SCORECARD_OUT=/tmp/kokoro-rtf-scorecard.json

@@ -14,7 +14,7 @@
 //!
 //! ```bash
 //! export QWEN3_WEIGHTS=./nn/weights/qwen3-0.6b.safetensors
-//! cargo test -p nn-qwen3 --test generation_e2e -- --nocapture
+//! targo --unverified test -p nn-qwen3 --test generation_e2e -- --nocapture
 //! ```
 
 use nn_core::layers::kv_cache::KvCache;

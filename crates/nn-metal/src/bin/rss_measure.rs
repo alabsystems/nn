@@ -13,7 +13,7 @@
 //!
 //! ```bash
 //! KOKORO_WEIGHTS=~/path/to/kokoro_v1_0.safetensors \
-//!   cargo run -p nn-metal --no-default-features --bin rss_measure
+//!   targo --unverified run -p nn-metal --no-default-features --bin rss_measure
 //! ```
 //!
 //! Part of #3079.
@@ -35,7 +35,9 @@ fn main() {
             eprintln!();
             eprintln!("Usage:");
             eprintln!("  KOKORO_WEIGHTS=~/kokoro_v1_0.safetensors \\");
-            eprintln!("    cargo run -p nn-metal --no-default-features --bin rss_measure");
+            eprintln!(
+                "    targo --unverified run -p nn-metal --no-default-features --bin rss_measure"
+            );
             process::exit(1);
         }
     };

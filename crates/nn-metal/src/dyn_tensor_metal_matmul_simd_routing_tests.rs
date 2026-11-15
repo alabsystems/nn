@@ -368,7 +368,7 @@ fn test_simdgroup_bf16_broadcast_rhs() {
 
 /// AC3: bf16 simdgroup GEMM must be within 1.5x of f32 on the same shape.
 ///
-/// Run with: `cargo test -p nn-metal --lib --release -- test_simdgroup_bf16_vs_f32_perf --nocapture`
+/// Run with: `targo --unverified test -p nn-metal --lib --release -- test_simdgroup_bf16_vs_f32_perf --nocapture`
 #[test]
 fn test_simdgroup_bf16_vs_f32_perf() {
     init();
@@ -590,7 +590,7 @@ fn test_simdgroup_64x64_correctness_edge_tiles() {
 /// Each shape is tested with both tile configs. GPU execution is flushed per
 /// iteration to measure actual GPU compute time (not command buffer encoding).
 ///
-/// Run with: `cargo test -p nn-metal --lib --release -- test_simdgroup_64x64_vs_32x32_perf --nocapture`
+/// Run with: `targo --unverified test -p nn-metal --lib --release -- test_simdgroup_64x64_vs_32x32_perf --nocapture`
 #[test]
 fn test_simdgroup_64x64_vs_32x32_perf() {
     use crate::dyn_tensor_metal::GemmTileConfig;

@@ -6,8 +6,8 @@
 //!
 //! Aggregates verification status across all models from per-model
 //! `nn_verify_status_*.json` files and `operational_state.json` into
-//! a unified [`StatusReport`] with per-model breakdowns, Kani harness
-//! counts, gap summaries, and trend comparisons.
+//! a unified [`StatusReport`] with per-model breakdowns, gap summaries,
+//! and trend comparisons.
 //!
 //! Part of #3942.
 
@@ -116,12 +116,6 @@ pub struct GapSummary {
 /// Trend comparison between current and previous operational state.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trend {
-    /// Previous Kani harness count (from operational_state.json).
-    pub prev_kani_harnesses: Option<u64>,
-    /// Current Kani harness count.
-    pub current_kani_harnesses: Option<u64>,
-    /// Delta in Kani harnesses (current - previous). Positive means growth.
-    pub kani_delta: Option<i64>,
     /// Previous total sound count across all models.
     pub prev_total_sound: Option<usize>,
     /// Current total sound count across all models.
@@ -137,8 +131,6 @@ pub struct StatusReport {
     pub summary: VerificationBreakdown,
     /// Per-model breakdowns.
     pub models: Vec<ModelSummary>,
-    /// Kani harness count from the codebase, if computed.
-    pub kani_count: Option<u64>,
     /// Gap detector summary, if computed.
     pub gap_summary: Option<GapSummary>,
     /// Trend comparison, if operational state was loaded.
@@ -151,9 +143,8 @@ impl StatusReport {
     /// Reads each `nn_verify_status_{model}.json` that exists in
     /// `workspace_root`. Models with no status file are silently skipped.
     ///
-    /// This does not compute Kani counts, gap reports, or trends. Use the
-    /// builder methods [`with_kani_count`], [`with_gap_summary`], and
-    /// [`with_trend`] to add those.
+    /// This does not compute gap reports or trends. Use the builder methods
+    /// [`with_gap_summary`] and [`with_trend`] to add those.
     pub fn from_status_files(workspace_root: &Path) -> Result<Self, VerifyError> {
         let mut all_entries: Vec<&KernelStatus> = Vec::new();
         let mut models = Vec::new();
@@ -212,7 +203,6 @@ impl StatusReport {
         Ok(Self {
             summary,
             models,
-            kani_count: None,
             gap_summary: None,
             trend: None,
         })
@@ -231,17 +221,9 @@ impl StatusReport {
         Self {
             summary,
             models,
-            kani_count: None,
             gap_summary: None,
             trend: None,
         }
-    }
-
-    /// Set the Kani harness count.
-    #[must_use]
-    pub fn with_kani_count(mut self, count: u64) -> Self {
-        self.kani_count = Some(count);
-        self
     }
 
     /// Set the gap summary.
@@ -254,22 +236,13 @@ impl StatusReport {
     /// Compute a trend by comparing this report against operational_state.json.
     ///
     /// Reads `operational_state.json` from `workspace_root` and extracts
-    /// the previous `kani_harnesses` count and `kokoro_soundness.sound` for
-    /// comparison against the current report values.
+    /// the previous `kokoro_soundness.sound` for comparison against the
+    /// current report values.
     pub fn with_trend(mut self, workspace_root: &Path) -> Self {
         let ops_path = workspace_root.join("operational_state.json");
         if let Ok(contents) = std::fs::read_to_string(&ops_path) {
             if let Ok(ops) = serde_json::from_str::<OperationalState>(&contents) {
                 let mut trend = Trend::default();
-
-                // Kani harness trend
-                if let Some(prev) = ops.kani_harnesses() {
-                    trend.prev_kani_harnesses = Some(prev);
-                    if let Some(current) = self.kani_count {
-                        trend.current_kani_harnesses = Some(current);
-                        trend.kani_delta = Some(current as i64 - prev as i64);
-                    }
-                }
 
                 // Sound count trend (sum from operational_state vs current report)
                 let prev_sound = ops.total_sound_count();
@@ -329,10 +302,6 @@ impl StatusReport {
             self.summary.vacuous,
         ));
 
-        if let Some(kani) = self.kani_count {
-            out.push_str(&format!("Kani harnesses: {kani}\n"));
-        }
-
         // Per-model breakdown
         if !self.models.is_empty() {
             out.push_str("\n--- Per-Model Breakdown ---\n");
@@ -356,14 +325,6 @@ impl StatusReport {
         // Trend
         if let Some(ref trend) = self.trend {
             out.push_str("\n--- Trend ---\n");
-            if let Some(delta) = trend.kani_delta {
-                let sign = if delta >= 0 { "+" } else { "" };
-                out.push_str(&format!(
-                    "Kani harnesses: {} -> {} ({sign}{delta})\n",
-                    trend.prev_kani_harnesses.unwrap_or(0),
-                    trend.current_kani_harnesses.unwrap_or(0),
-                ));
-            }
             if let Some(delta) = trend.sound_delta {
                 let sign = if delta >= 0 { "+" } else { "" };
                 out.push_str(&format!(
@@ -390,24 +351,14 @@ impl fmt::Display for StatusReport {
 struct OperationalState {
     #[serde(default)]
     verification_counts: Option<OperationalVerificationCounts>,
-    #[serde(default)]
-    kani_harnesses: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OperationalVerificationCounts {
     #[serde(default)]
-    kani_harnesses: Option<OperationalCountValue>,
-    #[serde(default)]
     kokoro_soundness: Option<OperationalSoundness>,
     #[serde(default)]
     dpdf_proof_strength: Option<OperationalProofStrength>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OperationalCountValue {
-    #[serde(default)]
-    value: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -423,21 +374,6 @@ struct OperationalProofStrength {
 }
 
 impl OperationalState {
-    fn kani_harnesses(&self) -> Option<u64> {
-        // Try verification_counts.kani_harnesses.value first, then top-level
-        if let Some(ref vc) = self.verification_counts {
-            if let Some(ref kh) = vc.kani_harnesses {
-                if let Some(v) = kh.value {
-                    return Some(v);
-                }
-            }
-        }
-        // Top-level kani_harnesses (plain number)
-        self.kani_harnesses
-            .as_ref()
-            .and_then(serde_json::Value::as_u64)
-    }
-
     fn total_sound_count(&self) -> usize {
         let mut total = 0usize;
         if let Some(ref vc) = self.verification_counts {
@@ -588,14 +524,6 @@ mod tests {
     }
 
     #[test]
-    fn test_report_with_kani_count() {
-        let report = StatusReport::from_status_files(Path::new("/nonexistent/path/42"))
-            .expect("empty report")
-            .with_kani_count(8072);
-        assert_eq!(report.kani_count, Some(8072));
-    }
-
-    #[test]
     fn test_report_with_gap_summary() {
         let gap = GapSummary {
             stages_checked: 8,
@@ -622,9 +550,8 @@ mod tests {
             }
         });
         let status: VerifyStatus = serde_json::from_value(json).expect("deserialize");
-        let report = StatusReport::from_verify_status("test_model", &status)
-            .with_kani_count(100)
-            .with_gap_summary(GapSummary {
+        let report =
+            StatusReport::from_verify_status("test_model", &status).with_gap_summary(GapSummary {
                 stages_checked: 5,
                 gaps: 1,
                 vacuous: 0,
@@ -633,7 +560,6 @@ mod tests {
         let text = report.to_text();
         assert!(text.contains("Total entries: 1"));
         assert!(text.contains("sound"));
-        assert!(text.contains("Kani harnesses: 100"));
         assert!(text.contains("Gaps: 1"));
     }
 
@@ -641,36 +567,21 @@ mod tests {
     fn test_operational_state_parsing() {
         let json = serde_json::json!({
             "verification_counts": {
-                "kani_harnesses": { "value": 8072 },
                 "kokoro_soundness": { "sound": 33 },
                 "dpdf_proof_strength": { "sound": 692 }
             }
         });
         let ops: OperationalState = serde_json::from_value(json).expect("parse ops");
-        assert_eq!(ops.kani_harnesses(), Some(8072));
         assert_eq!(ops.total_sound_count(), 725);
-    }
-
-    #[test]
-    fn test_operational_state_top_level_kani() {
-        let json = serde_json::json!({
-            "kani_harnesses": 500
-        });
-        let ops: OperationalState = serde_json::from_value(json).expect("parse ops");
-        assert_eq!(ops.kani_harnesses(), Some(500));
     }
 
     #[test]
     fn test_trend_computation() {
         let trend = Trend {
-            prev_kani_harnesses: Some(8000),
-            current_kani_harnesses: Some(8072),
-            kani_delta: Some(72),
             prev_total_sound: Some(700),
             current_total_sound: Some(725),
             sound_delta: Some(25),
         };
-        assert_eq!(trend.kani_delta, Some(72));
         assert_eq!(trend.sound_delta, Some(25));
     }
 

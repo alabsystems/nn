@@ -15,7 +15,7 @@
 //! - Gradient clipping operates on GPU tensors
 //! - GPU training produces the same results as CPU training (parity)
 //!
-//! Run: `cargo test -p nn --test training_pipeline_gpu --features training`
+//! Run: `targo --unverified test -p nn --test training_pipeline_gpu --features training`
 
 #![cfg(feature = "training")]
 

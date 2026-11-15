@@ -519,18 +519,3 @@ pub(super) use trace_compile_activations::*;
 #[path = "trace_compile_adain.rs"]
 mod trace_compile_adain;
 pub(super) use trace_compile_adain::*;
-
-// Kani proofs for NarrowView byte_offset overflow (#2218).
-#[cfg(kani)]
-#[path = "trace_compile_ops_narrow_kani.rs"]
-mod narrow_kani;
-
-// Kani proofs for trace_compile_ops per-op compilation helpers (#3704).
-#[cfg(kani)]
-#[path = "kani_trace_compile_ops.rs"]
-mod kani_trace_compile_ops;
-
-// Kani proofs for trace_compile_ops extended coverage (#3745).
-#[cfg(kani)]
-#[path = "kani_trace_compile_ops_3745.rs"]
-mod kani_trace_compile_ops_3745;

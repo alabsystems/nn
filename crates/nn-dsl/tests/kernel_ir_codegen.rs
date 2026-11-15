@@ -8,7 +8,6 @@
 //! Covers:
 //! - KernelIR construction (all node kinds)
 //! - MSL code generation (scalar + wrapper)
-//! - Kani harness template generation
 //! - Pretty-print round-trip consistency
 //! - FTZ sensitivity detection
 //! - Serde round-trip for KernelDef
@@ -558,58 +557,6 @@ fn test_msl_f16_accumulator_mode() {
 }
 
 // ---------------------------------------------------------------------------
-// C. Kani harness generation
-// ---------------------------------------------------------------------------
-
-/// Kani harness contains all required elements.
-#[test]
-fn test_kani_harness_structure() {
-    let kernel = nn_dsl::test_kernels::square_kernel();
-    let harness = nn_dsl::emit_kani_harness(&kernel).expect("emit");
-
-    assert!(harness.contains("#[cfg(kani)]"), "harness:\n{harness}");
-    assert!(harness.contains("#[kani::proof]"), "harness:\n{harness}");
-    assert!(
-        harness.contains("kani_verify_square"),
-        "harness:\n{harness}"
-    );
-    assert!(harness.contains("kani::any()"), "harness:\n{harness}");
-    assert!(harness.contains("kani::assume("), "harness:\n{harness}");
-    assert!(harness.contains("is_finite()"), "harness:\n{harness}");
-    assert!(harness.contains("square(x)"), "harness:\n{harness}");
-}
-
-/// Kani harness for BF16 inputs: symbolic f32 then converted.
-#[test]
-fn test_kani_harness_bf16_conversion() {
-    let kernel = KernelDef::new(
-        "bf16_fn",
-        vec![Param::new("x", ScalarType::BF16)],
-        ScalarType::BF16,
-        vec![n(0, IRNodeKind::Param(0))],
-        NodeId::new(0),
-    );
-    let harness = nn_dsl::emit_kani_harness(&kernel).expect("emit");
-    assert!(
-        harness.contains("x_f32: f32 = kani::any()"),
-        "harness:\n{harness}"
-    );
-    assert!(
-        harness.contains("half::bf16::from_f32"),
-        "harness:\n{harness}"
-    );
-}
-
-/// Kani harness is valid Rust syntax.
-#[test]
-fn test_kani_harness_valid_syntax() {
-    let kernel = nn_dsl::test_kernels::snake_kernel();
-    let harness = nn_dsl::emit_kani_harness(&kernel).expect("emit");
-    syn::parse_str::<syn::File>(&harness)
-        .unwrap_or_else(|e| panic!("generated harness is not valid Rust syntax: {e}\n\n{harness}"));
-}
-
-// ---------------------------------------------------------------------------
 // D. Pretty-print
 // ---------------------------------------------------------------------------
 
@@ -955,7 +902,7 @@ fn test_lower_multi_step_kernel() {
     );
 }
 
-/// Lowered kernel produces valid MSL and Kani harness.
+/// Lowered kernel produces valid MSL.
 #[test]
 fn test_lower_then_codegen_roundtrip() {
     let kernel = nn_dsl::test_kernels::parse_kernel(
@@ -966,17 +913,6 @@ fn test_lower_then_codegen_roundtrip() {
     let msl = nn_dsl::emit_msl(&kernel).expect("MSL should generate");
     assert!(msl.contains("[[kernel]]"), "MSL missing kernel entry point");
     assert!(msl.contains("metal::precise::exp"), "MSL missing exp call");
-
-    // Kani harness generation
-    let harness = nn_dsl::emit_kani_harness(&kernel).expect("Kani should generate");
-    assert!(
-        harness.contains("#[kani::proof]"),
-        "Kani missing proof attribute"
-    );
-    assert!(
-        harness.contains("roundtrip(x, alpha)"),
-        "Kani missing function call"
-    );
 }
 
 // ---------------------------------------------------------------------------

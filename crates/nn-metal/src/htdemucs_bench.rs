@@ -8,7 +8,7 @@
 //! (Metal buffer-to-buffer dispatch) using synthetic weights. Reports average
 //! latency and GPU/CPU speedup ratio.
 //!
-//! Run with `cargo test -p nn-metal test_htdemucs_bench -- --nocapture`
+//! Run with `targo --unverified test -p nn-metal test_htdemucs_bench -- --nocapture`
 //! to see timing output.
 
 use std::time::Instant;

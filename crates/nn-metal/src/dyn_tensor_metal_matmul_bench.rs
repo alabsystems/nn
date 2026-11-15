@@ -201,7 +201,7 @@ use super::MetalDynBackend;
 
 /// Benchmark: simdgroup vs naive for AC3 target shape [512, 768] × [768, 3072].
 ///
-/// Run with: `cargo test -p nn-metal --lib --release -- test_matmul_simdgroup_vs_naive_bench -- --nocapture`
+/// Run with: `targo --unverified test -p nn-metal --lib --release -- test_matmul_simdgroup_vs_naive_bench -- --nocapture`
 #[test]
 fn test_matmul_simdgroup_vs_naive_bench() {
     init();

@@ -189,7 +189,3 @@ impl KokoroForwardStft {
 #[cfg(test)]
 #[path = "kokoro_forward_stft_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kokoro_forward_stft_kani_tests.rs"]
-mod kani_proofs;

@@ -737,7 +737,6 @@ fn test_convert_report_struct_has_expected_fields() {
         "compile_time_ms": 123,
         "estimated_rtf": 0.280,
         "verification": {
-            "kani_harnesses_applicable": 754,
             "gamma_crown_layers_covered": 45,
             "gamma_crown_layers_total": 52,
             "composition_bounds_ok": true,
@@ -768,7 +767,6 @@ fn test_convert_report_struct_has_expected_fields() {
 
     // Verification sub-object.
     let verif = &parsed["verification"];
-    assert_eq!(verif["kani_harnesses_applicable"], 754);
     assert_eq!(verif["gamma_crown_layers_covered"], 45);
     assert_eq!(verif["gamma_crown_layers_total"], 52);
     assert_eq!(verif["composition_bounds_ok"], true);
@@ -794,7 +792,6 @@ fn test_convert_report_struct_has_expected_fields() {
 fn test_convert_report_verification_coverage_fields() {
     // Verify VerificationCoverage has the expected JSON shape.
     let json_str = r#"{
-        "kani_harnesses_applicable": null,
         "gamma_crown_layers_covered": 0,
         "gamma_crown_layers_total": 0,
         "composition_bounds_ok": false,
@@ -807,7 +804,6 @@ fn test_convert_report_verification_coverage_fields() {
     let parsed: serde_json::Value = serde_json::from_str(json_str).unwrap();
 
     // Default state: nothing checked.
-    assert!(parsed["kani_harnesses_applicable"].is_null());
     assert_eq!(parsed["gamma_crown_layers_covered"], 0);
     assert_eq!(parsed["gamma_crown_layers_total"], 0);
     assert_eq!(parsed["composition_bounds_ok"], false);

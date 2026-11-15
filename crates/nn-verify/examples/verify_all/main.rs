@@ -4,7 +4,7 @@
 
 //! Verify all kernels and models, persist results to per-model status files.
 //!
-//! Run with: `cargo run -p nn-verify --example verify_all`
+//! Run with: `targo --unverified run -p nn-verify --example verify_all`
 //!
 //! This is the production entry point for "verify all kernels with their
 //! standard configurations and persist results." Each kernel goes through:
@@ -79,7 +79,6 @@ fn print_tier_summary(label: &str, passed: usize, total: usize, failed: usize) {
 fn main() {
     let root = workspace_root();
     let cert_path = root.join("nn_verify.proof.json");
-    let kani_status_path = root.join("kani_status.json");
     let signing_key = SigningKey::from_env();
 
     // Migrate from monolithic file to per-model files if needed (#2577).
@@ -104,14 +103,8 @@ fn main() {
         println!("ny conformance op-coverage: {coverage:?}\n");
     }
 
-    let kani_path = kani_status_path.exists().then_some(kani_status_path);
-    let (passed, failed, mut bundle, session_cases) = run_verification(
-        &mut status,
-        configs,
-        num_build_failures,
-        kani_path.as_deref(),
-        coverage,
-    );
+    let (passed, failed, mut bundle, session_cases) =
+        run_verification(&mut status, configs, num_build_failures, coverage);
 
     print_tier_summary("kernels", passed, total, failed);
 

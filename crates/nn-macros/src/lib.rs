@@ -7,7 +7,6 @@
 //! Provides `#[kernel]` which:
 //! - Preserves the original Rust function as a reference implementation
 //! - Generates an MSL (Metal Shading Language) source constant
-//! - Generates a Kani verification harness (`#[cfg(kani)]`)
 //! - Emits differential test coverage metadata
 //!
 //! Provides `#[model]` which:
@@ -170,7 +169,6 @@ impl Parse for ModelAttrs {
 /// Expands to:
 /// - The original `fn snake(...)` (unchanged)
 /// - `const SNAKE_MSL: &str = "..."` with the generated Metal shader
-/// - `#[cfg(kani)] fn kani_verify_snake()` Kani proof harness
 #[proc_macro_attribute]
 pub fn kernel(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = parse_macro_input!(attr as KernelAttrs);
@@ -207,7 +205,6 @@ fn expand_kernel(attrs: KernelAttrs, func: &syn::ItemFn) -> syn::Result<proc_mac
 
     let ir_err = |e: nn_dsl::IRError| syn::Error::new(func.sig.ident.span(), e.to_string());
     let msl_source = nn_dsl::emit_msl_with_contract(&kernel_def, contract).map_err(ir_err)?;
-    let kani_source = nn_dsl::emit_kani_harness(&kernel_def).map_err(ir_err)?;
     let difftest_source =
         nn_dsl::emit_differential_test_with_bounds(&kernel_def, attrs.precision, &attrs.bounds)
             .map_err(ir_err)?;
@@ -217,7 +214,6 @@ fn expand_kernel(attrs: KernelAttrs, func: &syn::ItemFn) -> syn::Result<proc_mac
     let msl_const_name = syn::Ident::new(&format!("{upper}_MSL"), span);
     let descriptor_const_name = syn::Ident::new(&format!("{upper}_DESCRIPTOR"), span);
 
-    let kani_items = parse_generated_source(func, &kani_source, "kani harness")?;
     let difftest_items = parse_generated_source(func, &difftest_source, "differential test")?;
 
     let param_count = kernel_def.params.len();
@@ -241,7 +237,6 @@ fn expand_kernel(attrs: KernelAttrs, func: &syn::ItemFn) -> syn::Result<proc_mac
             #fast_math,
         );
 
-        #(#kani_items)*
         #(#difftest_items)*
         #meta_tokens
     })
@@ -285,9 +280,12 @@ fn expand_model(attrs: ModelAttrs, func: &syn::ItemFn) -> syn::Result<proc_macro
         func.sig.ident.span(),
     );
 
-    let mut input_names = Vec::with_capacity(func.sig.inputs.len());
-    let mut input_types = Vec::with_capacity(func.sig.inputs.len());
-    let mut input_ranks: Vec<proc_macro2::TokenStream> = Vec::with_capacity(func.sig.inputs.len());
+    // Not pre-sized from `func.sig.inputs.len()`: that count comes from the
+    // macro input unbounded, and a parameter list is short, so growing on
+    // push costs nothing measurable.
+    let mut input_names = Vec::new();
+    let mut input_types = Vec::new();
+    let mut input_ranks: Vec<proc_macro2::TokenStream> = Vec::new();
     for input in &func.sig.inputs {
         match input {
             syn::FnArg::Receiver(receiver) => {

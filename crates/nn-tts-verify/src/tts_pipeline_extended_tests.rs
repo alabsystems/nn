@@ -497,8 +497,7 @@ fn test_verification_level_ordering() {
     assert!(VerificationLevel::Empirical < VerificationLevel::CrownPartial);
     assert!(VerificationLevel::CrownPartial < VerificationLevel::CrownProbabilistic);
     assert!(VerificationLevel::CrownProbabilistic < VerificationLevel::CrownProven);
-    assert!(VerificationLevel::CrownProven < VerificationLevel::KaniProven);
-    assert!(VerificationLevel::KaniProven < VerificationLevel::SmtProven);
+    assert!(VerificationLevel::CrownProven < VerificationLevel::SmtProven);
 }
 
 #[test]

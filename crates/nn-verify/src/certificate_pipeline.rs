@@ -15,7 +15,7 @@ use super::ProofCertificate;
 /// Optional enrichment data for proof certificates (v2 and v3 fields).
 ///
 /// Pass to [`certificate_from_pipeline_enriched`] to populate enrichment fields
-/// (source/weight hashes, Kani status, verifier version, SMT proofs) in one call.
+/// (source/weight hashes, verifier version, SMT proofs) in one call.
 /// All fields are optional — omit what you don't have.
 #[derive(Debug, Default, Clone)]
 pub struct CertificateEnrichment {
@@ -23,8 +23,6 @@ pub struct CertificateEnrichment {
     pub source_path: Option<std::path::PathBuf>,
     /// Path to the model weights file for SHA-256 fingerprinting.
     pub weight_path: Option<std::path::PathBuf>,
-    /// Path to `kani_status.json` for Kani proof integration.
-    pub kani_status_path: Option<std::path::PathBuf>,
     /// Per-layer bound traces from NY propagation.
     pub layer_bounds: Option<Vec<LayerBoundRecord>>,
     /// NY verifier version string.
@@ -55,10 +53,10 @@ pub fn certificate_from_pipeline(
 /// Generate a `ProofCertificate` with optional v2 enrichment.
 ///
 /// Extends [`certificate_from_pipeline`] with support for source/weight hashes,
-/// Kani proof records, layer bound traces, and verifier version. Pass `None` for
+/// layer bound traces, and verifier version. Pass `None` for
 /// `enrichment` to get v1-equivalent behavior.
 ///
-/// Hash computation and Kani status loading are best-effort: file I/O errors
+/// Hash computation is best-effort: file I/O errors
 /// are silently ignored (the certificate is still valid, just without those fields).
 pub fn certificate_from_pipeline_enriched(
     gamma_crown: &KernelVerification,
@@ -97,14 +95,6 @@ pub fn certificate_from_pipeline_enriched(
         if let Some(ref path) = enrich.weight_path {
             if let Ok(hash) = compute_file_hash(path) {
                 cert = cert.with_weight_hash(hash);
-            }
-        }
-        // Kani status — best-effort load + lookup
-        if let Some(ref path) = enrich.kani_status_path {
-            if let Ok(Some(record)) =
-                crate::kani_bridge::kani_record_from_file(path, &gamma_crown.kernel_name)
-            {
-                cert = cert.with_kani_status(record);
             }
         }
         // Layer bounds

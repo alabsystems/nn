@@ -19,10 +19,10 @@
 //!   parity, runs forward, and compares layer-by-layer output traces.
 //!
 //! Run:
-//!   cargo test -p nn-models --test kokoro_convert_reftest_parity -- --nocapture
+//!   targo --unverified test -p nn-models --test kokoro_convert_reftest_parity -- --nocapture
 //!
 //!   KOKORO_WEIGHTS=./nn/weights/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-models --test kokoro_convert_reftest_parity -- --nocapture
+//!   targo --unverified test -p nn-models --test kokoro_convert_reftest_parity -- --nocapture
 //!
 //! Part of #4276 (Kokoro via auto-converter parity test).
 

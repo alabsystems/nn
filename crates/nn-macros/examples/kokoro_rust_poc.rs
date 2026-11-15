@@ -8,8 +8,6 @@
 //! with `#[nn_macros::model]` and `#[nn_macros::kernel]` while documenting
 //! concrete API gaps that still block full Kokoro expression.
 
-#![allow(unexpected_cfgs)]
-
 #[nn_macros::kernel(bounds(alpha = "0.1..1e6"))]
 fn snake(x: f32, alpha: f32) -> f32 {
     x + (1.0 / alpha) * (alpha * x).sin().powi(2)

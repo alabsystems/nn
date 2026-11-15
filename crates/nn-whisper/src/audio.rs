@@ -361,7 +361,3 @@ pub fn compute_log_mel_spectrogram(audio: &[f32], sample_rate: u32) -> Vec<Vec<f
 #[cfg(test)]
 #[path = "audio_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_audio_proofs.rs"]
-mod kani_audio_proofs;

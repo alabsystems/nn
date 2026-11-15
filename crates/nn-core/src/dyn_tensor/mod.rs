@@ -441,47 +441,6 @@ mod dvoice_compat_tests;
 #[cfg(test)]
 #[path = "dtype_conversion_tests.rs"]
 mod dtype_conversion_tests;
-#[cfg(kani)]
-#[path = "kani_broadcast_proofs.rs"]
-mod kani_broadcast_proofs;
-#[cfg(kani)]
-#[path = "kani_cat_split_dpdf_extended.rs"]
-mod kani_cat_split_dpdf_extended;
-#[cfg(kani)]
-#[path = "kani_cat_split_proofs.rs"]
-mod kani_cat_split_proofs;
-#[cfg(kani)]
-#[path = "kani_constructor_accessor_proofs.rs"]
-mod kani_constructor_accessor_proofs;
-#[cfg(kani)]
-#[path = "kani_dtype_cast_proofs.rs"]
-mod kani_dtype_cast_proofs;
-#[cfg(kani)]
-#[path = "kani_dtype_conversion_proofs.rs"]
-mod kani_dtype_conversion_proofs;
-#[cfg(kani)]
-#[path = "kani_dyn_tensor_ops_proofs.rs"]
-mod kani_dyn_tensor_ops_proofs;
-#[cfg(kani)]
-#[path = "kani_float_storage_proofs.rs"]
-mod kani_float_storage_proofs;
-#[cfg(kani)]
-#[path = "kani_gpu_dispatch_proofs.rs"]
-mod kani_gpu_dispatch_proofs;
-#[cfg(kani)]
-#[path = "kani_indexing_proofs.rs"]
-mod kani_indexing_proofs;
-#[cfg(kani)]
-#[path = "kani_ops_proofs.rs"]
-mod kani_ops_proofs;
-#[cfg(kani)]
-#[path = "kani_ops_proofs_ext.rs"]
-mod kani_ops_proofs_ext;
-#[cfg(kani)]
-#[path = "kani_shape_ops_proofs.rs"]
-mod kani_shape_ops_proofs;
-#[cfg(kani)]
-mod kani_shape_proofs;
 #[cfg(test)]
 mod ops_edge_case_tests;
 #[cfg(test)]

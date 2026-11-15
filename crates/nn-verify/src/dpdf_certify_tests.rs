@@ -256,7 +256,6 @@ fn test_deployment_ready_when_all_p1_p7_proven_or_heuristic() {
         props,
         10,
         0,
-        0,
         vec!["test".to_string()],
         "2026-03-28".to_string(),
     );
@@ -279,7 +278,6 @@ fn test_not_deployment_ready_when_p1_unverified() {
         props,
         10,
         0,
-        0,
         vec!["test".to_string()],
         "2026-03-28".to_string(),
     );
@@ -298,7 +296,7 @@ fn test_deployment_ready_with_not_applicable() {
             }
         })
         .collect();
-    let cert = DpdfCertificate::new(props, 0, 0, 0, vec![], "2026-03-28".to_string());
+    let cert = DpdfCertificate::new(props, 0, 0, vec![], "2026-03-28".to_string());
     assert!(cert.is_deployment_ready());
 }
 
@@ -350,7 +348,7 @@ fn test_status_counts_correct() {
             String::new(),
         ),
     ];
-    let cert = DpdfCertificate::new(props, 0, 0, 0, vec![], "2026-03-28".to_string());
+    let cert = DpdfCertificate::new(props, 0, 0, vec![], "2026-03-28".to_string());
     let (proven, heuristic, unverified, na) = cert.status_counts();
     assert_eq!(proven, 3);
     assert_eq!(heuristic, 2);

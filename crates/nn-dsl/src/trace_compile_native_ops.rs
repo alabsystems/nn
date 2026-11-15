@@ -1183,23 +1183,3 @@ pub use native_ops_types::{
 
 #[path = "trace_compile_native_ops_dispatch_count.rs"]
 mod dispatch_count;
-
-#[cfg(kani)]
-#[path = "kani_native_ops_dispatch_count.rs"]
-mod kani_native_ops_dispatch_count;
-
-#[cfg(kani)]
-#[path = "kani_trace_compile_native_ops_dispatch_count.rs"]
-mod kani_trace_compile_native_ops_dispatch_count;
-
-#[cfg(kani)]
-#[path = "kani_trace_compile_native_ops.rs"]
-mod kani_trace_compile_native_ops;
-
-#[cfg(kani)]
-#[path = "kani_trace_compile_native_ops_advanced.rs"]
-mod kani_trace_compile_native_ops_advanced;
-
-#[cfg(kani)]
-#[path = "kani_dispatch_count_3738.rs"]
-mod kani_dispatch_count_3738;

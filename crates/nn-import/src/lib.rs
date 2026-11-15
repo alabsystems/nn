@@ -47,50 +47,6 @@ pub(crate) mod convert;
 pub mod convert_parity;
 mod error;
 pub(crate) mod graph_build;
-#[cfg(kani)]
-mod kani_convert;
-#[cfg(kani)]
-mod kani_convert_builder;
-#[cfg(kani)]
-mod kani_convert_builder_proofs;
-#[cfg(kani)]
-mod kani_convert_report_extended;
-#[cfg(kani)]
-mod kani_convert_report_proofs;
-#[cfg(kani)]
-mod kani_error_types_proofs;
-#[cfg(kani)]
-mod kani_graph_build_proofs;
-#[cfg(kani)]
-mod kani_import_safety;
-#[cfg(kani)]
-mod kani_import_wave11;
-#[cfg(kani)]
-mod kani_op_map_args_proofs;
-#[cfg(kani)]
-mod kani_op_map_dispatch;
-#[cfg(kani)]
-mod kani_op_map_expand_proofs;
-#[cfg(kani)]
-mod kani_op_map_impl;
-#[cfg(kani)]
-mod kani_op_map_impl_ext_extended;
-#[cfg(kani)]
-mod kani_op_map_impl_ext_proofs;
-#[cfg(kani)]
-mod kani_op_map_impl_kokoro_proofs;
-#[cfg(kani)]
-mod kani_op_map_impl_proofs;
-#[cfg(kani)]
-mod kani_op_map_proofs;
-#[cfg(kani)]
-mod kani_parse_accessors;
-#[cfg(kani)]
-mod kani_parse_extended;
-#[cfg(kani)]
-mod kani_parse_proofs;
-#[cfg(kani)]
-mod kani_weight_ops_proofs;
 #[cfg(feature = "metal")]
 mod kokoro_load;
 pub mod kokoro_weights;
@@ -114,7 +70,7 @@ pub use convert::report::{
 };
 pub use convert::{
     check_composition_bounds, import_model, CompositionBoundsReport, ConvertError,
-    EquivalenceProof, KaniSafetyReport, ParityReport,
+    EquivalenceProof, ParityReport,
 };
 #[cfg(feature = "metal")]
 pub use convert::{convert, ConvertResult};

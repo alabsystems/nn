@@ -11,14 +11,14 @@
 //!
 //! ```bash
 //! # View a report:
-//! cargo run -p nn-metal --bin nn_report -- view reports/kokoro_iter_0.json
+//! targo --unverified run -p nn-metal --bin nn_report -- view reports/kokoro_iter_0.json
 //!
 //! # Compare two reports:
-//! cargo run -p nn-metal --bin nn_report -- diff \
+//! targo --unverified run -p nn-metal --bin nn_report -- diff \
 //!   reports/kokoro_iter_0.json reports/kokoro_iter_1.json
 //!
 //! # Validate against a behavioral contract:
-//! cargo run -p nn-metal --bin nn_report -- validate \
+//! targo --unverified run -p nn-metal --bin nn_report -- validate \
 //!   reports/kokoro_iter_1.json --contract reports/kokoro_contract.json
 //! ```
 //!

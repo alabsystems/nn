@@ -405,18 +405,6 @@ mod dtype_tests;
 #[path = "shape_dtype_tests_cat.rs"]
 mod dtype_cat_tests;
 
-#[cfg(kani)]
-#[path = "kani_shape_mod_proofs.rs"]
-mod kani_shape_mod_proofs;
-
-#[cfg(kani)]
-#[path = "kani_shape_unfold_proofs.rs"]
-mod kani_shape_unfold_proofs;
-
-#[cfg(kani)]
-#[path = "kani_cat_pad_proofs.rs"]
-mod kani_cat_pad_proofs;
-
 #[cfg(test)]
 #[path = "tests_tile_pad.rs"]
 mod tests_tile_pad;

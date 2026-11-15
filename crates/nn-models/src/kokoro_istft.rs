@@ -351,7 +351,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(kani)]
-#[path = "kokoro_istft_kani_tests.rs"]
-mod kani_proofs;

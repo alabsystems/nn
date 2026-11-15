@@ -91,11 +91,16 @@ impl AdaFactor {
     /// - `eps_denom` or `eps_rms` is not positive or not finite
     /// - `decay_rate` is not finite
     /// - `weight_decay` is negative or not finite
+    /// - `vars` holds more than 2^18 parameter tensors
     #[must_use = "optimizer must be stored to perform training steps"]
     pub fn new(vars: Vec<Var>, config: AdaFactorConfig) -> Result<Self> {
         Self::validate_config(&config)?;
 
-        let mut states = Vec::with_capacity(vars.len());
+        let n = vars.len();
+        if n > crate::error::MAX_PARAM_TENSORS {
+            return Err(crate::error::too_many_params(n));
+        }
+        let mut states = Vec::with_capacity(n);
         for var in vars {
             let dims = var.dims()?;
             let dtype = var.dtype()?;
@@ -110,13 +115,16 @@ impl AdaFactor {
 
             let (second_moment_full, row_factor, col_factor) = if use_factored {
                 // Row factor: all dims except last
+                // (`use_factored` means rank >= 2, so both patterns match.)
                 let mut row_shape = dims.clone();
-                let last = row_shape.len() - 1;
-                row_shape[last] = 1;
+                if let [.., last] = row_shape.as_mut_slice() {
+                    *last = 1;
+                }
                 // Col factor: all dims except second-to-last
                 let mut col_shape = dims.clone();
-                let second_last = col_shape.len() - 2;
-                col_shape[second_last] = 1;
+                if let [.., second_last, _] = col_shape.as_mut_slice() {
+                    *second_last = 1;
+                }
                 (
                     None,
                     Some(DynTensor::zeros(&row_shape, dtype, &device)?),
@@ -231,10 +239,19 @@ fn update_factored_moment(
         optimizer: "AdaFactor",
         state: "col_factor",
     })?;
+    // Factored state exists only for rank >= 2 parameters, and `step()`
+    // checked that the gradient has the parameter's shape; a lower-rank
+    // gradient is still refused here rather than underflowing `rank - 2`.
+    let rank = grad.dims().len();
+    if rank < 2 {
+        return Err(OptimError::CorruptedState {
+            optimizer: "AdaFactor",
+            reason: "factored second moment for a gradient of rank < 2",
+        });
+    }
+    let last_dim = rank - 1;
+    let second_last_dim = rank - 2;
     let g_sqr = grad.sqr()?;
-    let dims = grad.dims();
-    let last_dim = dims.len() - 1;
-    let second_last_dim = dims.len() - 2;
 
     // Row factor: mean over last dim of g^2
     let new_row = rf
@@ -261,7 +278,10 @@ fn update_factored_moment(
 
 impl Optimizer for AdaFactor {
     fn step(&mut self, grads: &GradStore) -> Result<()> {
-        self.step_t += 1;
+        // Saturating: a checkpoint may restore any `u64` step count, and a
+        // restored `usize::MAX` must not panic on the next step. `rho_t` and
+        // the relative step size already cap `t` at `i32::MAX`.
+        self.step_t = self.step_t.saturating_add(1);
         let rho = self.rho_t();
         // Cache config values to avoid borrowing self inside the mutable loop.
         let config_lr = self.config.lr;
@@ -277,9 +297,9 @@ impl Optimizer for AdaFactor {
                 Some(g) => g.clone(),
                 None => continue,
             };
-            crate::error::validate_gradient(&grad)?;
-
             let param = state.var.data()?;
+            crate::error::validate_gradient_shape(param.dims(), &grad)?;
+            crate::error::validate_gradient(&grad)?;
 
             // Update second moment estimates
             let v_t = if state.row_factor.is_some() && state.col_factor.is_some() {

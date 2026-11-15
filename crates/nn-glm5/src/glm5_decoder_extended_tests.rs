@@ -737,7 +737,7 @@ fn test_flat_kv_cache_data_size_per_token() {
     let num_heads = 4;
     let head_dim = 8;
     let token_size = num_heads * head_dim; // 32 floats per token
-    let mut cache = KVCache::new(num_layers, num_heads, head_dim, 64);
+    let mut cache = KVCache::new(num_layers, num_heads, head_dim, 64).expect("valid KVCache sizes");
 
     let key_t1: Vec<f32> = (0..token_size).map(|i| i as f32).collect();
     let val_t1: Vec<f32> = (0..token_size).map(|i| (i + 100) as f32).collect();
@@ -747,8 +747,8 @@ fn test_flat_kv_cache_data_size_per_token() {
         cache.append(layer, &key_t1, &val_t1).unwrap();
     }
     assert_eq!(cache.len(), 1);
-    assert_eq!(cache.get_keys(0).len(), token_size);
-    assert_eq!(cache.get_values(0).len(), token_size);
+    assert_eq!(cache.get_keys(0).unwrap().len(), token_size);
+    assert_eq!(cache.get_values(0).unwrap().len(), token_size);
 
     let key_t2: Vec<f32> = (0..token_size).map(|i| (i + 200) as f32).collect();
     let val_t2: Vec<f32> = (0..token_size).map(|i| (i + 300) as f32).collect();
@@ -758,11 +758,11 @@ fn test_flat_kv_cache_data_size_per_token() {
         cache.append(layer, &key_t2, &val_t2).unwrap();
     }
     assert_eq!(cache.len(), 2);
-    assert_eq!(cache.get_keys(0).len(), 2 * token_size);
-    assert_eq!(cache.get_values(0).len(), 2 * token_size);
+    assert_eq!(cache.get_keys(0).unwrap().len(), 2 * token_size);
+    assert_eq!(cache.get_values(0).unwrap().len(), 2 * token_size);
 
     // Verify data order: token 1 keys followed by token 2 keys
-    let all_keys = cache.get_keys(0);
+    let all_keys = cache.get_keys(0).unwrap();
     assert!((all_keys[0] - 0.0).abs() < 1e-6, "first token key[0]");
     assert!(
         (all_keys[token_size] - 200.0).abs() < 1e-6,
@@ -777,7 +777,7 @@ fn test_flat_kv_cache_clear_resets_completely() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut cache = KVCache::new(num_layers, num_heads, head_dim, 32);
+    let mut cache = KVCache::new(num_layers, num_heads, head_dim, 32).expect("valid KVCache sizes");
 
     let old_key: Vec<f32> = vec![99.0; token_size];
     let old_val: Vec<f32> = vec![88.0; token_size];
@@ -787,15 +787,15 @@ fn test_flat_kv_cache_clear_resets_completely() {
     cache.clear();
     assert_eq!(cache.len(), 0);
     assert!(cache.is_empty());
-    assert!(cache.get_keys(0).is_empty());
+    assert!(cache.get_keys(0).unwrap().is_empty());
 
     // Append new data after clear
     let new_key: Vec<f32> = vec![1.0; token_size];
     let new_val: Vec<f32> = vec![2.0; token_size];
     cache.append(0, &new_key, &new_val).unwrap();
     assert_eq!(cache.len(), 1);
-    assert_eq!(cache.get_keys(0), new_key.as_slice());
-    assert_eq!(cache.get_values(0), new_val.as_slice());
+    assert_eq!(cache.get_keys(0).unwrap(), new_key.as_slice());
+    assert_eq!(cache.get_values(0).unwrap(), new_val.as_slice());
 }
 
 /// Verify that the model's new_cache() produces a cache with the correct
@@ -989,7 +989,8 @@ fn test_flat_kv_cache_clone_preserves_data() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut original = KVCache::new(num_layers, num_heads, head_dim, 16);
+    let mut original =
+        KVCache::new(num_layers, num_heads, head_dim, 16).expect("valid KVCache sizes");
 
     let key: Vec<f32> = (0..token_size).map(|i| (i + 1) as f32).collect();
     let val: Vec<f32> = (0..token_size).map(|i| (i + 50) as f32).collect();
@@ -1003,17 +1004,23 @@ fn test_flat_kv_cache_clone_preserves_data() {
     assert_eq!(cloned.num_heads(), original.num_heads());
     assert_eq!(cloned.head_dim(), original.head_dim());
     assert_eq!(cloned.max_seq_len(), original.max_seq_len());
-    assert_eq!(cloned.get_keys(0), original.get_keys(0));
-    assert_eq!(cloned.get_values(0), original.get_values(0));
-    assert_eq!(cloned.get_keys(1), original.get_keys(1));
-    assert_eq!(cloned.get_values(1), original.get_values(1));
+    assert_eq!(cloned.get_keys(0).unwrap(), original.get_keys(0).unwrap());
+    assert_eq!(
+        cloned.get_values(0).unwrap(),
+        original.get_values(0).unwrap()
+    );
+    assert_eq!(cloned.get_keys(1).unwrap(), original.get_keys(1).unwrap());
+    assert_eq!(
+        cloned.get_values(1).unwrap(),
+        original.get_values(1).unwrap()
+    );
 }
 
 /// Flat KVCache max_seq_len accessor returns the configured maximum.
 #[test]
 fn test_flat_kv_cache_max_seq_len_accessor() {
     for max_len in [1, 16, 256, 8192] {
-        let cache = KVCache::new(1, 2, 4, max_len);
+        let cache = KVCache::new(1, 2, 4, max_len).expect("valid KVCache sizes");
         assert_eq!(
             cache.max_seq_len(),
             max_len,
@@ -1029,7 +1036,7 @@ fn test_flat_kv_cache_layer_isolation() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut cache = KVCache::new(2, num_heads, head_dim, 16);
+    let mut cache = KVCache::new(2, num_heads, head_dim, 16).expect("valid KVCache sizes");
 
     let key_a: Vec<f32> = vec![1.0; token_size];
     let val_a: Vec<f32> = vec![2.0; token_size];
@@ -1041,10 +1048,10 @@ fn test_flat_kv_cache_layer_isolation() {
     cache.append(1, &key_b, &val_b).unwrap();
 
     // Layer 0 should have key_a data, layer 1 should have key_b data
-    assert_eq!(cache.get_keys(0), key_a.as_slice());
-    assert_eq!(cache.get_keys(1), key_b.as_slice());
-    assert_eq!(cache.get_values(0), val_a.as_slice());
-    assert_eq!(cache.get_values(1), val_b.as_slice());
+    assert_eq!(cache.get_keys(0).unwrap(), key_a.as_slice());
+    assert_eq!(cache.get_keys(1).unwrap(), key_b.as_slice());
+    assert_eq!(cache.get_values(0).unwrap(), val_a.as_slice());
+    assert_eq!(cache.get_values(1).unwrap(), val_b.as_slice());
 }
 
 // ===========================================================================

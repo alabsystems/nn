@@ -12,7 +12,7 @@
 //! and asserts that the partition-driven path produces fewer or equal
 //! dispatches for every segment.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_partition_impact -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_partition_impact -- --nocapture`
 //!
 //! Part of #4334 (partition codegen wiring).
 
@@ -366,7 +366,7 @@ const SEGMENT_KEYS: [&str; 8] = [
 ///
 /// Run:
 ///   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-///   cargo test -p nn-metal --test kokoro_all partition_impact_production -- --nocapture
+///   targo --unverified test -p nn-metal --test kokoro_all partition_impact_production -- --nocapture
 #[test]
 fn partition_impact_production() {
     let weights_path = match super::kokoro_test_env::require_kokoro_weights(

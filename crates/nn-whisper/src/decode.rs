@@ -18,8 +18,8 @@ use crate::tokenizer::{WhisperTokenizer, EOT_TOKEN};
 use crate::WhisperModel;
 // Re-export helpers at pub(crate) so test submodules can access via `use crate::decode::*`.
 pub(crate) use helpers::{apply_suppression_inplace, check_logit_finiteness, sample_token};
-// argmax_f32 and compute_log_prob are used by test and kani submodules only.
-#[cfg(any(test, kani))]
+// argmax_f32 and compute_log_prob are used by test submodules only.
+#[cfg(test)]
 pub(crate) use helpers::{argmax_f32, compute_log_prob};
 
 use crate::WhisperError;
@@ -385,19 +385,3 @@ pub use long::{transcribe_long, LongFormConfig, LongFormResult, LongFormSegment}
 #[cfg(test)]
 #[path = "decode_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_decode_proofs.rs"]
-mod kani_decode_proofs;
-
-#[cfg(kani)]
-#[path = "kani_decode_beam_proofs.rs"]
-mod kani_decode_beam_proofs;
-
-#[cfg(kani)]
-#[path = "kani_decode_proofs_ext.rs"]
-mod kani_decode_proofs_ext;
-
-#[cfg(kani)]
-#[path = "kani_decode_beam_proofs_ext.rs"]
-mod kani_decode_beam_proofs_ext;

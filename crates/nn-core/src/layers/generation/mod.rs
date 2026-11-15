@@ -48,32 +48,3 @@ pub use mtp_head::{MtpHead, MtpHeadConfig};
 // -- Speculative decoding with MTP head ---------------------------------------
 mod mtp_speculative;
 pub use mtp_speculative::{greedy_decode_with_verification, SpeculativeConfig, SpeculativeOutput};
-
-// -- Kani proofs: MTP speculative decoding + multi-layer KV cache -------------
-#[cfg(kani)]
-#[path = "kani_mtp_kvcache_proofs.rs"]
-mod kani_mtp_kvcache_proofs;
-
-// -- Kani proofs: Extended paged KV cache safety invariants -------------------
-#[cfg(kani)]
-#[path = "kani_paged_kv_cache_extended.rs"]
-mod kani_paged_kv_cache_extended;
-
-// -- Kani proofs: Beam search and greedy decoding safety (#4239) --------------
-#[cfg(kani)]
-#[path = "kani_generation_safety.rs"]
-mod kani_generation_safety;
-
-// -- Kani proofs: dpdf VLM beam search and greedy decoding safety (#4239) -----
-#[cfg(kani)]
-#[path = "kani_dpdf_vlm_beam_greedy_proofs.rs"]
-mod kani_dpdf_vlm_beam_greedy_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dpdf_vlm_beam_greedy_proofs2.rs"]
-mod kani_dpdf_vlm_beam_greedy_proofs2;
-
-// -- Kani proofs: Extended beam search dpdf VLM safety (#4239) ---------------
-#[cfg(kani)]
-#[path = "kani_beam_dpdf_extended.rs"]
-mod kani_beam_dpdf_extended;

@@ -236,7 +236,7 @@ def main() -> None:
         f"generate_references.py: wrote {len(written)} files across {n_cases} "
         f"cases under {args.out}\n"
         f"  torch {torch.__version__}, numpy {np.__version__}, seed {SEED}\n"
-        f"  run the suite: cargo nextest run -p nn-reftest --test pytorch_parity"
+        f"  run the suite: targo --unverified test -p nn-reftest --test pytorch_parity"
     )
 
 

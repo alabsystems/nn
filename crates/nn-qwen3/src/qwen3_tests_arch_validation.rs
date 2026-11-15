@@ -18,7 +18,7 @@ use nn_core::{DType, Device};
 // ---------------------------------------------------------------------------
 
 fn qwen3_0_6b() -> Qwen3Config {
-    // Source: Kani proof validate_accepts_production_configs, arXiv:2505.09388
+    // Source: arXiv:2505.09388
     // hidden=896, heads=14, kv=2 → head_dim = 896/14 ≠ 128 but head_dim() is
     // a constant 128. The HF config has head_dim=128 and num_attention_heads=14
     // meaning q_proj is [14*128, 896] (not hidden_size = heads * head_dim).
@@ -38,7 +38,7 @@ fn qwen3_0_6b() -> Qwen3Config {
 }
 
 fn qwen3_1_7b() -> Qwen3Config {
-    // Source: Kani proof validate_accepts_production_configs, arXiv:2505.09388
+    // Source: arXiv:2505.09388
     Qwen3Config::new(
         2048,        // hidden_size
         11008,       // intermediate_size (corrected from 8960)
@@ -55,7 +55,7 @@ fn qwen3_1_7b() -> Qwen3Config {
 }
 
 fn qwen3_4b() -> Qwen3Config {
-    // Source: Kani proof validate_accepts_production_configs, arXiv:2505.09388
+    // Source: arXiv:2505.09388
     Qwen3Config::new(
         2560,        // hidden_size
         13824,       // intermediate_size (corrected from 9216)

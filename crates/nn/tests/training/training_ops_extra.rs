@@ -9,7 +9,7 @@
 //! - ConvTranspose1d: #1484 (parameter order mismatch)
 //! - Dropout: backward mask scaling
 //!
-//! Run: `cargo test -p nn --test training_ops_extra --features training`
+//! Run: `targo --unverified test -p nn --test training_ops_extra --features training`
 
 #![cfg(feature = "training")]
 

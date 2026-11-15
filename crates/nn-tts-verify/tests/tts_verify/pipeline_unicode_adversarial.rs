@@ -15,7 +15,7 @@
 //! NY CROWN propagation when available.
 //!
 //! Run with:
-//!   cargo test -p nn-tts-verify --test pipeline_unicode_adversarial
+//!   targo --unverified test -p nn-tts-verify --test pipeline_unicode_adversarial
 //!
 //! Part of #1740: Adversarial Robustness of TTS.
 

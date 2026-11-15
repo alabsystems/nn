@@ -427,3 +427,53 @@ mod validation;
 // extracted to beam_search_tests_extended.rs.
 #[path = "beam_search_tests_extended.rs"]
 mod extended;
+
+/// Every value vector of length 0..=5 over `{-inf, -1.5, 0, 2}` and every `k`
+/// in `0..=6`: `top_k_by_value` returns `min(k, n)` distinct in-bounds
+/// indices with their own values, in non-increasing order, and no excluded
+/// value outranks a chosen one — the partial-selection contract beam
+/// expansion relies on.
+#[test]
+fn test_top_k_by_value_selects_exactly_the_best_k() {
+    use std::cmp::Ordering;
+
+    const VALUES: [f32; 4] = [f32::NEG_INFINITY, -1.5, 0.0, 2.0];
+    for len in 0..=5usize {
+        for code in 0..VALUES.len().pow(len as u32) {
+            let mut rest = code;
+            let values: Vec<f32> = (0..len)
+                .map(|_| {
+                    let v = VALUES[rest % VALUES.len()];
+                    rest /= VALUES.len();
+                    v
+                })
+                .collect();
+            for k in 0..=6usize {
+                let top = super::top_k_by_value(&values, k);
+                assert_eq!(top.len(), k.min(len), "{values:?} k={k}");
+                let mut chosen: Vec<usize> = top.iter().map(|&(i, _)| i).collect();
+                for &(i, v) in &top {
+                    assert!(
+                        i < len && v.to_bits() == values[i].to_bits(),
+                        "{values:?} {top:?}"
+                    );
+                }
+                for pair in top.windows(2) {
+                    assert_ne!(pair[0].1.total_cmp(&pair[1].1), Ordering::Less, "{top:?}");
+                }
+                for excluded in (0..len).filter(|j| !chosen.contains(j)) {
+                    for &(_, v) in &top {
+                        assert_ne!(
+                            v.total_cmp(&values[excluded]),
+                            Ordering::Less,
+                            "{values:?} {top:?}"
+                        );
+                    }
+                }
+                chosen.sort_unstable();
+                chosen.dedup();
+                assert_eq!(chosen.len(), top.len(), "duplicate index: {top:?}");
+            }
+        }
+    }
+}

@@ -258,18 +258,6 @@ fn fuse_broadcast_binary_ops(plan: &mut [DispatchStep]) {
     }
 }
 
-#[cfg(kani)]
-#[path = "codegen_kani_dispatch.rs"]
-mod kani_dispatch_proofs;
-
-#[cfg(kani)]
-#[path = "kani_codegen_msl_tensor_dispatch.rs"]
-mod kani_codegen_msl_tensor_dispatch;
-
-#[cfg(kani)]
-#[path = "kani_codegen_msl_tensor_dispatch_ext.rs"]
-mod kani_codegen_msl_tensor_dispatch_ext;
-
 #[cfg(test)]
 #[path = "codegen_msl_tensor_tests.rs"]
 mod tests;

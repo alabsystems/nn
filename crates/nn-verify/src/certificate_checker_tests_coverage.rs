@@ -8,7 +8,6 @@
 //! P1 proof_coverage phase.
 //!
 //! GAP 11 (HIGH): Mixed input_sources topology skips None layers in graph-aware mode.
-//! GAP 9 (MEDIUM): Kani status enrichment through certificate_from_pipeline_enriched.
 //! GAP 4 (MEDIUM): check_integrity signed cert tamper detection via checker.
 
 use super::checker_test_shared::{sample_input_spec, sample_verification};
@@ -136,74 +135,6 @@ fn test_full_graph_aware_topology_detects_gap() {
         1,
         "full graph-aware topology must detect the gap: {:?}",
         check.issues
-    );
-}
-
-// ---------------------------------------------------------------------------
-// GAP 9: Kani enrichment through certificate_from_pipeline_enriched
-// ---------------------------------------------------------------------------
-
-/// Verify that a valid kani_status.json file is loaded and its record
-/// attached to the certificate through the pipeline enrichment path.
-#[test]
-fn test_kani_enrichment_pipeline_with_valid_file() {
-    use crate::certificate::{certificate_from_pipeline_enriched, CertificateEnrichment};
-    use crate::status::ParamInputRecord;
-
-    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    let kani_path = repo_root.join("kani_status.json");
-    if !kani_path.exists() {
-        return;
-    }
-
-    let result = sample_verification();
-    let variable_inputs = vec![ParamInputRecord::new(0, -1.0, 1.0)];
-
-    let enrichment = CertificateEnrichment {
-        kani_status_path: Some(kani_path),
-        ..Default::default()
-    };
-
-    let cert =
-        certificate_from_pipeline_enriched(&result, &variable_inputs, &[], None, Some(&enrichment));
-
-    assert!(
-        cert.kani_status.is_some(),
-        "kani_status should be populated from kani_status.json for kernel 'snake'"
-    );
-    let kani = cert.kani_status.as_ref().unwrap();
-    assert!(
-        kani.harness_count >= 5,
-        "snake kernel should have >= 5 Kani harnesses, got {}",
-        kani.harness_count
-    );
-}
-
-/// Enrichment with nonexistent kani_status.json path silently skips.
-#[test]
-fn test_kani_enrichment_pipeline_nonexistent_file_skipped() {
-    use crate::certificate::{certificate_from_pipeline_enriched, CertificateEnrichment};
-    use crate::status::ParamInputRecord;
-
-    let result = sample_verification();
-    let variable_inputs = vec![ParamInputRecord::new(0, -1.0, 1.0)];
-
-    let enrichment = CertificateEnrichment {
-        kani_status_path: Some(std::path::PathBuf::from("/nonexistent/kani_status.json")),
-        ..Default::default()
-    };
-
-    let cert =
-        certificate_from_pipeline_enriched(&result, &variable_inputs, &[], None, Some(&enrichment));
-
-    assert!(
-        cert.kani_status.is_none(),
-        "kani_status should be None for nonexistent file"
     );
 }
 

@@ -231,7 +231,7 @@ fn test_import_kokoro_encoder_ibp_bounds() {
 ///
 /// LSTM expansion decomposes to Linear+Sigmoid+Tanh+BinaryMul+BinaryAdd,
 /// all of which have working MSL codegen. convert() produces a CompiledModel
-/// with L1 (Kani) and L2 (IBP) proof layers.
+/// with the L2 (IBP) proof layer.
 ///
 /// Part of #2306 (nn::convert() one-function pipeline).
 #[test]
@@ -258,8 +258,6 @@ fn test_convert_kokoro_encoder_lstm_decomposed() {
 
     let convert_result = result.expect("convert() should succeed with LSTM decomposition");
 
-    // L1: Kani not run during convert() (populated by Prover separately).
-    assert!(convert_result.proof.kernel_safety.is_none());
     // L3: No reference trace provided.
     assert!(convert_result.proof.reference_parity.is_none());
 

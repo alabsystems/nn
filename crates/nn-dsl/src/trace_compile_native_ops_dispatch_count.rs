@@ -602,7 +602,7 @@ fn norm_linear_dispatches(input_shape: &[usize], hidden_dim: usize, out_features
 /// 4. This constant (test failure reminds you of items 2-3)
 ///
 /// Part of design `2026-03-23-api-health-execute-dispatch-consistency.md` F2.
-#[allow(dead_code)] // Used by #[cfg(test)] and #[cfg(kani)] harnesses.
+#[allow(dead_code)] // Used by #[cfg(test)] only.
 pub(crate) const KNOWN_NATIVE_OP_COUNT: usize = 45;
 
 #[cfg(test)]

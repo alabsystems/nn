@@ -5,7 +5,7 @@
 //! Certificate validation — independently verify a [`MoonshotCertificate`]'s
 //! claims against the current repository state.
 //!
-//! Performs structural, artifact, Kani, source-hash, level-consistency,
+//! Performs structural, artifact, source-hash, level-consistency,
 //! and bound-threshold-direction checks. See [`validate_certificate()`].
 
 use std::path::Path;
@@ -21,7 +21,7 @@ use bounds::validate_bound_threshold_direction;
 
 #[path = "moonshot_certificate_validate_evidence.rs"]
 mod evidence;
-use evidence::{validate_kani_consistency, validate_level_consistency};
+use evidence::validate_level_consistency;
 
 /// Result of validating a [`MoonshotCertificate`] against repo state.
 #[derive(Debug, Clone)]
@@ -34,8 +34,6 @@ pub struct CertificateValidation {
     pub artifacts_found: usize,
     /// Number of proof artifacts referenced in the certificate.
     pub artifacts_total: usize,
-    /// Kani harness count from workspace scan (None if scan was skipped).
-    pub kani_scan_count: Option<usize>,
     /// Whether the certificate's source_hash matches the current codebase.
     /// `None` if hash verification was skipped (e.g., crates/ not found).
     pub source_hash_match: Option<bool>,
@@ -127,8 +125,8 @@ impl std::fmt::Display for CertificateValidation {
 
 /// Validate a certificate against the current repository state.
 ///
-/// Performs structural validation, artifact existence checks, aggregate flag
-/// consistency, and Kani harness count verification.
+/// Performs structural validation, artifact existence checks, and aggregate
+/// flag consistency.
 ///
 /// `repo_root` should be the path to the workspace root (the directory
 /// containing `crates/`).
@@ -139,11 +137,9 @@ impl std::fmt::Display for CertificateValidation {
 /// 2. **Aggregate flags:** `all_at_least_partial` and `all_proven` match
 ///    per-property levels.
 /// 3. **Artifact existence:** Each proof artifact file path exists on disk.
-/// 4. **Kani consistency:** If P7 claims `KaniProven`, the workspace Kani
-///    harness count matches the certificate's `bound_value`.
-/// 5. **Level consistency:** Properties with no artifacts should not claim
-///    CrownProven/KaniProven/SmtProven.
-/// 6. **Bound-threshold direction:** Each property has a specific direction
+/// 4. **Level consistency:** Properties with no artifacts should not claim
+///    CrownProven/SmtProven.
+/// 5. **Bound-threshold direction:** Each property has a specific direction
 ///    in which `bound_value` must relate to `threshold` when proven.
 #[must_use]
 pub fn validate_certificate(cert: &MoonshotCertificate, repo_root: &Path) -> CertificateValidation {
@@ -166,16 +162,13 @@ pub fn validate_certificate(cert: &MoonshotCertificate, repo_root: &Path) -> Cer
         &mut artifacts_total,
     );
 
-    // 4. Kani consistency
-    let kani_scan_count = validate_kani_consistency(cert, repo_root, &mut findings);
-
-    // 5. Level consistency
+    // 4. Level consistency
     validate_level_consistency(cert, &mut findings);
 
-    // 6. Bound-threshold direction consistency
+    // 5. Bound-threshold direction consistency
     validate_bound_threshold_direction(cert, &mut findings);
 
-    // 7. Source hash verification
+    // 6. Source hash verification
     let source_hash_match = validate_source_hash(cert, repo_root, &mut findings);
 
     let valid = !findings
@@ -187,7 +180,6 @@ pub fn validate_certificate(cert: &MoonshotCertificate, repo_root: &Path) -> Cer
         findings,
         artifacts_found,
         artifacts_total,
-        kani_scan_count,
         source_hash_match,
     }
 }
@@ -271,9 +263,7 @@ fn validate_aggregate_flags(cert: &MoonshotCertificate, findings: &mut Vec<Valid
     let actual_all_proven = cert.properties.iter().all(|p| {
         matches!(
             p.level,
-            VerificationLevel::CrownProven
-                | VerificationLevel::KaniProven
-                | VerificationLevel::SmtProven
+            VerificationLevel::CrownProven | VerificationLevel::SmtProven
         )
     });
 

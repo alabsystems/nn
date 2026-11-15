@@ -101,8 +101,15 @@ impl Glm5Model {
 
         let encoder_vb = transformer_vb.pp("encoder");
 
-        let mut layers = Vec::with_capacity(cfg.num_layers);
-        for i in 0..cfg.num_layers {
+        // `validate` bounds `num_layers` by `MAX_NUM_LAYERS`; a reservation is
+        // made only under that bound, where it is visible at this call.
+        let num_layers = cfg.num_layers;
+        let mut layers = if num_layers <= config::MAX_NUM_LAYERS {
+            Vec::with_capacity(num_layers)
+        } else {
+            Vec::new()
+        };
+        for i in 0..num_layers {
             let layer_vb = encoder_vb.pp(format!("layers.{i}"));
             layers.push(Glm5DecoderLayer::load(&layer_vb, &cfg)?);
         }
@@ -251,7 +258,14 @@ impl Glm5Model {
         let seq_len = positions.len();
 
         let cached_len = cache.as_ref().map_or(0, |c| c.seq_len());
-        let total_seq = cached_len + seq_len;
+        let Some(total_seq) = cached_len.checked_add(seq_len) else {
+            return Err(Glm5Error::InvalidInput {
+                reason: format!(
+                    "cached length ({cached_len}) + sequence length ({seq_len}) overflows"
+                ),
+            }
+            .into());
+        };
         let mask = if seq_len > 1 && total_seq > 1 {
             Some(causal_mask_with_offset(
                 seq_len,
@@ -353,10 +367,26 @@ impl Glm5Model {
     fn model_fn_adapter(&self, input: &DynTensor, cache: &mut KvCache) -> Result<DynTensor> {
         let u32_data = input.to_flat_vec::<u32>()?;
         let ids: Vec<usize> = u32_data.iter().map(|&v| v as usize).collect();
-        let offset = cache.seq_len();
-        let positions: Vec<usize> = (0..ids.len()).map(|i| offset + i).collect();
+        let positions = positions_after(cache.seq_len(), &ids)?;
         self.forward_cached(&ids, &positions, Some(cache))
     }
+}
+
+/// One position per token in `ids`, continuing from `offset` (the cached
+/// length). The result has exactly `ids.len()` entries; a position past
+/// `usize::MAX` is an error, not a wrapped or panicking add.
+fn positions_after(offset: usize, ids: &[usize]) -> Result<Vec<usize>> {
+    ids.iter()
+        .enumerate()
+        .map(|(i, _)| {
+            offset.checked_add(i).ok_or_else(|| {
+                Glm5Error::InvalidInput {
+                    reason: format!("position {offset} + {i} overflows"),
+                }
+                .into()
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -411,22 +441,36 @@ mod glm5_pipeline_extended_tests;
 #[path = "glm5_model_extended_tests.rs"]
 mod glm5_model_extended_tests;
 
-#[cfg(kani)]
-#[path = "kani_glm5.rs"]
-mod kani_proofs;
+#[cfg(test)]
+mod position_tests {
+    use super::positions_after;
 
-#[cfg(kani)]
-#[path = "kani_glm5_extra.rs"]
-mod kani_proofs_extra;
+    #[test]
+    fn positions_continue_from_offset() {
+        assert_eq!(positions_after(5, &[9, 9, 9]).unwrap(), vec![5, 6, 7]);
+        assert!(positions_after(5, &[]).unwrap().is_empty());
+    }
 
-#[cfg(kani)]
-#[path = "kani_glm5_shapes.rs"]
-mod kani_proofs_shapes;
+    /// Regression: a position past `usize::MAX` is an error, not an
+    /// arithmetic-overflow panic.
+    #[test]
+    fn positions_overflow_rejected() {
+        assert!(positions_after(usize::MAX, &[0, 0]).is_err());
+        assert_eq!(positions_after(usize::MAX, &[0]).unwrap(), vec![usize::MAX]);
+    }
 
-#[cfg(kani)]
-#[path = "kani_glm5_wave11.rs"]
-mod kani_wave11;
-
-#[cfg(kani)]
-#[path = "kani_glm5_decoder_proofs.rs"]
-mod kani_decoder_proofs;
+    /// `validate` bounds `num_layers` before `load` reserves per-layer storage.
+    #[test]
+    fn validate_rejects_num_layers_over_limit() {
+        let cfg = crate::Glm5Config {
+            num_layers: crate::config::MAX_NUM_LAYERS + 1,
+            ..crate::Glm5Config::default()
+        };
+        assert!(cfg.validate().is_err());
+        let cfg = crate::Glm5Config {
+            num_layers: crate::config::MAX_NUM_LAYERS,
+            ..crate::Glm5Config::default()
+        };
+        assert!(cfg.validate().is_ok());
+    }
+}

@@ -15,7 +15,7 @@
 //! - Wall-clock latency (compiled vs. eager, warmup + N iterations)
 //! - Buffer plan memory (total_bytes vs. naive_total, reuse ratio)
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_benchmark -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_benchmark -- --nocapture`
 //!
 //! Part of #2231 (Kokoro benchmark suite).
 //! Part of #2218 (Kokoro epic).
@@ -619,7 +619,7 @@ fn bench_kokoro_segments() {
 ///
 /// Run:
 ///   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-///   cargo test -p nn-metal --test kokoro_benchmark kokoro_dispatch_count_gate -- --nocapture
+///   targo --unverified test -p nn-metal --test kokoro_benchmark kokoro_dispatch_count_gate -- --nocapture
 ///
 /// Part of #2926.
 #[test]
@@ -711,7 +711,7 @@ fn kokoro_dispatch_count_gate() {
 ///
 /// Run:
 ///   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-///   cargo test -p nn-metal --test kokoro_benchmark kokoro_rtf_gate -- --nocapture
+///   targo --unverified test -p nn-metal --test kokoro_benchmark kokoro_rtf_gate -- --nocapture
 ///
 /// Part of #2925.
 #[test]
@@ -857,7 +857,7 @@ fn kokoro_rtf_gate() {
 ///
 /// Run:
 ///   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-///   cargo test -p nn-metal --test kokoro_all kokoro_f16_rtf_comparison -- --nocapture
+///   targo --unverified test -p nn-metal --test kokoro_all kokoro_f16_rtf_comparison -- --nocapture
 ///
 /// Part of #2981.
 #[test]
@@ -1033,7 +1033,7 @@ fn kokoro_f16_rtf_comparison() {
 ///
 /// Run:
 ///   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-///   cargo test -p nn-metal --test kokoro_all kokoro_autocast_rtf_comparison -- --nocapture
+///   targo --unverified test -p nn-metal --test kokoro_all kokoro_autocast_rtf_comparison -- --nocapture
 ///
 /// Part of #2981, #3085.
 #[test]

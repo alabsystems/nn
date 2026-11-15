@@ -558,10 +558,6 @@ pub(crate) fn tightest_enclosing_interval(layer_bounds: &[LayerBoundRecord]) -> 
     }
 }
 
-#[cfg(kani)]
-#[path = "certify_kani.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "certify_tests_inline.rs"]
 mod tests;

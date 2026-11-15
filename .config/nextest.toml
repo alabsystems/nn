@@ -8,8 +8,12 @@
 # group — see enumerate_peephole_configs() in optimize_plan.rs.)
 #
 # This config serializes the known-heavy binaries/tests into a single-threaded
-# "heavy" group so at most ONE of them is resident at any time. Use nextest, not
-# bare `cargo test` (see CLAUDE.md):  cargo nextest run
+# "heavy" group so at most ONE of them is resident at any time. Under a stock
+# cargo, use nextest rather than a bare `cargo test`:
+# STOCK EXCEPTION (Trust lacks a nextest driver; measured 2026-09-28: nextest re-enters `$CARGO test --no-run`, which targo refuses without a lane)
+#   cargo nextest run
+# Development builds with the Trust toolchain, so there the OOM-safe runner is
+# scripts/test-capped.sh.
 
 [test-groups]
 # At most one heavy test runs at a time across the whole run.

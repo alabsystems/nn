@@ -27,7 +27,7 @@
 //!
 //! ```bash
 //! KOKORO_WEIGHTS=weights/kokoro_v1_0.safetensors \
-//! cargo test -p nn-models --test convert_parity_real_weights -- --nocapture
+//! targo --unverified test -p nn-models --test convert_parity_real_weights -- --nocapture
 //! ```
 
 use std::collections::HashMap;

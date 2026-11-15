@@ -180,16 +180,8 @@ impl TensorBlockBuilder {
     }
 }
 
-// Kani proof harnesses for Softplus and Exp activation builders.
-// Part of #834 AC10.
-#[cfg(kani)]
-#[path = "softplus_exp_kani_builder_tests.rs"]
-mod softplus_exp_kani_builder;
-
-/// Regular tests for node-count properties converted from tautological Kani
-/// harnesses (removed in P1-67, 0d2c11a4). Node counts after explicit
-/// construction are structurally guaranteed — model-checking adds no value,
-/// but the assertions are useful as regression tests.
+/// Regression tests for node-count properties. Node counts after explicit
+/// construction are structurally guaranteed; the assertions pin them.
 #[cfg(test)]
 mod softplus_exp_builder_node_tests {
     use super::TensorBlockBuilder;

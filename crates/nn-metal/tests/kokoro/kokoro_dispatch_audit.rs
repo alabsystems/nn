@@ -9,7 +9,7 @@
 //! and estimated Metal dispatch count. Also runs fusion gap analysis
 //! per segment and prints a blocker distribution.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_dispatch_audit -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_dispatch_audit -- --nocapture`
 //!
 //! Part of #4252.
 

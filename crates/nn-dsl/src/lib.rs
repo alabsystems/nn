@@ -17,7 +17,6 @@
 //!   slice, stack).
 //! - **`codegen_msl_structural_conv`**: MSL codegen for convolution structural ops.
 //! - **`codegen_msl_tensor_emit`**: Shared MSL emit helpers for tensor dispatch.
-//! - **`codegen_kani`**: Emits a Kani verification harness from `KernelDef`.
 //! - **`codegen_difftest`**: Emits differential test code (Rust vs MSL).
 //! - **`tensor_ir`**: The `TensorKernelDef` — tensor-level IR with broadcast,
 //!   reduce, and InstanceNorm operations.
@@ -62,7 +61,7 @@
 //!   NY's `LinearLayer`.
 //! - **`relu`**: ReLU elementwise activation kernel (max(x, 0)).
 //! - **`reverb`**: Reverb filter kernels — Freeverb lowpass-feedback comb filters and
-//!   Schroeder allpass filters with Kani-proved stability.
+//!   Schroeder allpass filters.
 //! - **`softmax`**: Softmax builder and reference implementation with log-sum-exp
 //!   numerical stability.
 //! - **`tanh_kernel`**: Tanh elementwise activation kernel for LSTM gate decomposition.
@@ -85,7 +84,6 @@ pub mod biquad;
 pub mod buffer_planner;
 pub mod causal_conv1d;
 pub(crate) mod codegen_difftest;
-pub(crate) mod codegen_kani;
 pub(crate) mod codegen_msl;
 pub(crate) mod codegen_msl_structural;
 pub(crate) mod codegen_msl_structural_conv;
@@ -94,6 +92,8 @@ pub(crate) mod codegen_msl_tensor_emit;
 pub mod codegen_shared;
 pub mod codegen_shared_conv;
 pub mod codegen_syntax;
+#[cfg(feature = "plan-serde")]
+pub mod compiled_plan_io;
 pub mod conv1d;
 pub mod conv2d;
 pub mod conv_transpose_1d;
@@ -107,75 +107,6 @@ pub mod gelu;
 pub mod input_names;
 pub mod instance_norm;
 pub mod ir;
-#[cfg(kani)]
-#[path = "kani_auto_fuse_codegen.rs"]
-mod kani_auto_fuse_codegen;
-#[cfg(kani)]
-#[path = "kani_auto_fuse_codegen_advanced.rs"]
-mod kani_auto_fuse_codegen_advanced;
-#[cfg(kani)]
-mod kani_auto_fuse_codegen_issue3731;
-#[cfg(kani)]
-#[path = "kani_auto_fuse_codegen_proofs.rs"]
-mod kani_auto_fuse_codegen_proofs;
-#[cfg(kani)]
-mod kani_codegen_msl;
-#[cfg(kani)]
-#[path = "kani_compiled_plan_serde.rs"]
-mod kani_compiled_plan_serde;
-#[cfg(kani)]
-#[path = "kani_dispatch_step.rs"]
-mod kani_dispatch_step;
-#[cfg(kani)]
-#[path = "kani_dsl_core_proofs.rs"]
-mod kani_dsl_core_proofs;
-#[cfg(kani)]
-#[path = "kani_dsl_extra_proofs.rs"]
-mod kani_dsl_extra_proofs;
-#[cfg(kani)]
-mod kani_fusion_proofs;
-#[cfg(kani)]
-#[path = "kani_ir_verifiability_enums.rs"]
-mod kani_ir_verifiability_enums;
-#[cfg(kani)]
-mod kani_kernel_expansion;
-#[cfg(kani)]
-#[path = "kani_msl_auto_fuse.rs"]
-mod kani_msl_auto_fuse;
-#[cfg(kani)]
-#[path = "kani_msl_auto_fuse_3745.rs"]
-mod kani_msl_auto_fuse_3745;
-#[cfg(kani)]
-#[path = "kani_peephole_auto_fuse.rs"]
-mod kani_peephole_auto_fuse;
-#[cfg(kani)]
-#[path = "kani_peephole_resblock_3738.rs"]
-mod kani_peephole_resblock_3738;
-#[cfg(kani)]
-#[path = "kani_peephole_resblock_fusion.rs"]
-mod kani_peephole_resblock_fusion;
-#[cfg(kani)]
-mod kani_peephole_resblock_issue3731;
-#[cfg(kani)]
-mod kani_precision;
-#[cfg(any(test, kani))]
-mod kani_reduce;
-#[cfg(kani)]
-pub(crate) mod kani_stubs;
-#[cfg(kani)]
-mod kani_trace_compile_native_ops_issue3731;
-#[cfg(kani)]
-#[path = "kani_trace_compile_ops_dispatch.rs"]
-mod kani_trace_compile_ops_dispatch;
-#[cfg(kani)]
-#[path = "kani_trace_compile_peephole_resblock.rs"]
-mod kani_trace_compile_peephole_resblock;
-#[cfg(kani)]
-#[path = "kani_trace_compile_peephole_resblock_advanced.rs"]
-mod kani_trace_compile_peephole_resblock_advanced;
-// Kani proofs for polar-to-rect scalar math (#2218 F14).
-#[cfg(feature = "plan-serde")]
-pub mod compiled_plan_io;
 pub(crate) mod kernel_descriptor;
 pub mod kernel_error;
 pub(crate) mod kernel_ops;
@@ -193,9 +124,6 @@ pub mod partition_compiler;
 #[cfg(feature = "plan-serde")]
 pub mod peephole_config_persist;
 pub mod performance_report;
-#[cfg(all(kani, feature = "kani-stubbing"))]
-#[path = "polar_to_rect_kani.rs"]
-mod polar_to_rect_kani;
 pub mod precision;
 pub mod relu;
 pub mod reverb;
@@ -424,7 +352,6 @@ pub use waveshaper::{tanh_waveshaper_scalar, tanh_waveshaper_scalar_bounds};
 // Explicit re-exports for pub(crate) modules — only selected items
 // are part of the crate's public API.
 pub use codegen_difftest::emit_differential_test_with_bounds;
-pub use codegen_kani::emit_kani_harness;
 pub use codegen_msl::{
     emit_msl, emit_msl_with_contract, emit_scalar_fn, MAX_DIRECT_BINDING_INPUTS,
 };

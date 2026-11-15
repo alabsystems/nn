@@ -180,3 +180,53 @@ fn test_adafactor_checkpoint_rejects_nan_factor() {
         "expected non-finite error for adafactor_0_row, got: {msg}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Restored step counter at its maximum — the next step must not overflow
+// ---------------------------------------------------------------------------
+
+/// A checkpoint may carry any `u64` step. Restoring `u64::MAX` and then
+/// stepping used to overflow `step_t += 1` (a panic: overflow checks are on in
+/// every profile); the counter now saturates.
+#[test]
+fn test_adamw_step_after_max_step_checkpoint_saturates() {
+    let v = Var::new(DynTensor::from_vec(vec![1.0, 2.0], &[2], &cpu()).unwrap());
+    let mut adam = AdamW::new(vec![v.clone()], AdamConfig::default()).unwrap();
+    let mut snapshot = adam.save_checkpoint().unwrap();
+    snapshot.metadata["step"] = serde_json::json!(u64::MAX);
+    adam.load_checkpoint(&snapshot).unwrap();
+
+    let t = Arc::new(TrackedTensor::from_var(&v).unwrap());
+    let loss = t.sqr().unwrap().sum_keepdim(0).unwrap();
+    adam.backward_step(&loss).unwrap();
+    assert_eq!(adam.step_count() as u64, u64::MAX);
+}
+
+/// Same as above for AdaFactor.
+#[test]
+fn test_adafactor_step_after_max_step_checkpoint_saturates() {
+    let v = Var::new(DynTensor::from_vec(vec![1.0, 2.0], &[2], &cpu()).unwrap());
+    let mut opt = AdaFactor::new(vec![v.clone()], AdaFactorConfig::default()).unwrap();
+    let mut snapshot = opt.save_checkpoint().unwrap();
+    snapshot.metadata["step"] = serde_json::json!(u64::MAX);
+    opt.load_checkpoint(&snapshot).unwrap();
+
+    let t = Arc::new(TrackedTensor::from_var(&v).unwrap());
+    let loss = t.sqr().unwrap().sum_keepdim(0).unwrap();
+    opt.backward_step(&loss).unwrap();
+    assert_eq!(opt.step_count() as u64, u64::MAX);
+}
+
+/// Optimizer state is allocated per parameter tensor; a parameter list longer
+/// than the limit is rejected before that allocation.
+#[test]
+fn test_optimizers_reject_parameter_count_over_limit() {
+    let v = Var::new(DynTensor::from_vec(vec![1.0], &[1], &cpu()).unwrap());
+    let vars = vec![v; crate::error::MAX_PARAM_TENSORS + 1];
+    let err = Sgd::new(vars.clone(), SgdConfig::default()).unwrap_err();
+    assert!(format!("{err}").contains("parameter tensors"), "got: {err}");
+    let err = AdamW::new(vars.clone(), AdamConfig::default()).unwrap_err();
+    assert!(format!("{err}").contains("parameter tensors"), "got: {err}");
+    let err = AdaFactor::new(vars, AdaFactorConfig::default()).unwrap_err();
+    assert!(format!("{err}").contains("parameter tensors"), "got: {err}");
+}

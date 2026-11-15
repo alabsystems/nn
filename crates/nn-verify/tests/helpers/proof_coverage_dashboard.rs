@@ -4,18 +4,17 @@
 
 //! Proof coverage dashboard — replaces vanity harness counts with meaningful metrics.
 //!
-//! Reports per-model and aggregate coverage across four verification layers:
+//! Reports per-model and aggregate coverage across three verification layers:
 //! 1. **NY (CROWN):** non-vacuous CROWN bounds per pipeline step
 //! 2. **NY (IBP):** IBP bounds (verified but potentially wider)
 //! 3. **ay SMT:** bound registry entries for analytical proofs
-//! 4. **Kani:** substantive vs tautological/structural harness classification
 //!
 //! Also flags:
 //! - Vacuous entries (output_width > 100)
 //! - Synthetic vs real-model proofs (moonshot concentration bridges)
 //! - CROWN vs IBP breakdown with tightening ratio
 //!
-//! Run: `cargo test -p nn-verify --test proof_coverage_dashboard -- --nocapture`
+//! Run: `targo --unverified test -p nn-verify --test proof_coverage_dashboard -- --nocapture`
 //!
 //! Part of #2929, #2218.
 
@@ -123,15 +122,7 @@ fn compute_coverage(status: &VerifyStatus) -> ModelCoverage {
 }
 
 /// Print the proof coverage dashboard to stderr.
-fn print_dashboard(
-    model_stats: &[(&str, ModelCoverage)],
-    kani_total: usize,
-    kani_tautological: usize,
-    kani_structural: usize,
-    ay_bounds_registry: usize,
-) {
-    let kani_substantive = kani_total - kani_tautological - kani_structural;
-
+fn print_dashboard(model_stats: &[(&str, ModelCoverage)], ay_bounds_registry: usize) {
     eprintln!();
     eprintln!("╔══════════════════════════════════════════════════════════════╗");
     eprintln!("║            PROOF COVERAGE DASHBOARD (Part of #2929)        ║");
@@ -244,28 +235,6 @@ fn print_dashboard(
         agg.has_smt, agg.smt_proven
     );
 
-    // Kani.
-    eprintln!("║                                                            ║");
-    eprintln!("║  ── Kani harnesses ──                                      ║");
-    eprintln!(
-        "║  Total:          {kani_total:>4}                                      ║"
-    );
-    eprintln!(
-        "║  Substantive:    {:>4} ({:>5.1}%)                            ║",
-        kani_substantive,
-        if kani_total > 0 {
-            100.0 * kani_substantive as f64 / kani_total as f64
-        } else {
-            0.0
-        }
-    );
-    eprintln!(
-        "║  Structural:     {kani_structural:>4}                                      ║"
-    );
-    eprintln!(
-        "║  Tautological:   {kani_tautological:>4} ← no assertions, flagged            ║"
-    );
-
     // Moonshot.
     eprintln!("║                                                            ║");
     eprintln!("║  ── Moonshot concentration bridges ──                      ║");
@@ -286,93 +255,6 @@ fn print_dashboard(
 
     eprintln!("╚══════════════════════════════════════════════════════════════╝");
     eprintln!();
-}
-
-/// Count Kani harnesses by scanning the crate source files.
-///
-/// Returns `(total, tautological_estimate, structural_estimate)`.
-/// The tautological count uses the verification_content_cli heuristic:
-/// harnesses with `#[kani::proof]` but no assertion macros in their body.
-fn count_kani_harnesses() -> (usize, usize, usize) {
-    let workspace = workspace_root();
-
-    // Count total kani::proof annotations across all crates.
-    let mut total = 0usize;
-    let kani_attr = "#[kani::proof]";
-    for entry in walkdir(workspace.join("crates")) {
-        // Skip this file to avoid counting string literals as harnesses.
-        if entry.ends_with("proof_coverage_dashboard.rs") {
-            continue;
-        }
-        let content = match std::fs::read_to_string(&entry) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        total += content.matches(kani_attr).count();
-    }
-
-    // Tautological: count from known list (verification_content_cli reports 36).
-    // These are harnesses in test scaffolding files that have no assertions.
-    // Rather than re-implement the full Python classifier, we use a conservative
-    // heuristic: count #[kani::proof] in files that are known test scaffolding.
-    let tautological_files = [
-        "codegen_kani.rs",
-        "kani_stubs.rs",
-        "moonshot_certificate_builder_workspace_tests.rs",
-        "moonshot_certificate_enrichment.rs",
-        "moonshot_evidence_bridge.rs",
-        "moonshot_evidence_bridge_tests.rs",
-    ];
-    let mut tautological = 0usize;
-    for entry in walkdir(workspace.join("crates")) {
-        let fname = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if tautological_files.contains(&fname) {
-            if let Ok(content) = std::fs::read_to_string(&entry) {
-                tautological += content.matches(kani_attr).count();
-            }
-        }
-    }
-
-    // Structural: builder harnesses that verify graph construction (no semantic assertions).
-    // Pattern: function declarations with `_build_no_panic` suffix.
-    let mut structural = 0usize;
-    let no_panic_needle = "build_no_panic";
-    for entry in walkdir(workspace.join("crates")) {
-        // Skip this test file to avoid self-matching.
-        if entry.ends_with("proof_coverage_dashboard.rs") {
-            continue;
-        }
-        if let Ok(content) = std::fs::read_to_string(&entry) {
-            for line in content.lines() {
-                if line.contains("fn ") && line.contains(no_panic_needle) {
-                    structural += 1;
-                }
-            }
-        }
-    }
-
-    (total, tautological, structural)
-}
-
-/// Simple recursive .rs file walker.
-fn walkdir(root: std::path::PathBuf) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    let mut stack = vec![root];
-    while let Some(dir) = stack.pop() {
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                files.push(path);
-            }
-        }
-    }
-    files
 }
 
 /// Count ay bounds registry entries from prove_dispatch.rs.
@@ -414,20 +296,11 @@ fn proof_coverage_dashboard() {
         }
     }
 
-    // Count Kani harnesses.
-    let (kani_total, kani_tautological, kani_structural) = count_kani_harnesses();
-
     // Count ay bounds registry.
     let ay_bounds = count_ay_bounds_registry();
 
     // Print the dashboard.
-    print_dashboard(
-        &model_stats,
-        kani_total,
-        kani_tautological,
-        kani_structural,
-        ay_bounds,
-    );
+    print_dashboard(&model_stats, ay_bounds);
 
     // === Assertions: coverage must not regress ===
 
@@ -464,15 +337,6 @@ fn proof_coverage_dashboard() {
     assert!(
         sound_crown >= 4,
         "Sound CROWN entries {sound_crown} below minimum 4"
-    );
-
-    // Gate: Kani substantive harnesses > 90%.
-    let kani_substantive = kani_total - kani_tautological - kani_structural;
-    let kani_sub_pct = 100.0 * kani_substantive as f64 / kani_total.max(1) as f64;
-    assert!(
-        kani_sub_pct >= 90.0,
-        "Kani substantive {kani_sub_pct:.1}% below gate 90% \
-         ({kani_substantive}/{kani_total})"
     );
 
     // Gate: ay bounds registry has at least 15 entries.
@@ -535,13 +399,13 @@ fn moonshot_synthetic_detection() {
     let path = nn_verify::model_status_path(&ws, "kokoro");
 
     // The kokoro status file is a generated, gitignored artifact produced by the
-    // moonshot compose tests / `cargo run --example verify_all`. Skip cleanly
+    // moonshot compose tests / `targo --unverified run --example verify_all`. Skip cleanly
     // when absent (mirrors gap_detector_tests::test_detect_gaps_real_status_file)
     // rather than hard-failing on a bare `cargo test`/`nextest` run.
     if !path.exists() {
         eprintln!(
             "Skipping: {} not found. Run the kokoro moonshot compose suite / \
-             `cargo run -p nn-verify --example verify_all` to generate it.",
+             `targo --unverified run -p nn-verify --example verify_all` to generate it.",
             path.display()
         );
         return;

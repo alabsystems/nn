@@ -202,12 +202,6 @@ pub fn build_rope_rotate_kernel(
     })
 }
 
-// Builder Kani proofs (Part of #659 AC3: rope_rotate builder harnesses).
-// No stubbing needed — builder constructs graph, no trig calls.
-#[cfg(kani)]
-#[path = "rope_kani_builder.rs"]
-mod kani_builder_proofs;
-
 // Scalar bounds extracted to rope_bounds.rs (500-line file limit, #175 pattern).
 #[path = "rope_bounds.rs"]
 mod bounds;
@@ -316,12 +310,6 @@ pub fn rope_rotate_ref(
     checked_slice_output(&output)?;
     Ok(output)
 }
-
-// Kani proofs for scalar RoPE kernels (finiteness + norm preservation).
-// Extracted to rope_kani_proofs.rs (500-line file limit, #175 pattern).
-#[cfg(all(kani, feature = "kani-stubbing"))]
-#[path = "rope_kani_proofs.rs"]
-mod kani_proofs;
 
 #[cfg(test)]
 #[path = "rope_tests.rs"]

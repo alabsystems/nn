@@ -79,7 +79,6 @@ pub(super) fn run_verification(
     status: &mut VerifyStatus,
     configs: Vec<KernelConfig>,
     builder_failures: usize,
-    kani_status_path: Option<&Path>,
     coverage: OpCoverageMode,
 ) -> (usize, usize, CertificateBundle, Vec<SessionCase>) {
     let mut passed = 0;
@@ -134,7 +133,6 @@ pub(super) fn run_verification(
                     bounds,
                     &config.kernel,
                     &config.constant_params,
-                    kani_status_path,
                 );
                 bundle.push(cert);
                 if collect_cases && result.gamma_crown.is_finite {
@@ -246,8 +244,7 @@ fn print_result(name: &str, result: &PipelineResult) {
 /// Build a proof certificate from a pipeline result (#802).
 ///
 /// For scalar kernels verified via `verify_and_record_full`, the certificate
-/// includes: NY output bounds, SMT outcome, Kani proof records
-/// (when kani_status.json is available), per-layer bound trace, and the
+/// includes: NY output bounds, SMT outcome, per-layer bound trace, and the
 /// verification method + soundness provenance.
 ///
 /// Layer bounds are extracted by rebuilding the NY graph from the
@@ -259,7 +256,6 @@ fn build_certificate(
     bounds: ScalarInputBounds,
     kernel: &nn_dsl::ir::KernelDef,
     constant_params: &[f32],
-    kani_status_path: Option<&Path>,
 ) -> ProofCertificate {
     let variable_inputs = vec![ParamInputRecord::new(0, bounds.lower(), bounds.upper())];
     let smt_outcome = format!("{:?}", result.smt.outcome);
@@ -269,7 +265,6 @@ fn build_certificate(
 
     let enrichment = CertificateEnrichment {
         source_path: source_path_for_config(config_name),
-        kani_status_path: kani_status_path.map(Path::to_path_buf),
         verifier_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         layer_bounds,
         ..CertificateEnrichment::default()

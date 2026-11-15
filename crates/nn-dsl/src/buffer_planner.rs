@@ -37,7 +37,7 @@ use crate::trace_compile::{CompiledPlan, CompiledStep};
 // Byte-size computation extracted to buffer_planner_bytes.rs (500-line limit).
 #[path = "buffer_planner_bytes.rs"]
 mod bytes;
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use bytes::native_op_output_bytes;
 use bytes::{step_output_bytes, step_output_bytes_typed};
 
@@ -337,11 +337,3 @@ fn alloc_or_reuse(
 #[cfg(test)]
 #[path = "buffer_planner_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_buffer_planner_native_ops.rs"]
-mod kani_buffer_planner_native_ops;
-
-#[cfg(kani)]
-#[path = "kani_buffer_planner_step_proofs.rs"]
-mod kani_buffer_planner_step_proofs;

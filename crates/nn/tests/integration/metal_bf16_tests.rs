@@ -12,9 +12,9 @@
 //! 3. Run ops (matmul, conv1d, layernorm, linear) on GPU
 //! 4. Read results back to CPU and verify correctness
 //!
-//! This file satisfies #1705 AC3: `cargo test -p nn --test metal_bf16_tests`
+//! This file satisfies #1705 AC3: `targo --unverified test -p nn --test metal_bf16_tests`
 //!
-//! Run: `cargo test -p nn --test metal_bf16_tests`
+//! Run: `targo --unverified test -p nn --test metal_bf16_tests`
 
 use nn::{Conv1dConfig, DType, Device, DynTensor, Module};
 

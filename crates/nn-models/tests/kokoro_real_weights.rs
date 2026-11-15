@@ -14,7 +14,7 @@
 //!
 //! Run:
 //!   KOKORO_WEIGHTS=./nn/weights/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-models --test kokoro_real_weights -- --nocapture
+//!   targo --unverified test -p nn-models --test kokoro_real_weights -- --nocapture
 //!
 //! Generate reference data (optional, for forward parity):
 //!   python3 scripts/generate_kokoro_reference.py \

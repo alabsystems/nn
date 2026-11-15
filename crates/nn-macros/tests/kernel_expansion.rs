@@ -5,9 +5,6 @@
 //! End-to-end test: apply `#[nn_macros::kernel]` to the snake function
 //! and verify the expansion generates working code, MSL, and metadata.
 
-// The kernel macro generates `#[cfg(kani)]` blocks; suppress the check-cfg warning.
-#![allow(unexpected_cfgs)]
-
 #[nn_macros::kernel(bounds(alpha = "0.1..1e6"))]
 fn snake(x: f32, alpha: f32) -> f32 {
     x + (1.0 / alpha) * (alpha * x).sin().powi(2)

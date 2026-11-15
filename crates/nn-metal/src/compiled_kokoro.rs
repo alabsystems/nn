@@ -273,6 +273,16 @@ impl CompiledKokoro {
     /// The safetensors file must not be modified or truncated while the
     /// returned `CompiledKokoro` is alive (standard mmap contract).
     ///
+    /// # Errors
+    ///
+    /// [`CompiledKokoroError::WeightLoadFailed`] when the file cannot be
+    /// opened or mapped, when it fails structural validation (truncated,
+    /// header length past the end, missing `{` magic, tensor offsets outside
+    /// or not tiling the data region — see
+    /// [`validate_safetensors_bytes`](crate::validate_safetensors_bytes),
+    /// which runs on the mapping before anything reads it), or when the
+    /// Kokoro weights cannot be loaded from it.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -1484,10 +1494,10 @@ pub use optimal_configs::{
 #[path = "compiled_kokoro_optimal_configs_tests.rs"]
 mod optimal_configs_tests;
 
-#[cfg(kani)]
-#[path = "kani_compiled_kokoro_streaming.rs"]
-mod kani_compiled_kokoro_streaming;
-
 #[cfg(test)]
 #[path = "compiled_kokoro_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "compiled_kokoro_load_tests.rs"]
+mod load_tests;

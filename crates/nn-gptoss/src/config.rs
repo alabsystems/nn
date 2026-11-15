@@ -338,10 +338,6 @@ impl GptOssConfig {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_config_proofs.rs"]
-mod kani_config_proofs;
-
 #[cfg(test)]
 mod tests {
     use super::*;

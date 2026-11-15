@@ -26,15 +26,6 @@ fn assert_serde_validate_no_structural_errors(cert: &MoonshotCertificate) -> Moo
     de
 }
 
-fn test_kani_evidence() -> KaniVerificationEvidence {
-    KaniVerificationEvidence {
-        harnesses_passed: 459,
-        harnesses_total: 459,
-        harness_files: vec!["crates/nn-core/src/kani_bounds.rs".to_string()],
-        all_passed: true,
-    }
-}
-
 fn test_smt_evidence() -> SmtVerificationEvidence {
     SmtVerificationEvidence {
         kernels_proven: 20,
@@ -83,27 +74,24 @@ fn test_schema_version_v2_preserved_through_round_trip() {
 }
 
 #[test]
-fn test_enriched_kani_smt_serde_then_validate() {
+fn test_enriched_smt_serde_then_validate() {
     let status = MoonshotStatus::from_repo();
     let cert = MoonshotCertificate::from_status(&status, "test-model", "spec", "hash123");
-    let enriched = cert
-        .with_kani_results(&test_kani_evidence())
-        .with_smt_results(&test_smt_evidence());
+    let enriched = cert.with_smt_results(&test_smt_evidence());
     let de = assert_serde_validate_no_structural_errors(&enriched);
-    assert_eq!(de.properties[6].level, VerificationLevel::KaniProven);
+    assert_eq!(de.properties[6].level, VerificationLevel::None);
     assert_eq!(de.properties[7].level, VerificationLevel::SmtProven);
 }
 
 #[test]
-fn test_builder_kani_smt_serde_then_validate() {
+fn test_builder_smt_serde_then_validate() {
     let cert = FullCertificateBuilder::new("builder-model", "English text", "hash456")
-        .kani(&test_kani_evidence())
         .smt(&test_smt_evidence())
         .build();
     let de = assert_serde_validate_no_structural_errors(&cert);
     assert_eq!(de.model_name, "builder-model");
     assert_eq!(de.schema_version, CERTIFICATE_SCHEMA_VERSION);
-    assert_eq!(de.properties[6].level, VerificationLevel::KaniProven);
+    assert_eq!(de.properties[6].level, VerificationLevel::None);
     assert_eq!(de.properties[7].level, VerificationLevel::SmtProven);
 }
 
@@ -113,8 +101,7 @@ fn test_aggregate_flags_consistent_after_round_trip() {
     let mut cert = MoonshotCertificate::from_status(&status, "test-model", "spec", "hash789");
     for (i, prop) in cert.properties.iter_mut().enumerate() {
         prop.level = match i {
-            6 => VerificationLevel::KaniProven,
-            7 => VerificationLevel::SmtProven,
+            6 | 7 => VerificationLevel::SmtProven,
             _ => VerificationLevel::CrownProven,
         };
     }

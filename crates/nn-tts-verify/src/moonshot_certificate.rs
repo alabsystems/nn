@@ -12,22 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{MoonshotStatus, VerificationLevel};
 
-/// Evidence bundle for Property 7 (memory safety) from Kani harness results.
-///
-/// Captures the aggregate Kani verification status: how many harnesses
-/// passed, total count, and which artifact files contain the harnesses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KaniVerificationEvidence {
-    /// Number of Kani harnesses that passed.
-    pub harnesses_passed: usize,
-    /// Total number of Kani harnesses.
-    pub harnesses_total: usize,
-    /// File paths to Kani harness source files (relative to repo root).
-    pub harness_files: Vec<String>,
-    /// Whether all harnesses passed without timeout or failure.
-    pub all_passed: bool,
-}
-
 /// Evidence bundle for Property 8 (correct implementation) from ay SMT results.
 ///
 /// Captures the aggregate ay verification status: how many kernel proofs
@@ -105,6 +89,9 @@ pub struct PropertyCertificate {
 /// - v3: added sub_results to PropertyCertificate (#1925) (2026-03-11)
 /// - v4: added constructive_proof_lean4 to PropertyCertificate,
 ///   constructive_proof_count to MoonshotCertificate (#4315) (2026-04-01)
+///
+/// The `KaniProven` level was removed with the Kani lane (2026-09-29), so a
+/// saved certificate that carries it no longer loads (fail-closed).
 pub const CERTIFICATE_SCHEMA_VERSION: u32 = 4;
 
 /// Unified certificate combining all 8 moonshot property proofs.
@@ -139,7 +126,7 @@ pub struct MoonshotCertificate {
     pub verification_dim: Option<usize>,
     /// Whether all 8 properties are at least CrownPartial.
     pub all_at_least_partial: bool,
-    /// Whether all 8 properties are fully proven (CrownProven, KaniProven, or SmtProven).
+    /// Whether all 8 properties are fully proven (CrownProven or SmtProven).
     pub all_proven: bool,
     /// Number of properties with constructive proof Lean4 exports (#4315).
     ///
@@ -185,9 +172,7 @@ impl MoonshotCertificate {
         let all_proven = properties.iter().all(|p| {
             matches!(
                 p.level,
-                VerificationLevel::CrownProven
-                    | VerificationLevel::KaniProven
-                    | VerificationLevel::SmtProven
+                VerificationLevel::CrownProven | VerificationLevel::SmtProven
             )
         });
 
@@ -223,8 +208,8 @@ pub use serde_support::CertificateDeserializeError;
 #[path = "moonshot_certificate_builder.rs"]
 mod builder;
 pub use builder::{
-    build_certificate_from_workspace, build_full_certificate,
-    build_full_certificate_with_all_evidence, CertificateEvidenceSummary, FullCertificateBuilder,
+    build_full_certificate, build_full_certificate_with_all_evidence, CertificateEvidenceSummary,
+    FullCertificateBuilder,
 };
 
 #[path = "moonshot_certificate_display.rs"]

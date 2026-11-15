@@ -12,7 +12,7 @@
 //!
 //! Soundness mode: `Heuristic`. The bounds are mathematically sound within
 //! auto_LiRPA's framework, but the Python execution is unverified. A
-//! separate Kani proof or NY cross-check can upgrade to `Sound`.
+//! separate NY cross-check can upgrade to `Sound`.
 //!
 //! See `designs/2026-03-12-auto-lirpa-bounds-bridge.md` for full design.
 

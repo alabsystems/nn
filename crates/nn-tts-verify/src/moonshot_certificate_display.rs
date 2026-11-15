@@ -113,9 +113,7 @@ impl fmt::Display for MoonshotCertificate {
             .filter(|p| {
                 matches!(
                     p.level,
-                    VerificationLevel::CrownProven
-                        | VerificationLevel::KaniProven
-                        | VerificationLevel::SmtProven
+                    VerificationLevel::CrownProven | VerificationLevel::SmtProven
                 )
             })
             .count();

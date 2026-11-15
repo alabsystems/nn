@@ -421,7 +421,3 @@ impl SourceModule {
 #[cfg(test)]
 #[path = "kokoro_source_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kokoro_source_kani_tests.rs"]
-mod kani_proofs;

@@ -28,6 +28,7 @@
 
 use std::cell::{Cell, RefCell};
 
+use crate::context::MetalContext;
 use crate::dispatch::{CommandBatch, PendingBatch};
 use crate::dispatch_stats::{
     record_gpu_event, TOTAL_BLITS, TOTAL_ENCODINGS, TOTAL_FLUSHES, TOTAL_SUBMITS,
@@ -94,7 +95,7 @@ enum BatchEncoding {
 
 /// Internal: ensure a lazy batch exists, auto-flush if needed, and record
 /// the encoding in the appropriate cumulative counter.
-fn ensure_batch(kind: BatchEncoding) -> Result<(), TensorError> {
+fn ensure_batch(kind: BatchEncoding, context: Option<&MetalContext>) -> Result<(), TensorError> {
     LAZY_BATCH.with(|cell| {
         // Auto-flush if we've accumulated too many encodings.
         let count = ENCODING_COUNT.with(Cell::get);
@@ -130,14 +131,19 @@ fn ensure_batch(kind: BatchEncoding) -> Result<(), TensorError> {
         }
 
         if cell.borrow().is_none() {
-            let ctx = global_metal_context().map_err(|e| {
-                TensorError::backend_failure(
-                    nn_core::BackendDomain::Metal,
-                    nn_core::BackendErrorKind::Other,
-                    e.to_string(),
-                )
-            })?;
-            let batch = ctx.begin_batch().map_err(|e| {
+            let begin = if let Some(ctx) = context {
+                ctx.begin_batch()
+            } else {
+                let ctx = global_metal_context().map_err(|e| {
+                    TensorError::backend_failure(
+                        nn_core::BackendDomain::Metal,
+                        nn_core::BackendErrorKind::Other,
+                        e.to_string(),
+                    )
+                })?;
+                ctx.begin_batch()
+            };
+            let batch = begin.map_err(|e| {
                 TensorError::backend_failure(
                     nn_core::BackendDomain::Metal,
                     nn_core::BackendErrorKind::DispatchFailed,
@@ -166,7 +172,14 @@ fn ensure_batch(kind: BatchEncoding) -> Result<(), TensorError> {
 /// Increments `TOTAL_ENCODINGS` (compute-only counter). For buffer-planner
 /// blit copies, use [`ensure_batch_for_blit`] instead.
 pub(crate) fn get_or_create_batch() -> Result<(), TensorError> {
-    ensure_batch(BatchEncoding::Compute)
+    ensure_batch(BatchEncoding::Compute, None)
+}
+
+/// Use the caller's explicit context when a kernel dispatch starts a batch.
+/// Low-level `KernelPipeline` dispatch does not require the global tensor
+/// backend to be initialized. Existing batches retain their ordering.
+pub(crate) fn get_or_create_batch_for_context(ctx: &MetalContext) -> Result<(), TensorError> {
+    ensure_batch(BatchEncoding::Compute, Some(ctx))
 }
 
 /// Get or create the thread-local lazy batch for a buffer-planner blit copy.
@@ -176,7 +189,7 @@ pub(crate) fn get_or_create_batch() -> Result<(), TensorError> {
 /// in the dispatch statistics, allowing gate tests to target compute-only
 /// dispatch counts. See #1815.
 pub(crate) fn ensure_batch_for_blit() -> Result<(), TensorError> {
-    ensure_batch(BatchEncoding::Blit)
+    ensure_batch(BatchEncoding::Blit, None)
 }
 
 /// Ensure a lazy batch exists for `count` blit copies.
@@ -192,7 +205,7 @@ pub(crate) fn ensure_batch_for_blit_batch(count: usize) -> Result<(), TensorErro
         return Ok(());
     }
     // One encoding (one blit encoder), but `count` blit copies.
-    ensure_batch(BatchEncoding::Blit)?;
+    ensure_batch(BatchEncoding::Blit, None)?;
     // ensure_batch already incremented TOTAL_BLITS by 1 and ENCODING_COUNT by 1.
     // Increment TOTAL_BLITS by (count - 1) for the remaining copies.
     if count > 1 {
@@ -324,7 +337,8 @@ pub fn sync() -> Result<(), TensorError> {
 /// Returns `Ok(None)` if no lazy batch is pending.
 ///
 /// This is the internal helper for [`GpuFence::submit_current`].
-pub(crate) fn take_lazy_batch_for_fence() -> Result<Option<crate::gpu_fence::GpuFence>, TensorError> {
+pub(crate) fn take_lazy_batch_for_fence() -> Result<Option<crate::gpu_fence::GpuFence>, TensorError>
+{
     LAZY_BATCH.with(|cell| {
         if let Some(batch) = cell.borrow_mut().take() {
             let enc = ENCODING_COUNT.with(Cell::get);
@@ -349,7 +363,8 @@ pub(crate) fn take_lazy_batch_for_fence() -> Result<Option<crate::gpu_fence::Gpu
 /// Returns `Ok(None)` if no lazy batch is pending.
 ///
 /// This is the internal helper for [`GpuFuture::submit_current`].
-pub(crate) fn take_lazy_batch_for_future() -> Result<Option<crate::gpu_future::GpuFuture>, TensorError> {
+pub(crate) fn take_lazy_batch_for_future(
+) -> Result<Option<crate::gpu_future::GpuFuture>, TensorError> {
     LAZY_BATCH.with(|cell| {
         if let Some(batch) = cell.borrow_mut().take() {
             let enc = ENCODING_COUNT.with(Cell::get);

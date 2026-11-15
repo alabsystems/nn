@@ -525,7 +525,7 @@ fn test_rope_large_position_no_nan() {
 fn test_flat_kv_cache_token_size_equals_heads_times_dim() {
     let num_heads = 4;
     let head_dim = 16;
-    let cache = kv_cache::KVCache::new(2, num_heads, head_dim, 32);
+    let cache = kv_cache::KVCache::new(2, num_heads, head_dim, 32).expect("valid KVCache sizes");
 
     let token_size = num_heads * head_dim;
     let key: Vec<f32> = vec![1.0; token_size];
@@ -537,8 +537,8 @@ fn test_flat_kv_cache_token_size_equals_heads_times_dim() {
     assert_eq!(cache.len(), 1);
 
     // Verify stored data length
-    assert_eq!(cache.get_keys(0).len(), token_size);
-    assert_eq!(cache.get_values(0).len(), token_size);
+    assert_eq!(cache.get_keys(0).unwrap().len(), token_size);
+    assert_eq!(cache.get_values(0).unwrap().len(), token_size);
 }
 
 #[test]
@@ -546,7 +546,8 @@ fn test_flat_kv_cache_multi_token_data_layout() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim; // 8
-    let mut cache = kv_cache::KVCache::new(2, num_heads, head_dim, 32);
+    let mut cache =
+        kv_cache::KVCache::new(2, num_heads, head_dim, 32).expect("valid KVCache sizes");
 
     // Append 3 tokens worth of data
     for token in 0..3 {
@@ -560,7 +561,7 @@ fn test_flat_kv_cache_multi_token_data_layout() {
     assert_eq!(cache.len(), 3);
 
     // Total stored keys should be 3 * token_size
-    let all_keys = cache.get_keys(0);
+    let all_keys = cache.get_keys(0).unwrap();
     assert_eq!(all_keys.len(), 3 * token_size);
 
     // First token's keys start at 0.0, second at 100.0, third at 200.0

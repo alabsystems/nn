@@ -34,14 +34,17 @@ mod types;
 use types::convert_dtype;
 pub use types::{TensorInfo, WeightError};
 
+#[path = "safetensors_validate.rs"]
+mod validate;
+pub use validate::{validate_safetensors_bytes, SafetensorsLayout};
+
 /// Page size on Apple Silicon (4 KiB).
 const PAGE_SIZE: usize = 4096;
 
 /// Round `len` up to the next page boundary.
 ///
 /// Uses saturating arithmetic to prevent overflow for inputs near
-/// `usize::MAX`. Verified by Kani proof [`page_align_never_wraps`] for all
-/// file sizes up to 4 GiB: the result is always `>= len` and page-aligned.
+/// `usize::MAX`.
 #[inline]
 #[must_use]
 pub(crate) const fn page_align(len: usize) -> usize {
@@ -131,6 +134,15 @@ impl WeightMap {
     /// The returned `WeightMap` holds an mmap of the file. The file must not
     /// be modified or truncated while the `WeightMap` is alive. This is the
     /// standard mmap contract and is safe in practice for model weight files.
+    ///
+    /// # Errors
+    ///
+    /// [`WeightError::InvalidFile`] when the mapped file fails
+    /// [`validate_safetensors_bytes`] (truncated, header length past the end
+    /// or over the limit, missing `{` magic, or a tensor range outside or not
+    /// tiling the data region). The check runs on the mapping before anything
+    /// else reads it (decision 2026-10-02, made by the orchestrator under the
+    /// owner's instruction). Also `Io`, `Parse`, `Metal` and `UnsupportedDtype`.
     #[must_use = "returns a Result that may contain an error"]
     pub unsafe fn load(path: &Path, ctx: &MetalContext) -> Result<Self, WeightError> {
         let file = std::fs::File::open(path)?;
@@ -138,10 +150,19 @@ impl WeightMap {
         // ManuallyDrop<Mmap> field. Caller guarantees no concurrent modification
         // per the function's safety contract (standard mmap invariant).
         let mmap = unsafe { Mmap::map(&file)? };
-        let file_size = mmap.len();
+        // Borrow the mapped bytes once; every read below goes through this
+        // slice, which `validate_safetensors_bytes` checks first.
+        let bytes: &[u8] = &mmap;
+        let file_size = bytes.len();
+
+        // Validate the file's structure (length prefix, header bounds, `{`
+        // magic, every tensor range inside and tiling the data region) in
+        // first-party code before anything else reads the mapping: a
+        // truncated or crafted file is refused here, never read out of bounds.
+        let layout = validate_safetensors_bytes(bytes)?;
 
         // Parse safetensors header to extract tensor metadata.
-        let st = SafeTensors::deserialize(&mmap)?;
+        let st = SafeTensors::deserialize(bytes)?;
 
         // Round up to page boundary for Metal's newBufferWithBytesNoCopy.
         let aligned_len = page_align(file_size);
@@ -155,16 +176,37 @@ impl WeightMap {
         //   NonNull<c_void>. The resulting Metal buffer MUST NOT be used as a
         //   GPU write target (would SIGBUS). WeightMap is a read-only store.
         let ptr =
-            NonNull::new(mmap.as_ptr().cast_mut().cast()).ok_or(MetalError::NullMmapPointer)?;
+            NonNull::new(bytes.as_ptr().cast_mut().cast()).ok_or(MetalError::NullMmapPointer)?;
         let buffer = unsafe { ctx.create_buffer_no_copy(ptr, aligned_len)? };
 
         // Build tensor index: name -> (offset, byte_len, dtype, shape).
-        let base = mmap.as_ptr() as usize;
+        let base = bytes.as_ptr() as usize;
         let mut tensors = HashMap::new();
         for (name, view) in st.tensors() {
             let dtype = convert_dtype(view.dtype())?;
             let data = view.data();
-            let offset = data.as_ptr() as usize - base;
+            // Cross-check the parser's slice against the validated layout:
+            // it must lie inside the data region of the mapping.
+            let offset = (data.as_ptr() as usize)
+                .checked_sub(base)
+                .filter(|&off| off >= layout.data_start)
+                .ok_or_else(|| WeightError::TensorDataOutOfBounds {
+                    name: name.clone(),
+                    offset: 0,
+                    byte_len: data.len(),
+                    buffer_size: file_size,
+                })?;
+            match offset.checked_add(data.len()) {
+                Some(end) if end <= file_size => {}
+                _ => {
+                    return Err(WeightError::TensorDataOutOfBounds {
+                        name,
+                        offset,
+                        byte_len: data.len(),
+                        buffer_size: file_size,
+                    })
+                }
+            }
             tensors.insert(
                 name.clone(),
                 TensorInfo {
@@ -315,7 +357,3 @@ impl WeightMap {
 #[cfg(test)]
 #[path = "safetensors_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "safetensors_kani.rs"]
-mod proofs;

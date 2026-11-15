@@ -4,64 +4,7 @@
 
 use crate::moonshot::*;
 
-// --- P7 (Kani) and P8 (SMT) certificate enrichment tests ---
-
-#[test]
-fn test_certificate_with_kani_results_all_passed() {
-    let status = MoonshotStatus::from_repo();
-    let cert = MoonshotCertificate::from_status(&status, "test", "test", "hash");
-
-    let evidence = KaniVerificationEvidence {
-        harnesses_passed: 475,
-        harnesses_total: 475,
-        harness_files: vec![
-            "crates/nn-core/src/kani_bounds.rs".to_string(),
-            "crates/nn-autodiff/src/kani_backward_proofs.rs".to_string(),
-        ],
-        all_passed: true,
-    };
-
-    let enriched = cert.with_kani_results(&evidence);
-    assert_eq!(enriched.properties[6].level, VerificationLevel::KaniProven);
-    assert_eq!(enriched.properties[6].bound_value, Some(475.0));
-    assert_eq!(enriched.properties[6].threshold, Some(475.0));
-    assert_eq!(enriched.properties[6].proof_artifacts.len(), 2);
-    assert!(enriched.properties[6].assumptions[0].contains("475 Kani harnesses pass"));
-}
-
-#[test]
-fn test_certificate_with_kani_results_partial() {
-    let status = MoonshotStatus::from_repo();
-    let cert = MoonshotCertificate::from_status(&status, "test", "test", "hash");
-
-    let evidence = KaniVerificationEvidence {
-        harnesses_passed: 400,
-        harnesses_total: 475,
-        harness_files: vec!["crates/nn-core/src/kani_bounds.rs".to_string()],
-        all_passed: false,
-    };
-
-    let enriched = cert.with_kani_results(&evidence);
-    assert_eq!(enriched.properties[6].level, VerificationLevel::Empirical);
-    assert!(enriched.properties[6].assumptions[0].contains("400/475"));
-}
-
-#[test]
-fn test_certificate_with_kani_results_zero_harnesses() {
-    let status = MoonshotStatus::from_repo();
-    let cert = MoonshotCertificate::from_status(&status, "test", "test", "hash");
-
-    let evidence = KaniVerificationEvidence {
-        harnesses_passed: 0,
-        harnesses_total: 0,
-        harness_files: vec![],
-        all_passed: true, // vacuously true
-    };
-
-    // all_passed=true but harnesses_total=0 → None (no evidence).
-    let enriched = cert.with_kani_results(&evidence);
-    assert_eq!(enriched.properties[6].level, VerificationLevel::None);
-}
+// --- P8 (SMT) certificate enrichment tests ---
 
 #[test]
 fn test_certificate_with_smt_results_all_proven() {
@@ -114,13 +57,12 @@ fn test_certificate_with_smt_results_zero_kernels() {
     };
 
     // all_proven=true but kernels_total=0 → None (no evidence).
-    // Mirrors the Kani zero-harness test for symmetric coverage.
     let enriched = cert.with_smt_results(&evidence);
     assert_eq!(enriched.properties[7].level, VerificationLevel::None);
 }
 
 #[test]
-fn test_certificate_all_proven_with_p7_p8() {
+fn test_certificate_not_all_proven_without_p7_evidence() {
     let status = MoonshotStatus::from_repo();
     let cert = MoonshotCertificate::from_status(&status, "test", "test", "hash");
 
@@ -130,12 +72,6 @@ fn test_certificate_all_proven_with_p7_p8() {
         cert.properties[i].level = VerificationLevel::CrownProven;
     }
 
-    let kani = KaniVerificationEvidence {
-        harnesses_passed: 475,
-        harnesses_total: 475,
-        harness_files: vec![],
-        all_passed: true,
-    };
     let smt = SmtVerificationEvidence {
         kernels_proven: 15,
         kernels_total: 15,
@@ -143,8 +79,14 @@ fn test_certificate_all_proven_with_p7_p8() {
         all_proven: true,
     };
 
-    let enriched = cert.with_kani_results(&kani).with_smt_results(&smt);
-    assert!(enriched.all_proven, "All 8 properties should be proven");
+    // P1-P6 and P8 proven, but P7 (memory safety) has no evidence source.
+    let enriched = cert.with_smt_results(&smt);
+    assert_eq!(enriched.properties[7].level, VerificationLevel::SmtProven);
+    assert_eq!(enriched.properties[6].level, VerificationLevel::None);
+    assert!(
+        !enriched.all_proven,
+        "an unevidenced P7 must block all_proven"
+    );
 
     // Verify JSON includes P7 and P8 entries.
     let json = enriched.to_json();

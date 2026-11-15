@@ -549,10 +549,6 @@ pub(crate) use stats::{default_arena_generation, default_arena_used_bytes, last_
 mod pool;
 pub(crate) use pool::pool_reclaim;
 
-#[cfg(kani)]
-#[path = "arena_kani.rs"]
-mod proofs;
-
 #[cfg(test)]
 #[path = "arena_tests.rs"]
 mod tests;

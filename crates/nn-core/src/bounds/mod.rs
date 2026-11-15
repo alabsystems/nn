@@ -25,10 +25,6 @@ pub use repair::FALLBACK_BOUND;
 // Re-export ULP functions publicly for cross-crate use (#523).
 pub use repair::{next_down_f32, next_down_n_f32, next_up_f32, next_up_n_f32};
 
-// Re-export repair_nan_to_fallback as pub(crate) under kani so ulp_round.rs can import it.
-#[cfg(kani)]
-pub(crate) use repair::repair_nan_to_fallback;
-
 // Re-export repair helpers for test coverage (these are not part of the public API).
 #[cfg(test)]
 pub(crate) use repair::{enforce_bound_ordering, repair_non_finite_lower, repair_non_finite_upper};

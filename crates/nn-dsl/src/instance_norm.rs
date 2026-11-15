@@ -8,7 +8,7 @@
 //!
 //! Provides:
 //! - `build_instance_norm()` — native `InstanceNorm1d` op (for NY verification)
-//! - `build_instance_norm_decomposed()` — 12-node form (for MSL codegen, Kani)
+//! - `build_instance_norm_decomposed()` — 12-node form (for MSL codegen)
 //! - `build_instance_norm_affine()` — native with gamma/beta (dvoice `has_affine=1`)
 //! - `build_instance_norm_decomposed_affine()` — 20-node form with gamma/beta
 //! - `instance_norm_ref()` — Rust reference implementation for differential testing
@@ -65,7 +65,7 @@ pub(crate) fn validate_bct(b: usize, c: usize, t: usize) -> Result<(), KernelErr
 ///
 /// This produces a compact 3-node IR (x input, eps input, InstanceNorm1d op) that
 /// maps directly to NY's `InstanceNorm1dLayer` for tight bound propagation.
-/// For backends that need per-op dispatch (MSL codegen, Kani), use
+/// For backends that need per-op dispatch (MSL codegen), use
 /// [`build_instance_norm_decomposed`] which expands into 12 scalar/reduce nodes.
 ///
 /// # Errors
@@ -104,9 +104,7 @@ pub fn build_instance_norm(b: usize, c: usize, t: usize) -> Result<TensorKernelD
 /// Uses two-pass centered variance `mean((x - mean)²)` to avoid catastrophic
 /// cancellation for large inputs (see #102).
 ///
-/// This decomposed form is needed for:
-/// - MSL codegen (per-op kernel dispatch)
-/// - Kani verification (proving individual ops correct)
+/// This decomposed form is needed for MSL codegen (per-op kernel dispatch).
 ///
 /// For NY verification, prefer [`build_instance_norm`] which uses the
 /// native `InstanceNorm1d` op for tighter bounds.
@@ -266,93 +264,6 @@ pub fn instance_norm_ref(
     Ok(output)
 }
 
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Proves `instance_norm_scalar` produces finite output for bounded inputs.
-    ///
-    /// Domain: x ∈ [-1e3, 1e3], mean ∈ [-1e3, 1e3], var ∈ [0, 1e6],
-    /// eps ∈ [1e-8, 1.0].
-    fn sqrt_f32_stub(x: f32) -> f32 {
-        let r: f32 = kani::any();
-        kani::assume(r.is_finite() && r >= 0.0 && r <= 1e10);
-        if x > 0.0 {
-            kani::assume(r > 0.0);
-            kani::assume(r >= x.min(1.0));
-        }
-        r
-    }
-
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_f32_stub)]
-    fn instance_norm_scalar_finite_for_bounded_inputs() {
-        let x: f32 = kani::any();
-        let mean: f32 = kani::any();
-        let var_val: f32 = kani::any();
-        let eps: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -1.0e3 && x <= 1.0e3);
-        kani::assume(mean.is_finite() && mean >= -1.0e3 && mean <= 1.0e3);
-        kani::assume(var_val.is_finite() && var_val >= 0.0 && var_val <= 1.0e6);
-        kani::assume(eps.is_finite() && eps >= 1.0e-8 && eps <= 1.0);
-
-        let y = instance_norm_scalar(x, mean, var_val, eps)
-            .expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "must produce finite output");
-        assert!(!y.is_nan(), "must not produce NaN");
-    }
-
-    /// Proves that zero variance with positive eps still produces finite output.
-    ///
-    /// When var_val = 0 and eps > 0, rsqrt(eps) is well-defined and finite.
-    /// With mean = x, the result should be 0.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_f32_stub)]
-    fn instance_norm_scalar_zero_variance_safe() {
-        let x: f32 = kani::any();
-        let eps: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -1.0e3 && x <= 1.0e3);
-        kani::assume(eps.is_finite() && eps >= 1.0e-8 && eps <= 1.0);
-
-        // mean = x, var = 0: all values are the same, output should be ~0
-        let y =
-            instance_norm_scalar(x, x, 0.0, eps).expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "zero-variance output must be finite");
-        assert!(
-            y.abs() < 1e-3,
-            "zero-variance output should be ~0 (x - mean = 0)"
-        );
-    }
-
-    /// Proves output is bounded for positive variance inputs.
-    ///
-    /// With var ∈ [0, 1e4] and eps ∈ [1e-5, 1], rsqrt(var + eps) ∈ [0.01, 316].
-    /// Combined with (x - mean) ∈ [-200, 200], output is bounded.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_f32_stub)]
-    fn instance_norm_scalar_positive_variance_bounded() {
-        let x: f32 = kani::any();
-        let mean: f32 = kani::any();
-        let var_val: f32 = kani::any();
-        let eps: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -100.0 && x <= 100.0);
-        kani::assume(mean.is_finite() && mean >= -100.0 && mean <= 100.0);
-        kani::assume(var_val.is_finite() && var_val >= 0.0 && var_val <= 1.0e4);
-        kani::assume(eps.is_finite() && eps >= 1.0e-5 && eps <= 1.0);
-
-        let y = instance_norm_scalar(x, mean, var_val, eps)
-            .expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "output must be finite");
-        assert!(y.abs() <= 7.0e4, "output must be bounded");
-    }
-}
-
 // Affine variants extracted to instance_norm_affine.rs (500-line file limit).
 #[path = "instance_norm_affine.rs"]
 pub(crate) mod affine;
@@ -362,10 +273,6 @@ pub(crate) use affine::{
     build_instance_norm_affine, build_instance_norm_decomposed_affine, instance_norm_affine_ref,
     instance_norm_affine_scalar,
 };
-
-#[cfg(kani)]
-#[path = "instance_norm_kani_builder_tests.rs"]
-mod kani_builder_proofs;
 
 #[cfg(test)]
 #[path = "instance_norm_tests.rs"]

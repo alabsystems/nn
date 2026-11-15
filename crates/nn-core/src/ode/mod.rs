@@ -17,14 +17,10 @@
 use crate::error::Result;
 use crate::DynTensor;
 
-// -- Scalar helpers (Kani-verifiable, no DynTensor dependency) ----------------
+// -- Scalar helpers (no DynTensor dependency) ---------------------------------
 
 /// Cosine schedule timestep: `t(s) = 1 - cos(s * pi/2)`.
 ///
-/// Extracted so `kani_ode.rs` can verify this function directly.
-/// Note: Kani uses a cos_stub (nondeterministic in \[-1, 1\]) because CBMC
-/// cannot model `f32::cos`, so the Kani harness proves the weaker bound
-/// `[0, 2]` rather than the true `[0, 1]`.
 #[inline]
 pub fn cosine_t(s: f32) -> f32 {
     1.0 - (s * std::f32::consts::FRAC_PI_2).cos()
@@ -32,29 +28,9 @@ pub fn cosine_t(s: f32) -> f32 {
 
 /// Linear schedule timestep: `t(s) = t_max * (1 - s) + t_min * s`.
 ///
-/// Extracted so `kani_ode.rs` can call this directly to verify the
-/// convex-combination bound `[t_min, t_max]`.
 #[inline]
 pub fn linear_t(s: f32, t_max: f32, t_min: f32) -> f32 {
     t_max * (1.0 - s) + t_min * s
-}
-
-/// Scalar Euler step: `x_new = x + v * dt`.
-///
-/// The scalar equivalent of `x = x.add(&v.mul_scalar(dt))` in [`euler_solve`].
-/// Extracted so Kani can verify finite-output for bounded inputs.
-#[inline]
-pub fn euler_step_scalar(x: f32, v: f32, dt: f32) -> f32 {
-    x + v * dt
-}
-
-/// Scalar CFG velocity combination: `v = v_cond + cfg * (v_cond - v_uncond)`.
-///
-/// The scalar equivalent of the guidance computation in [`euler_solve_cfg`].
-/// Extracted so Kani can verify finite-output for bounded inputs.
-#[inline]
-pub fn cfg_combine_scalar(v_cond: f32, v_uncond: f32, cfg_scale: f32) -> f32 {
-    v_cond + cfg_scale * (v_cond - v_uncond)
 }
 
 /// Time schedule for ODE integration.

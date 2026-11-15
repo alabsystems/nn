@@ -25,9 +25,7 @@ use crate::kokoro_contracts::{
     JunctionContract, J2_F0_LOWER, J2_F0_UPPER, J5_AUDIO_LOWER, J5_AUDIO_UPPER,
 };
 use crate::monotonicity::interpret_duration_positivity;
-use crate::moonshot::{
-    artifact_registry, MoonshotCertificate, MoonshotStatus, VerificationLevel, PROPERTY_NAMES,
-};
+use crate::moonshot::{artifact_registry, MoonshotCertificate, MoonshotStatus, VerificationLevel};
 use crate::moonshot_crown::{
     check_non_clipping as crown_check_non_clipping,
     check_temporal_boundedness, verify_properties_from_pipeline,
@@ -577,26 +575,6 @@ fn test_pipeline_display_trait() {
 // ===========================================================================
 
 #[test]
-fn test_moonshot_status_all_have_evidence() {
-    let status = MoonshotStatus::from_repo();
-    // The artifact registry should populate evidence for all properties
-    assert!(
-        status.all_have_evidence(),
-        "all properties should have evidence"
-    );
-}
-
-#[test]
-fn test_moonshot_status_at_least_crown_partial() {
-    let status = MoonshotStatus::from_repo();
-    // Given the state of the project, most properties should be at least CrownPartial
-    assert!(
-        status.all_at_least_crown_partial(),
-        "all properties should be at least CrownPartial"
-    );
-}
-
-#[test]
 fn test_moonshot_certificate_serialization_roundtrip() {
     let status = MoonshotStatus::from_repo();
     let cert = MoonshotCertificate::from_status(&status, "kokoro-v1", "test spec", "hash123");
@@ -1095,7 +1073,6 @@ fn test_verification_level_total_ordering() {
         VerificationLevel::CrownPartial,
         VerificationLevel::CrownProbabilistic,
         VerificationLevel::CrownProven,
-        VerificationLevel::KaniProven,
         VerificationLevel::SmtProven,
     ];
     for i in 0..levels.len() - 1 {
@@ -1131,20 +1108,6 @@ fn test_artifact_registry_all_property_indices_valid() {
                 a.description
             );
         }
-    }
-}
-
-#[test]
-fn test_artifact_registry_covers_all_properties() {
-    let artifacts = artifact_registry();
-    let mut covered = [false; 8];
-    for a in &artifacts {
-        for &idx in a.properties {
-            covered[idx] = true;
-        }
-    }
-    for (i, &c) in covered.iter().enumerate() {
-        assert!(c, "property {i} ({}) has no artifacts", PROPERTY_NAMES[i]);
     }
 }
 

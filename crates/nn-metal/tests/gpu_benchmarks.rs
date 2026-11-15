@@ -4,7 +4,7 @@
 
 //! GPU performance benchmarks for Metal backend operations.
 //!
-//! Run with: `cargo test -p nn-metal --test gpu_benchmarks -- --nocapture`
+//! Run with: `targo --unverified test -p nn-metal --test gpu_benchmarks -- --nocapture`
 //!
 //! Measures GPU dispatch + execution time for core operations at real-model
 //! tensor shapes. Each benchmark flushes the GPU command buffer to measure

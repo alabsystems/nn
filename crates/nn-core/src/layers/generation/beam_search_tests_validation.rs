@@ -164,6 +164,43 @@ fn uniform_model(_input: &DynTensor, _cache: &mut KvCache) -> crate::Result<DynT
     DynTensor::from_vec(logits, &[1, 5], &Device::Cpu)
 }
 
+#[test]
+fn test_beam_search_width_one_matches_greedy_on_tied_logits() {
+    let config = BeamSearchConfig::new(1).with_max_new_tokens(3);
+    let mut cache = KvCache::new(1);
+    let beam = beam_search(uniform_model, &[0], &mut cache, &config, &Device::Cpu).unwrap();
+    let mut greedy_cache = KvCache::new(1);
+    let greedy_config = crate::layers::GenerationConfig {
+        max_new_tokens: 3,
+        ..Default::default()
+    };
+    let greedy = crate::layers::generate(
+        uniform_model,
+        &[0],
+        &mut greedy_cache,
+        &greedy_config,
+        &Device::Cpu,
+    )
+    .unwrap();
+
+    assert_eq!(greedy.token_ids, vec![4, 4, 4]);
+    assert_eq!(beam.beams[0].token_ids, greedy.token_ids);
+}
+
+#[test]
+fn test_top_k_equal_values_prefer_later_token_ids() {
+    let values = [4.0, 1.0, 4.0, 4.0, 2.0];
+    let ranking = [3, 2, 0, 4, 1];
+    for k in 0..=values.len() + 1 {
+        let top = super::super::top_k_by_value(&values, k);
+        let expected: Vec<_> = ranking[..k.min(values.len())]
+            .iter()
+            .map(|&index| (index, values[index]))
+            .collect();
+        assert_eq!(top, expected, "k={k}");
+    }
+}
+
 /// Verify beam search produces deterministic output when all tokens have equal probability.
 /// After log_softmax of uniform logits, all tokens have log_prob = ln(1/5) ≈ -1.609.
 /// Tie-breaking should be stable across runs.

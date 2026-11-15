@@ -358,7 +358,7 @@ pub fn beam_search_decode(
 ///
 /// Uses indices-only partial sort O(V + k log k) instead of full O(V log V) sort.
 /// For V=51,865 and k=5, this avoids sorting ~51,860 irrelevant entries.
-// pub(super) for Kani proof harnesses in sibling kani_decode_beam_proofs module (#3645).
+// pub(super) so `decode_beam_tests` can check the selection directly.
 pub(super) fn top_k_with_log_probs(logits: &[f32], k: usize) -> Vec<(usize, f32)> {
     // Compute log-softmax.
     let max_val = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);

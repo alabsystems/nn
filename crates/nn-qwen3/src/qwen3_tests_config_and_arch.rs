@@ -308,7 +308,7 @@ fn test_dtype_accessor_matches_vb() {
 #[test]
 fn test_qwen3_0_6b_config_validates() {
     // Qwen3-0.6B: smallest Qwen3 variant.
-    // Source: Kani proof validate_accepts_production_configs, arXiv:2505.09388
+    // Source: arXiv:2505.09388
     let cfg = Qwen3Config::new(
         896,         // hidden_size
         4864,        // intermediate_size

@@ -85,7 +85,7 @@ pub(crate) fn build_instance_norm_affine(
 /// # Errors
 ///
 /// Returns [`TensorIRError::KernelValidation`] if any dimension is 0.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn build_instance_norm_decomposed_affine(
     b: usize,
@@ -244,7 +244,7 @@ pub(crate) fn instance_norm_affine_ref(
 ///
 /// Returns [`KernelError::NonFiniteInput`] if any input is NaN or infinite, or if
 /// the computed result overflows to infinity.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn instance_norm_affine_scalar(
     x: f32,
@@ -255,80 +255,4 @@ pub(crate) fn instance_norm_affine_scalar(
     beta: f32,
 ) -> Result<f32, KernelError> {
     affine_normalize_scalar(x, mean, var, eps, gamma, beta)
-}
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-    use crate::kani_stubs::sqrt_stub;
-
-    /// Proves `instance_norm_affine_scalar` produces finite output for bounded inputs.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn instance_norm_affine_scalar_finite_for_bounded_inputs() {
-        let x: f32 = kani::any();
-        let mean: f32 = kani::any();
-        let var: f32 = kani::any();
-        let eps: f32 = kani::any();
-        let gamma: f32 = kani::any();
-        let beta: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -1.0e3 && x <= 1.0e3);
-        kani::assume(mean.is_finite() && mean >= -1.0e3 && mean <= 1.0e3);
-        kani::assume(var.is_finite() && var >= 0.0 && var <= 1.0e6);
-        kani::assume(eps.is_finite() && eps >= 1.0e-8 && eps <= 1.0);
-        kani::assume(gamma.is_finite() && gamma >= -10.0 && gamma <= 10.0);
-        kani::assume(beta.is_finite() && beta >= -10.0 && beta <= 10.0);
-
-        let y = instance_norm_affine_scalar(x, mean, var, eps, gamma, beta)
-            .expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "must produce finite output");
-        assert!(!y.is_nan(), "must not produce NaN");
-    }
-
-    /// Proves that zero variance with positive eps still produces finite output.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn instance_norm_affine_scalar_zero_variance_safe() {
-        let x: f32 = kani::any();
-        let eps: f32 = kani::any();
-        let gamma: f32 = kani::any();
-        let beta: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -1.0e3 && x <= 1.0e3);
-        kani::assume(eps.is_finite() && eps >= 1.0e-8 && eps <= 1.0);
-        kani::assume(gamma.is_finite() && gamma >= -10.0 && gamma <= 10.0);
-        kani::assume(beta.is_finite() && beta >= -10.0 && beta <= 10.0);
-
-        let y = instance_norm_affine_scalar(x, x, 0.0, eps, gamma, beta)
-            .expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "zero-variance output must be finite");
-        assert!(
-            (y - beta).abs() < 1e-3,
-            "zero-variance output should equal beta"
-        );
-    }
-
-    /// Proves identity affine (gamma=1, beta=0) produces bounded output.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn instance_norm_affine_scalar_identity_is_non_affine() {
-        let x: f32 = kani::any();
-        let mean: f32 = kani::any();
-        let var: f32 = kani::any();
-        let eps: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x >= -100.0 && x <= 100.0);
-        kani::assume(mean.is_finite() && mean >= -100.0 && mean <= 100.0);
-        kani::assume(var.is_finite() && var >= 0.0 && var <= 1.0e4);
-        kani::assume(eps.is_finite() && eps >= 1.0e-5 && eps <= 1.0);
-
-        let y = instance_norm_affine_scalar(x, mean, var, eps, 1.0, 0.0)
-            .expect("must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "identity affine output must be finite");
-        assert!(y.abs() <= 7.0e4, "identity affine output must be bounded");
-    }
 }

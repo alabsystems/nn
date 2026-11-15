@@ -211,7 +211,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(kani)]
-#[path = "kani_positional_proofs.rs"]
-mod kani_positional_proofs;

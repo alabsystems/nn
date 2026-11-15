@@ -33,82 +33,6 @@ pub mod lr_schedule;
 pub mod optimizer;
 pub mod sgd;
 
-#[cfg(kani)]
-#[path = "kani_optim_proofs.rs"]
-mod kani_optim_proofs;
-
-#[cfg(kani)]
-#[path = "kani_optim_proofs_adam.rs"]
-mod kani_optim_proofs_adam;
-
-#[cfg(kani)]
-#[path = "kani_grad_scaler_proofs.rs"]
-mod kani_grad_scaler_proofs;
-
-#[cfg(kani)]
-#[path = "kani_lr_schedule_proofs.rs"]
-mod kani_lr_schedule_proofs;
-
-#[cfg(kani)]
-#[path = "kani_lora_proofs.rs"]
-mod kani_lora_proofs;
-
-#[cfg(kani)]
-#[path = "kani_validate_gradient_proofs.rs"]
-mod kani_validate_gradient_proofs;
-
-#[cfg(kani)]
-#[path = "kani_grad_clip_proofs.rs"]
-mod kani_grad_clip_proofs;
-
-#[cfg(kani)]
-#[path = "kani_optim_proofs_advanced.rs"]
-mod kani_optim_proofs_advanced;
-
-#[cfg(kani)]
-#[path = "kani_grad_scaler_proofs2.rs"]
-mod kani_grad_scaler_proofs2;
-
-#[cfg(kani)]
-#[path = "kani_lora_proofs2.rs"]
-mod kani_lora_proofs2;
-
-#[cfg(kani)]
-#[path = "kani_sgd_proofs2.rs"]
-mod kani_sgd_proofs2;
-
-#[cfg(kani)]
-#[path = "kani_lr_schedule_proofs2.rs"]
-mod kani_lr_schedule_proofs2;
-
-#[cfg(kani)]
-#[path = "kani_adafactor_adam_proofs.rs"]
-mod kani_adafactor_adam_proofs;
-
-#[cfg(kani)]
-mod kani_adafactor;
-
-#[cfg(kani)]
-#[path = "kani_optim_proofs3.rs"]
-mod kani_optim_proofs3;
-
-#[cfg(kani)]
-mod kani_adam;
-
-#[cfg(kani)]
-mod kani_grad_scaler;
-
-#[cfg(kani)]
-mod kani_lora;
-
-#[cfg(kani)]
-#[path = "kani_optim_wave11.rs"]
-mod kani_optim_wave11;
-
-#[cfg(kani)]
-#[path = "kani_optimizer_update_safety.rs"]
-mod kani_optimizer_update_safety;
-
 pub use adafactor::{AdaFactor, AdaFactorConfig};
 pub use adam::{AdamConfig, AdamW};
 pub use checkpoint::{
@@ -177,3 +101,7 @@ mod scheduler_extended_tests;
 #[cfg(test)]
 #[path = "optim_config_extended_tests.rs"]
 mod optim_config_extended_tests;
+
+#[cfg(test)]
+#[path = "grad_shape_tests.rs"]
+mod grad_shape_tests;

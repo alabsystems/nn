@@ -385,22 +385,6 @@ mod trace_compile_partition_codegen;
 mod fusion;
 pub use fusion::{compile_trace_with_fusion, detect_fusion_chains, FusionChainInfo, FusionPair};
 
-#[cfg(kani)]
-#[path = "kani_trace_compile_misc.rs"]
-mod kani_trace_compile_misc;
-
-#[cfg(kani)]
-#[path = "kani_trace_compile_fusion.rs"]
-mod kani_trace_compile_fusion;
-
-#[cfg(kani)]
-#[path = "kani_trace_compile_fusion_3745.rs"]
-mod kani_trace_compile_fusion_3745;
-
-#[cfg(kani)]
-#[path = "kani_fusion_3738.rs"]
-mod kani_fusion_3738;
-
 #[cfg(test)]
 #[path = "trace_compile_test_index.rs"]
 mod test_index;

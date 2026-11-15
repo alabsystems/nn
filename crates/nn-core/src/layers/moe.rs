@@ -425,14 +425,6 @@ impl Module for MoeLayer {
     }
 }
 
-#[cfg(kani)]
-#[path = "moe_kani.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "moe_kani_routing.rs"]
-mod kani_routing_proofs;
-
 #[cfg(test)]
 #[path = "moe_tests.rs"]
 mod tests;

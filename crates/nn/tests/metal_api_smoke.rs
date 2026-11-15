@@ -8,7 +8,7 @@
 //! corresponding compile-time check here. If a re-export is removed or
 //! renamed, this test fails to compile, preventing silent API breakage.
 //!
-//! Run: `cargo test -p nn --features metal --test metal_api_smoke`
+//! Run: `targo --unverified test -p nn --features metal --test metal_api_smoke`
 
 #![allow(dead_code, unused_imports, clippy::let_unit_value)]
 

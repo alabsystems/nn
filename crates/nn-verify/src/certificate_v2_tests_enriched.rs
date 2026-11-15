@@ -33,7 +33,6 @@ fn test_enriched_pipeline_none_equals_basic() {
     assert_eq!(basic.input_spec, enriched.input_spec);
     assert!(enriched.source_hash.is_none());
     assert!(enriched.weight_hash.is_none());
-    assert!(enriched.kani_status.is_none());
     assert!(enriched.layer_bounds.is_none());
     assert!(enriched.verifier_version.is_none());
 }
@@ -117,7 +116,6 @@ fn test_enriched_pipeline_nonexistent_paths_ignored() {
     let enrichment = CertificateEnrichment {
         source_path: Some(PathBuf::from("/nonexistent/kernel.rs")),
         weight_path: Some(PathBuf::from("/nonexistent/weights.safetensors")),
-        kani_status_path: Some(PathBuf::from("/nonexistent/kani_status.json")),
         ..Default::default()
     };
     let cert = certificate_from_pipeline_enriched(
@@ -131,7 +129,6 @@ fn test_enriched_pipeline_nonexistent_paths_ignored() {
     // Nonexistent paths should be silently ignored
     assert!(cert.source_hash.is_none());
     assert!(cert.weight_hash.is_none());
-    assert!(cert.kani_status.is_none());
     assert!(cert.validate().is_ok());
 }
 
@@ -145,7 +142,6 @@ fn test_bundle_v2_save_load_roundtrip() {
     let valid_hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     let cert = ProofCertificate::from_verification(&result, sample_input_spec())
         .with_layer_bounds(sample_layer_bounds())
-        .with_kani_status(sample_kani_record())
         .with_weight_hash(valid_hash.to_string())
         .with_source_hash(valid_hash.to_string())
         .with_verifier_version("NY 0.3.0".to_string());
@@ -168,11 +164,6 @@ fn test_bundle_v2_save_load_roundtrip() {
     let loaded_cert = &loaded.certificates[0];
     assert!(loaded_cert.layer_bounds.is_some());
     assert_eq!(loaded_cert.layer_bounds.as_ref().unwrap().len(), 2);
-    assert!(loaded_cert.kani_status.is_some());
-    assert_eq!(
-        loaded_cert.kani_status.as_ref().unwrap().status,
-        KaniOutcome::Passed
-    );
     assert_eq!(loaded_cert.weight_hash.as_deref(), Some(valid_hash));
     assert_eq!(loaded_cert.source_hash.as_deref(), Some(valid_hash));
     assert_eq!(

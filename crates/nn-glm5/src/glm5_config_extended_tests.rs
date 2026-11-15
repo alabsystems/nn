@@ -330,7 +330,8 @@ fn test_flat_kv_cache_token_size_matches_config() {
     let hd = cfg.kv_channels;
     let token_size = nkv * hd;
 
-    let mut cache = KVCache::new(cfg.num_layers, nkv, hd, cfg.seq_length);
+    let mut cache =
+        KVCache::new(cfg.num_layers, nkv, hd, cfg.seq_length).expect("valid KVCache sizes");
     let key = vec![0.0_f32; token_size];
     let val = vec![0.0_f32; token_size];
 
@@ -342,12 +343,12 @@ fn test_flat_kv_cache_token_size_matches_config() {
     // After 1 token, each layer's key buffer should have exactly token_size floats
     for layer in 0..cfg.num_layers {
         assert_eq!(
-            cache.get_keys(layer).len(),
+            cache.get_keys(layer).unwrap().len(),
             token_size,
             "layer {layer}: keys should have {token_size} floats after 1 token"
         );
         assert_eq!(
-            cache.get_values(layer).len(),
+            cache.get_values(layer).unwrap().len(),
             token_size,
             "layer {layer}: values should have {token_size} floats after 1 token"
         );
@@ -362,7 +363,8 @@ fn test_flat_kv_cache_multi_token_accumulation() {
     let max_seq = 10;
     let token_size = num_heads * head_dim;
 
-    let mut cache = KVCache::new(num_layers, num_heads, head_dim, max_seq);
+    let mut cache =
+        KVCache::new(num_layers, num_heads, head_dim, max_seq).expect("valid KVCache sizes");
 
     // Append 5 tokens
     for _tok in 0..5 {
@@ -377,7 +379,7 @@ fn test_flat_kv_cache_multi_token_accumulation() {
     // Each layer should have 5 * token_size floats
     for layer in 0..num_layers {
         assert_eq!(
-            cache.get_keys(layer).len(),
+            cache.get_keys(layer).unwrap().len(),
             5 * token_size,
             "layer {layer}: keys should accumulate 5 * token_size"
         );
@@ -387,7 +389,7 @@ fn test_flat_kv_cache_multi_token_accumulation() {
 #[test]
 fn test_flat_kv_cache_max_seq_exactly_at_limit() {
     // Create cache with max_seq=3 and fill it exactly
-    let mut cache = KVCache::new(1, 2, 4, 3);
+    let mut cache = KVCache::new(1, 2, 4, 3).expect("valid KVCache sizes");
     let token = vec![0.0_f32; 2 * 4];
 
     for _tok in 0..3 {

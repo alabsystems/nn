@@ -131,11 +131,7 @@ pub fn crossfade_chunks_windowed(
 /// Delegates to [`nn_core::audio::crossfade_blend_into`] (linear) or
 /// [`nn_core::audio::crossfade_hann_blend_into`] (Hann).
 ///
-/// Kani coverage: `crossfade_alpha_in_unit_interval` (harness 1) and
-/// `crossfade_convex_combination_bounded` (harness 3) prove the alpha and
-/// output bounds for the linear formula.
-/// Retained for backward compatibility with Kani harnesses that call the
-/// non-windowed variant. Production code should use `crossfade_blend_into_windowed`.
+/// Production code should use `crossfade_blend_into_windowed`.
 #[allow(dead_code)]
 pub(crate) fn crossfade_blend_into(
     out: &mut Vec<f32>,
@@ -524,22 +520,6 @@ pub use assembler::StreamingAssembler;
 #[path = "kokoro_streaming_session.rs"]
 mod streaming_session;
 pub use streaming_session::StreamingKokoroSession;
-
-#[cfg(kani)]
-#[path = "kokoro_streaming_kani_crossfade.rs"]
-mod kani_crossfade;
-
-#[cfg(kani)]
-#[path = "kokoro_streaming_kani_contiguity.rs"]
-mod kani_contiguity;
-
-#[cfg(kani)]
-#[path = "kokoro_streaming_kani_assembler.rs"]
-mod kani_assembler;
-
-#[cfg(kani)]
-#[path = "kani_kokoro_streaming.rs"]
-mod kani_streaming_proofs;
 
 #[cfg(test)]
 #[path = "kokoro_streaming_tests.rs"]

@@ -54,17 +54,6 @@ fn test_emit_scalar_fn_rejects_invalid_kernel() {
 }
 
 #[test]
-fn test_emit_kani_harness_rejects_invalid_kernel() {
-    use crate::codegen_kani::emit_kani_harness;
-    let kernel = invalid_kernel_forward_ref();
-    let err = emit_kani_harness(&kernel).expect_err("forward-ref kernel should be rejected");
-    assert!(
-        err.to_string().contains("forward or self reference"),
-        "expected forward-ref error, got: {err}"
-    );
-}
-
-#[test]
 fn test_emit_differential_test_rejects_invalid_kernel() {
     use crate::codegen_difftest::emit_differential_test;
     let kernel = invalid_kernel_forward_ref();

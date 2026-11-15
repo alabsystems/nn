@@ -17,17 +17,11 @@ mod unary;
 
 pub(crate) use binop::{translate_binary_fn, translate_binop};
 pub(crate) use clamp::translate_clamp;
-#[cfg(kani)]
-pub(crate) use compare::evaluate_constant_compare;
 pub(crate) use compare::translate_compare;
 pub(crate) use minmax::translate_minmax;
 pub(crate) use select::translate_select;
 pub(crate) use sum_reduce::translate_sum_reduce;
 pub(crate) use unary::translate_unary;
-
-#[cfg(kani)]
-#[path = "kani_graph_ops_extra.rs"]
-mod kani_graph_ops_extra;
 
 #[cfg(test)]
 #[path = "../graph_ops_tests_arithmetic.rs"]

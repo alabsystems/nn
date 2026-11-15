@@ -293,7 +293,7 @@ pub fn build_adain1d(channels: usize, time: usize) -> Result<TensorKernelDef, Te
 ///
 /// Returns [`TensorIRError::KernelValidation`] if `channels` or `time` is 0.
 /// Returns [`TensorIRError::ScalarKernelBuild`] if the scalar kernel builder fails.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn build_snake_tensor(
     channels: usize,
@@ -326,7 +326,7 @@ pub(crate) fn build_snake_tensor(
 /// Composes the native `AdaIN1d` op (for tight NY bounds on the
 /// normalization) with a Snake elementwise step. This avoids the bounds
 /// blowup from decomposed InstanceNorm while keeping the Snake activation
-/// as an explicit elementwise node for Kani verification.
+/// as an explicit elementwise node.
 ///
 /// # Arguments
 ///
@@ -337,7 +337,7 @@ pub(crate) fn build_snake_tensor(
 ///
 /// Returns [`TensorIRError::KernelValidation`] if `channels` or `time` is 0.
 /// Returns [`TensorIRError::ScalarKernelBuild`] if the scalar kernel builder fails.
-#[allow(dead_code)] // Called from #[cfg(test)] and #[cfg(kani)] only
+#[allow(dead_code)] // Called from #[cfg(test)] only
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn build_adain_snake_tensor(
     channels: usize,
@@ -374,18 +374,6 @@ pub(crate) fn build_adain_snake_tensor(
         output: TensorNodeId::new(7),
     })
 }
-
-#[cfg(kani)]
-#[path = "adain_kani.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "adain_kani_builder.rs"]
-mod kani_builder_proofs;
-
-#[cfg(kani)]
-#[path = "adain_leaky_relu_kani.rs"]
-mod kani_leaky_relu_proofs;
 
 #[cfg(test)]
 #[path = "adain_tests.rs"]

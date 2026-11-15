@@ -338,30 +338,3 @@ mod cuda_ptx_generation_tests;
 #[cfg(test)]
 #[path = "dyn_tensor_cuda_tests.rs"]
 mod dyn_tensor_cuda_tests;
-
-#[cfg(kani)]
-#[path = "kani_dispatch_coverage.rs"]
-mod kani_dispatch_coverage;
-
-#[cfg(kani)]
-#[path = "kani_codegen_hip_emit_step.rs"]
-mod kani_codegen_hip_emit_step;
-
-#[cfg(kani)]
-#[path = "kani_codegen_hip_emit_conv.rs"]
-mod kani_codegen_hip_emit_conv;
-
-#[cfg(kani)]
-#[path = "kani_codegen_hip_emit_structural.rs"]
-mod kani_codegen_hip_emit_structural;
-
-#[cfg(kani)]
-mod kani_codegen_hip_moe;
-#[cfg(kani)]
-mod kani_hip_dispatch;
-#[cfg(kani)]
-mod kani_hip_runtime;
-
-#[cfg(kani)]
-#[path = "kani_mla_mxfp4_cache.rs"]
-mod kani_mla_mxfp4_cache;

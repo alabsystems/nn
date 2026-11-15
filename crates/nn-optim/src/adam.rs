@@ -85,6 +85,7 @@ impl AdamW {
     /// - `beta1` or `beta2` is outside `[0, 1)` (1.0 causes division by zero in bias correction)
     /// - `eps` is not positive (zero eps causes division by zero in adaptive step)
     /// - `weight_decay` is negative or not finite
+    /// - `vars` holds more than 2^18 parameter tensors
     #[must_use = "optimizer must be stored to perform training steps"]
     pub fn new(vars: Vec<Var>, config: AdamConfig) -> Result<Self> {
         crate::error::validate_lr(config.lr)?;
@@ -107,7 +108,11 @@ impl AdamW {
             });
         }
         crate::error::validate_weight_decay(config.weight_decay)?;
-        let mut states = Vec::with_capacity(vars.len());
+        let n = vars.len();
+        if n > crate::error::MAX_PARAM_TENSORS {
+            return Err(crate::error::too_many_params(n));
+        }
+        let mut states = Vec::with_capacity(n);
         for var in vars {
             let dims = var.dims()?;
             let dtype = var.dtype()?;
@@ -193,23 +198,47 @@ fn fused_adam_update(state: &mut VarState, grad: &DynTensor, hp: &AdamHyperparam
     let v_slice = v_arr.as_slice_mut().ok_or_else(not_contiguous)?;
     let theta_slice = theta_arr.as_slice_mut().ok_or_else(not_contiguous)?;
 
+    // `step()` checked the gradient's shape against the parameter, and the
+    // moments are created (and restored from checkpoints) with that shape, so
+    // every slice has the parameter's length. Re-checked here on the slices
+    // themselves: a mismatch is an error, never a partial update.
+    let n = theta_slice.len();
+    if grad_slice.len() != n {
+        return Err(OptimError::GradientShapeMismatch {
+            expected: theta_cpu.dims().to_vec(),
+            got: grad_cpu.dims().to_vec(),
+        });
+    }
+    if m_slice.len() != n || v_slice.len() != n {
+        return Err(OptimError::CorruptedState {
+            optimizer: "AdamW",
+            reason: "moment length differs from the parameter's",
+        });
+    }
+
+    // The lengths are equal (checked above), so the zip visits every element
+    // exactly as an index loop over `0..n` would.
     let mut non_finite_count = 0usize;
-    for i in 0..theta_slice.len() {
-        let g = grad_slice[i];
-        m_slice[i] = beta1_ema(m_slice[i], g, hp.beta1);
-        v_slice[i] = beta2_ema(v_slice[i], g, hp.beta2);
-        let m_hat = m_slice[i] * hp.bc1;
-        let v_hat = v_slice[i] * hp.bc2;
+    let elements = theta_slice
+        .iter_mut()
+        .zip(m_slice.iter_mut())
+        .zip(v_slice.iter_mut())
+        .zip(grad_slice);
+    for (((theta, m), v), &g) in elements {
+        *m = beta1_ema(*m, g, hp.beta1);
+        *v = beta2_ema(*v, g, hp.beta2);
+        let m_hat = *m * hp.bc1;
+        let v_hat = *v * hp.bc2;
         let step = hp.lr * m_hat / (v_hat.sqrt() + hp.eps);
         let new_val = if hp.wd > 0.0 {
-            theta_slice[i] * hp.decay_factor - step
+            *theta * hp.decay_factor - step
         } else {
-            theta_slice[i] - step
+            *theta - step
         };
         if !new_val.is_finite() {
             non_finite_count += 1;
         }
-        theta_slice[i] = new_val;
+        *theta = new_val;
     }
 
     if non_finite_count > 0 {
@@ -257,7 +286,10 @@ fn beta2_ema(v: f32, g: f32, beta2: f32) -> f32 {
 
 impl Optimizer for AdamW {
     fn step(&mut self, grads: &GradStore) -> Result<()> {
-        self.step_t += 1;
+        // Saturating: a checkpoint may restore any `u64` step count, and a
+        // restored `usize::MAX` must not panic on the next step. `t` is capped
+        // at `i32::MAX` below, so saturation changes no update.
+        self.step_t = self.step_t.saturating_add(1);
         // Cap at i32::MAX for powi() — bias correction is 1.0 for any
         // t > ~7000 (beta1=0.9) or ~7M (beta2=0.999), so capping is
         // numerically invisible but prevents unsound `as i32` overflow.
@@ -279,6 +311,7 @@ impl Optimizer for AdamW {
                 Some(g) => g,
                 None => continue,
             };
+            crate::error::validate_gradient_shape(&state.var.dims()?, grad)?;
             crate::error::validate_gradient(grad)?;
             fused_adam_update(state, grad, &hp)?;
         }

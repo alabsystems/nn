@@ -9,7 +9,7 @@
 //! GLM-OCR 0.9B), benchmarks a single decoder layer instead of the full
 //! model to keep per-iteration time reasonable for CI.
 //!
-//! Run: `cargo bench -p nn-models --bench dpdf_bench`
+//! Run: `targo --unverified bench -p nn-models --bench dpdf_bench`
 //!
 //! Part of #3891.
 

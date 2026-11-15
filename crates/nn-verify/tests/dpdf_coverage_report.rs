@@ -5,15 +5,14 @@
 //! dpdf verification coverage dashboard.
 //!
 //! Generates a comprehensive report of dpdf model verification coverage
-//! across all three verification layers:
+//! across both verification layers:
 //! 1. **NY compose tests** — per-model counts from `compose_dpdf_*.rs`
-//! 2. **Kani harnesses** — per-file counts from `kani_dpdf_*.rs` in nn-models
-//! 3. **ay SMT proofs** — proof count from split `ay_dpdf_*_proofs.rs` helpers
+//! 2. **ay SMT proofs** — proof count from split `ay_dpdf_*_proofs.rs` helpers
 //!
 //! Also reads `nn_verify_status_dpdf.json` for soundness breakdown and
 //! checks certification property coverage from `dpdf_certify.rs`.
 //!
-//! Run: `cargo test -p nn-verify --test dpdf_coverage_report -- --nocapture`
+//! Run: `targo --unverified test -p nn-verify --test dpdf_coverage_report -- --nocapture`
 //!
 //! Part of #3919.
 
@@ -37,7 +36,7 @@ fn workspace_root() -> PathBuf {
 
 /// Returns `true` (and prints a skip notice) when the dpdf status artifact is
 /// absent. `nn_verify_status_dpdf.json` is a generated, gitignored artifact
-/// produced by `cargo run --example verify_all`; a bare `cargo test`/`nextest`
+/// produced by `targo --unverified run --example verify_all`; a bare `cargo test`/`nextest`
 /// run does not create it. Mirrors the skip-when-absent convention already used
 /// by `gap_detector_tests::test_detect_gaps_real_status_file` so these
 /// integration tests skip cleanly instead of hard-failing on a missing artifact
@@ -49,7 +48,7 @@ fn dpdf_status_missing() -> bool {
     }
     eprintln!(
         "Skipping: nn_verify_status_dpdf.json not found at {}. \
-         Run `cargo run -p nn-verify --example verify_all` to generate it.",
+         Run `targo --unverified run -p nn-verify --example verify_all` to generate it.",
         path.display()
     );
     true
@@ -58,11 +57,6 @@ fn dpdf_status_missing() -> bool {
 /// Path to the nn-verify test helpers directory.
 fn verify_helpers_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/helpers")
-}
-
-/// Path to the nn-models src directory.
-fn models_src_dir() -> PathBuf {
-    workspace_root().join("crates/nn-models/src")
 }
 
 // ---------------------------------------------------------------------------
@@ -90,21 +84,6 @@ fn dpdf_compose_files() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// Kani harness files in nn-models for dpdf.
-fn dpdf_kani_files() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("kani_dpdf_model_proofs.rs", "Model builders"),
-        ("kani_table_transformer_glm_ocr_proofs.rs", "Table+GLM-OCR"),
-        ("kani_dpdf_pipeline_paddle_ocr_proofs.rs", "Pipeline+Paddle"),
-        (
-            "kani_dpdf_postprocess_table_structure_proofs.rs",
-            "Postprocess+Table",
-        ),
-        ("kani_convert_dpdf_proofs.rs", "Weight conversion"),
-        ("kani_dpdf_new_modules_proofs.rs", "New modules"),
-    ]
-}
-
 /// Count #[test] attributes per compose helper file.
 fn count_compose_tests() -> BTreeMap<String, usize> {
     let helpers_dir = verify_helpers_dir();
@@ -112,18 +91,6 @@ fn count_compose_tests() -> BTreeMap<String, usize> {
     for (filename, display_name) in dpdf_compose_files() {
         let path = helpers_dir.join(filename);
         let count = count_pattern_in_file(&path, "#[test]");
-        counts.insert(display_name.to_string(), count);
-    }
-    counts
-}
-
-/// Count #[kani::proof] attributes per Kani harness file.
-fn count_kani_harnesses() -> BTreeMap<String, usize> {
-    let src_dir = models_src_dir();
-    let mut counts = BTreeMap::new();
-    for (filename, display_name) in dpdf_kani_files() {
-        let path = src_dir.join(filename);
-        let count = count_pattern_in_file(&path, "#[kani::proof]");
         counts.insert(display_name.to_string(), count);
     }
     counts
@@ -216,13 +183,11 @@ fn load_status_breakdown() -> SoundnessBreakdown {
 
 fn print_report(
     compose_counts: &BTreeMap<String, usize>,
-    kani_counts: &BTreeMap<String, usize>,
     ay_count: usize,
     breakdown: &SoundnessBreakdown,
     cert: &DpdfCertificate,
 ) {
     let compose_total: usize = compose_counts.values().sum();
-    let kani_total: usize = kani_counts.values().sum();
 
     eprintln!();
     eprintln!("================================================================");
@@ -240,17 +205,6 @@ fn print_report(
     }
     eprintln!("  {:<20} {:>6}", "--------------------", "------");
     eprintln!("  {:<20} {:>6}", "TOTAL", compose_total);
-
-    // -- Kani harnesses --
-    eprintln!();
-    eprintln!("  -- Kani harnesses (nn-models) --");
-    eprintln!("  {:<20} {:>6}", "File", "Proofs");
-    eprintln!("  {:<20} {:>6}", "--------------------", "------");
-    for (name, count) in kani_counts {
-        eprintln!("  {name:<20} {count:>6}");
-    }
-    eprintln!("  {:<20} {:>6}", "--------------------", "------");
-    eprintln!("  {:<20} {:>6}", "TOTAL", kani_total);
 
     // -- ay SMT proofs --
     eprintln!();
@@ -300,7 +254,6 @@ fn print_report(
     eprintln!(
         "  Compose tests:    {compose_total:>4}  (threshold: >= 100)"
     );
-    eprintln!("  Kani harnesses:   {kani_total:>4}  (threshold: >= 50)");
     eprintln!("  ay proofs:        {ay_count:>4}  (threshold: >= 5)");
     eprintln!(
         "  Status entries:   {:>4}  ({} sound / {} heuristic)",
@@ -326,7 +279,6 @@ fn dpdf_coverage_dashboard() {
         return;
     }
     let compose_counts = count_compose_tests();
-    let kani_counts = count_kani_harnesses();
     let ay_count = count_ay_proofs();
     let breakdown = load_status_breakdown();
 
@@ -335,12 +287,11 @@ fn dpdf_coverage_dashboard() {
         .unwrap_or_else(|e| panic!("Failed to generate dpdf certificate: {e}"));
 
     // Print the full report.
-    print_report(&compose_counts, &kani_counts, ay_count, &breakdown, &cert);
+    print_report(&compose_counts, ay_count, &breakdown, &cert);
 
     // === Threshold assertions ===
 
     let compose_total: usize = compose_counts.values().sum();
-    let kani_total: usize = kani_counts.values().sum();
 
     // Gate 1: >= 100 total compose tests
     assert!(
@@ -349,21 +300,14 @@ fn dpdf_coverage_dashboard() {
          Check that all compose_dpdf_*.rs helper files exist and contain tests."
     );
 
-    // Gate 2: >= 50 total Kani harnesses
-    assert!(
-        kani_total >= 50,
-        "dpdf Kani harnesses {kani_total} below minimum threshold 50. \
-         Check that all kani_dpdf_*.rs files exist in nn-models/src/."
-    );
-
-    // Gate 3: >= 5 ay proofs
+    // Gate 2: >= 5 ay proofs
     assert!(
         ay_count >= 5,
         "dpdf ay proofs {ay_count} below minimum threshold 5. \
          Check ay_dpdf_*_proofs.rs in nn-verify/tests/helpers/."
     );
 
-    // Gate 4: every compose helper file contributes at least 1 test
+    // Gate 3: every compose helper file contributes at least 1 test
     for (name, count) in &compose_counts {
         assert!(
             *count > 0,
@@ -371,15 +315,7 @@ fn dpdf_coverage_dashboard() {
         );
     }
 
-    // Gate 5: every Kani file contributes at least 1 harness
-    for (name, count) in &kani_counts {
-        assert!(
-            *count > 0,
-            "Kani file for {name} has 0 harnesses — file may be missing or empty."
-        );
-    }
-
-    // Gate 6: status file has entries and sound count is positive
+    // Gate 4: status file has entries and sound count is positive
     assert!(
         breakdown.total > 0,
         "nn_verify_status_dpdf.json has 0 entries — file may be missing or empty."

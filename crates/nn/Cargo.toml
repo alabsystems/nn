@@ -1,6 +1,6 @@
 [package]
 name = "nn"
-description = "Verified Rust ML framework — write models and kernels in Rust, verify with Kani + ny + ay, compile to Metal + CUDA + Vulkan + CPU."
+description = "Verified Rust ML framework — write models and kernels in Rust, verify with ny + ay, compile to Metal + CUDA + Vulkan + CPU."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

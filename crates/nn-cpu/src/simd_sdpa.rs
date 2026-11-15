@@ -31,6 +31,18 @@ pub enum SdpaError {
         got: usize,
         expected: usize,
     },
+    /// The element count `batch * num_heads * seq_len * head_dim` does not fit
+    /// in a `usize`.
+    ///
+    /// This is a SAFETY boundary, not a convenience: the product is the only
+    /// thing that ties the caller's dimensions to the slice lengths, and every
+    /// `as_ptr().add(..)` in the NEON kernels below offsets against those
+    /// dimensions. If the product wrapped, a short slice could match the
+    /// wrapped total, pass validation, and then be read far out of bounds.
+    /// `overflow-checks = true` in this workspace's release profile does NOT
+    /// protect a consumer who compiles nn as a dependency under their own
+    /// profile, so the check must be in the code.
+    DimensionOverflow,
 }
 
 impl fmt::Display for SdpaError {
@@ -44,6 +56,10 @@ impl fmt::Display for SdpaError {
             } => {
                 write!(f, "{name} length {got}, expected {expected}")
             }
+            Self::DimensionOverflow => write!(
+                f,
+                "batch * num_heads * seq_len * head_dim overflows usize"
+            ),
         }
     }
 }
@@ -76,7 +92,13 @@ fn validate(
     if head_dim == 0 {
         return Err(SdpaError::ZeroDim { param: "head_dim" });
     }
-    let total = batch * num_heads * seq_len * head_dim;
+    // Checked, because this product is what every later `as_ptr().add(..)` is
+    // validated against — see `SdpaError::DimensionOverflow`.
+    let total = batch
+        .checked_mul(num_heads)
+        .and_then(|v| v.checked_mul(seq_len))
+        .and_then(|v| v.checked_mul(head_dim))
+        .ok_or(SdpaError::DimensionOverflow)?;
     if query.len() != total {
         return Err(SdpaError::InvalidLength {
             name: "query",
@@ -500,3 +522,40 @@ pub fn sdpa(
 #[cfg(test)]
 #[path = "simd_sdpa_tests.rs"]
 mod simd_sdpa_tests;
+
+#[cfg(test)]
+mod dimension_overflow_tests {
+    use super::*;
+
+    /// A dimension product that wraps must be REFUSED, not silently matched.
+    ///
+    /// Before this check, `batch * num_heads * seq_len * head_dim` was a plain
+    /// multiply. A caller can choose dimensions whose true product exceeds
+    /// `usize` but whose WRAPPED product equals the length of a short slice:
+    /// validation then passes, and every `as_ptr().add(..)` in the kernels
+    /// below offsets against the true (enormous) dimensions — reading far out
+    /// of bounds. This workspace sets `overflow-checks = true` for its own
+    /// release profile, which would turn that multiply into a panic, but that
+    /// profile does NOT apply when nn is compiled as a dependency of another
+    /// crate, so the guarantee has to live in the code.
+    #[test]
+    fn a_wrapping_dimension_product_is_refused() {
+        // 2^63 * 2 * 1 * 1 wraps to 0 on a 64-bit usize.
+        let huge = 1usize << 63;
+        let empty: [f32; 0] = [];
+        let err = validate(&empty, &empty, &empty, &mut [], huge, 2, 1, 1)
+            .expect_err("a wrapping product must not validate");
+        assert!(
+            matches!(err, SdpaError::DimensionOverflow),
+            "expected DimensionOverflow, got {err:?}",
+        );
+    }
+
+    /// The ordinary path is unchanged: a product that fits still validates.
+    #[test]
+    fn an_exact_dimension_product_still_validates() {
+        let q = vec![0.0f32; 2 * 3 * 4 * 5];
+        let mut out = vec![0.0f32; 2 * 3 * 4 * 5];
+        validate(&q, &q, &q, &mut out, 2, 3, 4, 5).expect("exact lengths validate");
+    }
+}

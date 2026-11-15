@@ -142,7 +142,7 @@ impl ParityCheck {
 pub enum ParityLevel {
     /// L0: Structural -- graph shape, op count, input/output names.
     Structure = 0,
-    /// L1: Kani kernel safety (offline, not checked at runtime).
+    /// L1: Kernel safety (no checker is attached; not checked at runtime).
     KernelSafety = 1,
     /// L2: NY IBP composition bounds.
     Bounds = 2,

@@ -798,7 +798,7 @@ fn test_generation_independent_calls_no_shared_state() {
 /// Flat KV cache (crate::kv_cache::KVCache) growth tracking.
 #[test]
 fn test_generation_flat_kv_cache_growth() {
-    let mut cache = KVCache::new(2, 4, 8, 16);
+    let mut cache = KVCache::new(2, 4, 8, 16).expect("valid KVCache sizes");
     assert!(cache.is_empty());
     assert_eq!(cache.len(), 0);
 
@@ -815,7 +815,7 @@ fn test_generation_flat_kv_cache_growth() {
     assert_eq!(cache.len(), 2);
 
     // Keys should have 2 * token_size floats
-    let keys = cache.get_keys(0);
+    let keys = cache.get_keys(0).unwrap();
     assert_eq!(keys.len(), 2 * 4 * 8);
 }
 

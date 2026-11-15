@@ -91,16 +91,3 @@ pub(super) fn sample_layer_bound(index: usize) -> LayerBoundRecord {
         input_sources: Some(vec![]),
     }
 }
-
-pub(super) fn sample_kani_record() -> KaniProofRecord {
-    KaniProofRecord {
-        harness_count: 3,
-        status: KaniOutcome::Passed,
-        properties: vec![
-            "no_overflow".to_string(),
-            "no_nan".to_string(),
-            "bounds_preservation".to_string(),
-        ],
-        cbmc_version: Some("6.0.0".to_string()),
-    }
-}

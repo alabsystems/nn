@@ -262,10 +262,6 @@ pub(crate) fn reset_pool_stats() {
     BUFFER_POOL.with(|cell| cell.borrow_mut().reset_stats());
 }
 
-#[cfg(kani)]
-#[path = "buffer_pool_kani.rs"]
-mod proofs;
-
 #[cfg(test)]
 #[path = "buffer_pool_stats_tests.rs"]
 mod buffer_pool_stats_tests;

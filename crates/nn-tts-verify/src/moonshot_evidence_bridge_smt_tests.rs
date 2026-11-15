@@ -7,8 +7,6 @@
 //! These tests use `serde_json::from_str` to construct synthetic `VerifyStatus`
 //! objects (required because `KernelStatus` and `SmtStatusRecord` are
 //! `#[non_exhaustive]`).
-//!
-//! Extracted from `moonshot_evidence_bridge_tests.rs` (Phase 37 of #1741).
 
 use super::super::SmtVerificationEvidence;
 

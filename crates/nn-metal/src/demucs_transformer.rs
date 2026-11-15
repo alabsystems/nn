@@ -52,10 +52,6 @@ mod helpers;
 #[path = "demucs_transformer_tests.rs"]
 mod tests;
 
-#[cfg(kani)]
-#[path = "demucs_transformer_kani_tests.rs"]
-mod kani_proofs;
-
 #[path = "demucs_transformer_forward.rs"]
 mod forward;
 

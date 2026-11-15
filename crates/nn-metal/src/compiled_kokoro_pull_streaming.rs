@@ -390,39 +390,6 @@ impl StreamingKokoroSession {
     }
 }
 
-#[cfg(kani)]
-impl StreamingKokoroSession {
-    /// Create a session with a controlled chunk count and cursor position
-    /// for Kani verification. Uses CPU-only dummy DynTensors that are never
-    /// actually synthesized — only the state machine fields matter.
-    pub(crate) fn kani_from_len_cursor(len: usize, cursor: usize) -> Self {
-        let cpu = nn_core::Device::Cpu;
-        let chunks: Vec<(DynTensor, DynTensor)> = (0..len)
-            .map(|_| {
-                let ids = DynTensor::zeros(&[1, 1], nn_core::DType::I64, &cpu).unwrap();
-                let sty = DynTensor::zeros(&[1, 1], nn_core::DType::F32, &cpu).unwrap();
-                (ids, sty)
-            })
-            .collect();
-        Self {
-            chunks,
-            speed: 1.0,
-            cursor,
-            precompile: false,
-            precompiled: false,
-            assembler: None,
-        }
-    }
-
-    /// Advance the cursor by 1 (models what `next_chunk` does to the cursor).
-    /// Does NOT call synthesize — only advances cursor state.
-    pub(crate) fn kani_advance_cursor(&mut self) {
-        if self.cursor < self.chunks.len() {
-            self.cursor += 1;
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "compiled_kokoro_pull_streaming_tests.rs"]
 mod tests;

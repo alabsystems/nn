@@ -257,7 +257,3 @@ pub fn build_conv2d_full(
 #[cfg(test)]
 #[path = "conv2d_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "conv2d_kani.rs"]
-mod kani_proofs;

@@ -555,7 +555,7 @@ fn test_model_load_rejects_zero_heads() {
 
 #[test]
 fn test_flat_kv_cache_new_is_empty() {
-    let cache = kv_cache::KVCache::new(4, 2, 8, 32);
+    let cache = kv_cache::KVCache::new(4, 2, 8, 32).expect("valid KVCache sizes");
     assert!(cache.is_empty());
     assert_eq!(cache.len(), 0);
     assert_eq!(cache.num_layers(), 4);
@@ -566,7 +566,7 @@ fn test_flat_kv_cache_new_is_empty() {
 
 #[test]
 fn test_flat_kv_cache_clone_independence() {
-    let mut cache = kv_cache::KVCache::new(2, 2, 4, 16);
+    let mut cache = kv_cache::KVCache::new(2, 2, 4, 16).expect("valid KVCache sizes");
     let token_size = 2 * 4;
     let key: Vec<f32> = (0..token_size).map(|i| i as f32).collect();
     let val: Vec<f32> = (0..token_size).map(|i| (i + 100) as f32).collect();

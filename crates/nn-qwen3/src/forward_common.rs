@@ -193,7 +193,12 @@ pub(crate) fn build_causal_mask(
     device: &Device,
 ) -> Result<Option<DynTensor>> {
     let cached_len = cache.map_or(0, KvCache::seq_len);
-    let total_seq = cached_len + seq_len;
+    let Some(total_seq) = cached_len.checked_add(seq_len) else {
+        return Err(Qwen3Error::InvalidInput {
+            reason: format!("cached length ({cached_len}) + sequence length ({seq_len}) overflows"),
+        }
+        .into());
+    };
     if seq_len > 1 && total_seq > 1 {
         Ok(Some(causal_mask_with_offset(
             seq_len, total_seq, dtype, device,
@@ -220,5 +225,52 @@ pub(crate) fn build_rope(cfg: &Qwen3Config, vb: impl AsRef<VarBuilder>) -> Resul
             cfg.rope_theta,
             vb.device(),
         ),
+    }
+}
+
+/// One position per token in `ids`, continuing from `offset` (the cached
+/// length). The result has exactly `ids.len()` entries; a position past
+/// `usize::MAX` is an error, not a wrapped or panicking add.
+pub(crate) fn positions_after(offset: usize, ids: &[usize]) -> Result<Vec<usize>> {
+    ids.iter()
+        .enumerate()
+        .map(|(i, _)| {
+            offset.checked_add(i).ok_or_else(|| {
+                Qwen3Error::InvalidInput {
+                    reason: format!("position {offset} + {i} overflows"),
+                }
+                .into()
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod position_tests {
+    use super::positions_after;
+    use crate::Qwen3Config;
+
+    #[test]
+    fn positions_continue_from_offset() {
+        assert_eq!(positions_after(5, &[9, 9, 9]).unwrap(), vec![5, 6, 7]);
+        assert!(positions_after(5, &[]).unwrap().is_empty());
+    }
+
+    /// Regression: a position past `usize::MAX` is an error, not an
+    /// arithmetic-overflow panic.
+    #[test]
+    fn positions_overflow_rejected() {
+        assert!(positions_after(usize::MAX, &[0, 0]).is_err());
+        assert_eq!(positions_after(usize::MAX, &[0]).unwrap(), vec![usize::MAX]);
+    }
+
+    /// `validate` bounds the layer count before the loaders reserve storage.
+    #[test]
+    fn validate_rejects_layer_count_over_limit() {
+        let max = crate::config::MAX_NUM_LAYERS;
+        let cfg = Qwen3Config::new(64, 128, max + 1, 4, 2, 100, 1e-6, 10_000.0, 64, true, None);
+        assert!(cfg.validate().is_err());
+        let cfg = Qwen3Config::new(64, 128, max, 4, 2, 100, 1e-6, 10_000.0, 64, true, None);
+        assert!(cfg.validate().is_ok());
     }
 }

@@ -43,8 +43,8 @@ pub use nn_verify::{certify_model, CertifyConfig, CertifyError, CertifyResult};
 // Proof certificates
 pub use nn_verify::{
     CertificateBundle, CertificateEnrichment, CertificateError, ConstructiveLayerRecord,
-    ConstructiveProofData, ConstructiveProofMethod, KaniOutcome, KaniProofRecord, LayerBoundRecord,
-    PrecisionModel, ProofCertificate, CERTIFICATE_VERSION,
+    ConstructiveProofData, ConstructiveProofMethod, LayerBoundRecord, PrecisionModel,
+    ProofCertificate, CERTIFICATE_VERSION,
 };
 
 // Certificate checking
@@ -179,12 +179,6 @@ pub use nn_verify::{kernel_to_graph, kernel_to_graph_multi, ParamBinding};
 pub use nn_verify::{
     tensor_kernel_to_graph, tensor_kernel_to_graph_with_norm_mode, TensorParamBinding,
 };
-
-// ---------------------------------------------------------------------------
-// Kani bridge
-// ---------------------------------------------------------------------------
-
-pub use nn_verify::kani_record_from_file;
 
 // ---------------------------------------------------------------------------
 // NY re-exports for API stability

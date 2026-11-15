@@ -170,9 +170,9 @@ impl OptimizerCheckpoint for AdaFactor {
             )?;
             // row_factor: var dims with last dim = 1
             let mut row_dims = var_dims.clone();
-            if row_dims.len() >= 2 {
-                let last = row_dims.len() - 1;
-                row_dims[last] = 1;
+            let rank = row_dims.len();
+            if rank >= 2 {
+                row_dims[rank - 1] = 1;
             }
             restore_tensor(
                 &snapshot.tensors,
@@ -182,9 +182,9 @@ impl OptimizerCheckpoint for AdaFactor {
             )?;
             // col_factor: var dims with second-to-last dim = 1
             let mut col_dims = var_dims;
-            if col_dims.len() >= 2 {
-                let second_last = col_dims.len() - 2;
-                col_dims[second_last] = 1;
+            let rank = col_dims.len();
+            if rank >= 2 {
+                col_dims[rank - 2] = 1;
             }
             restore_tensor(
                 &snapshot.tensors,

@@ -8,7 +8,7 @@
 //! used in Kokoro's pipeline to determine if fused single-dispatch kernels
 //! are slower than the old multi-dispatch decomposition for small channels.
 //!
-//! Run: `cargo bench -p nn-metal --bench fused_norm`
+//! Run: `targo --unverified bench -p nn-metal --bench fused_norm`
 //!
 //! Part of #3348 (D2: fused MSL kernel shape-specific benchmark).
 

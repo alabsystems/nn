@@ -204,7 +204,3 @@ pub fn mel_filterbank(sample_rate: u32, n_fft: usize, n_mels: usize) -> Vec<Vec<
 #[path = "dsp_quality_metrics.rs"]
 mod quality_metrics;
 pub use quality_metrics::{cosine_similarity, sdr_db, snr_db};
-
-#[cfg(kani)]
-#[path = "dsp_kani_proofs.rs"]
-mod kani_proofs;

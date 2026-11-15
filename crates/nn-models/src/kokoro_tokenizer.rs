@@ -613,7 +613,3 @@ impl KokoroTokenizer {
 #[cfg(test)]
 #[path = "kokoro_tokenizer_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kokoro_tokenizer_kani_tests.rs"]
-mod kani_proofs;

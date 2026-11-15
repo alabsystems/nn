@@ -92,7 +92,7 @@ pub(crate) use matmul_simd::encode_simdgroup_matmul_into_batch;
 pub(crate) use lstm_sequence::dispatch_lstm_precomputed;
 pub(crate) use matmul_simd::should_use_f16_simdgroup;
 pub(crate) use matmul_simd::should_use_simdgroup;
-#[cfg(any(test, kani))]
+#[cfg(test)]
 pub(crate) use matmul_simd::{select_tile_config, GemmTileConfig};
 // MSL source re-exports for KernelSpec builders (#3503).
 pub(crate) use instance_norm_fused::{instance_norm_msl_source, instance_norm_f16_msl_source};

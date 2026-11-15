@@ -424,9 +424,8 @@ fn test_lstm_forward_seq_empty_sequence() {
 
 /// Multi-step LSTM cell state boundedness test.
 ///
-/// The Kani proof `lstm_cell_state_bounded` proves single-step: if |c| < 100
-/// then |c_new| < 101. This test empirically verifies the inductive claim
-/// over 1000 timesteps — cell state should not grow unboundedly when weights
+/// Single-step bound: if |c| < 100 then |c_new| < 101. This test empirically
+/// verifies the inductive claim over 1000 timesteps — cell state should not grow unboundedly when weights
 /// are small and inputs are bounded.
 ///
 /// Exercises the production `forward_seq` path, not a synthetic gate formula.

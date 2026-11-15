@@ -8,7 +8,7 @@
 //! crate root and from `nn::metal`. This test catches silent API breakage
 //! when re-exports are removed or renamed.
 //!
-//! Run: `cargo test -p nn --features metal --test public_api_surface`
+//! Run: `targo --unverified test -p nn --features metal --test public_api_surface`
 
 #![allow(dead_code, unused_imports)]
 

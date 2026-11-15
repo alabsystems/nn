@@ -254,6 +254,32 @@ fn test_convert_i64_precision_loss_rejected() {
 }
 
 #[test]
+fn test_convert_i64_precision_check_covers_the_whole_domain() {
+    // The limit is symmetric, and i64::MIN has no i64 absolute value: the
+    // check must reject it rather than overflow computing |v|.
+    for (value, accepted) in [
+        (16_777_216_i64, true),
+        (-16_777_216, true),
+        (16_777_217, false),
+        (-16_777_217, false),
+        (i64::MAX, false),
+        (i64::MIN + 1, false),
+        (i64::MIN, false),
+    ] {
+        let npy = build_npy_v1("<i8", &[1], &value.to_le_bytes());
+        let result = parse_npy(&npy, "i64_edge".into());
+        if accepted {
+            assert!(result.is_ok(), "{value} is exact in f32: {result:?}");
+        } else {
+            assert!(
+                matches!(result, Err(ReftestError::IntPrecisionLoss { value: v, index: 0 }) if v == value),
+                "{value} is not exact in f32 and must be rejected, got: {result:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_convert_i32_within_precision_limit_ok() {
     // Values within ±2^24 should convert exactly.
     let values: Vec<i32> = vec![0, -1, 16_777_216, -16_777_216];

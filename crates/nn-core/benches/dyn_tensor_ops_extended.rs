@@ -14,7 +14,7 @@
 //!
 //! No model weights required -- all synthetic data.
 //!
-//! Run: `cargo bench -p nn-core --bench dyn_tensor_ops_extended`
+//! Run: `targo --unverified bench -p nn-core --bench dyn_tensor_ops_extended`
 
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};

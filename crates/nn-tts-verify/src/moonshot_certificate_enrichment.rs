@@ -5,15 +5,12 @@
 //! Enrichment methods for [`MoonshotCertificate`].
 //!
 //! These methods add verification evidence from CROWN, timing, speaker,
-//! Kani, ay SMT, and dispatch plan analysis to a certificate.
+//! ay SMT, and dispatch plan analysis to a certificate.
 //!
 //! Extracted from `moonshot_certificate.rs` (#1940) to keep the parent
 //! file under the 500-line limit.
 
-use super::{
-    KaniVerificationEvidence, MoonshotCertificate, SmtVerificationEvidence, SubCondition,
-    VerificationLevel,
-};
+use super::{MoonshotCertificate, SmtVerificationEvidence, SubCondition, VerificationLevel};
 
 impl MoonshotCertificate {
     /// Enrich with CROWN bundle results for properties 1-3, optionally 5 and 6.
@@ -128,49 +125,6 @@ impl MoonshotCertificate {
                     "IBP fallback — speaker embedding bounds may be vacuously wide".to_string(),
                     format!("Embedding dim: {}", evidence.embed_dim),
                 ]
-            };
-        }
-
-        self.recompute_aggregate_flags();
-        self
-    }
-
-    /// Enrich with Kani verification results for Property 7 (memory safety).
-    ///
-    /// After scanning Kani harness results (e.g., from `kani_status.json` or
-    /// `grep -rc '#[kani::proof]'`), this updates the certificate with the
-    /// harness pass count and artifact paths.
-    ///
-    /// Property 7 achieves `KaniProven` when all harnesses pass.
-    pub fn with_kani_results(mut self, evidence: &KaniVerificationEvidence) -> Self {
-        const P7_INDEX: usize = 6;
-        if P7_INDEX < self.properties.len() {
-            let cert = &mut self.properties[P7_INDEX];
-
-            cert.level = if evidence.all_passed && evidence.harnesses_total > 0 {
-                VerificationLevel::KaniProven
-            } else if evidence.harnesses_passed > 0 {
-                VerificationLevel::Empirical
-            } else {
-                VerificationLevel::None
-            };
-
-            cert.proof_artifacts = evidence.harness_files.clone();
-            cert.bound_value = Some(evidence.harnesses_passed as f64);
-            cert.threshold = Some(evidence.harnesses_total as f64);
-            cert.assumptions = if evidence.all_passed {
-                vec![
-                    format!(
-                        "All {} Kani harnesses pass (no UB, no panics in verified paths)",
-                        evidence.harnesses_total
-                    ),
-                    "Kani unwind bounds may limit exploration depth".to_string(),
-                ]
-            } else {
-                vec![format!(
-                    "{}/{} Kani harnesses pass — incomplete memory safety coverage",
-                    evidence.harnesses_passed, evidence.harnesses_total
-                )]
             };
         }
 
@@ -294,9 +248,7 @@ impl MoonshotCertificate {
         self.all_proven = self.properties.iter().all(|p| {
             matches!(
                 p.level,
-                VerificationLevel::CrownProven
-                    | VerificationLevel::KaniProven
-                    | VerificationLevel::SmtProven
+                VerificationLevel::CrownProven | VerificationLevel::SmtProven
             )
         });
         self.constructive_proof_count = self

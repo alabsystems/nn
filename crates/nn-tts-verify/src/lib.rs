@@ -190,9 +190,9 @@ pub use monotonicity::{
     DurationPositivityCertificate, WeightMagnitudeCertificate,
 };
 pub use moonshot::{
-    artifact_registry, CertificateDeserializeError, KaniVerificationEvidence, MoonshotCertificate,
-    MoonshotStatus, PropertyCertificate, PropertyStatus, SmtVerificationEvidence,
-    VerificationArtifact, VerificationLevel,
+    artifact_registry, CertificateDeserializeError, MoonshotCertificate, MoonshotStatus,
+    PropertyCertificate, PropertyStatus, SmtVerificationEvidence, VerificationArtifact,
+    VerificationLevel,
 };
 pub use moonshot_crown::{
     analyze_dispatch_plan, check_implementation_correctness, check_intelligibility_proxy,
@@ -313,119 +313,6 @@ mod verifier_bounds_tests;
 #[cfg(test)]
 #[path = "expanded_coverage_tests.rs"]
 mod expanded_coverage_tests;
-
-#[cfg(kani)]
-#[path = "pipeline_safety_kani.rs"]
-mod pipeline_safety_kani;
-
-#[cfg(kani)]
-#[path = "kani_crown_moonshot_proofs.rs"]
-mod kani_crown_moonshot_proofs;
-
-#[cfg(kani)]
-#[path = "kani_codec_algebra_proofs.rs"]
-mod kani_codec_algebra_proofs;
-
-#[cfg(kani)]
-#[path = "kani_fairness_proofs.rs"]
-mod kani_fairness_proofs;
-
-#[cfg(kani)]
-#[path = "kani_disentanglement_proofs.rs"]
-mod kani_disentanglement_proofs;
-
-#[cfg(kani)]
-#[path = "kani_monotonicity_proofs.rs"]
-mod kani_monotonicity_proofs;
-
-#[cfg(kani)]
-#[path = "kani_adversarial_proofs.rs"]
-mod kani_adversarial_proofs;
-
-#[cfg(kani)]
-#[path = "kani_unicode_safety_proofs.rs"]
-mod kani_unicode_safety_proofs;
-
-#[cfg(kani)]
-#[path = "kani_streaming_proofs.rs"]
-mod kani_streaming_proofs;
-
-#[cfg(kani)]
-#[path = "kani_pipeline_proofs.rs"]
-mod kani_pipeline_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dispatch_builder_proofs.rs"]
-mod kani_dispatch_builder_proofs;
-
-#[cfg(all(kani, feature = "ny"))]
-#[path = "kani_pipeline_crown.rs"]
-mod kani_pipeline_crown;
-
-#[cfg(all(kani, feature = "ny"))]
-mod kani_pipeline_crown_harnesses;
-
-#[cfg(kani)]
-#[path = "kani_moonshot_crown_probabilistic.rs"]
-mod kani_moonshot_crown_probabilistic;
-
-#[cfg(kani)]
-mod kani_moonshot_crown_probabilistic_harnesses;
-
-#[cfg(kani)]
-#[path = "kani_codec_algebra.rs"]
-mod kani_codec_algebra;
-
-#[cfg(kani)]
-mod kani_codec_algebra_harnesses;
-
-#[cfg(kani)]
-#[path = "kani_moonshot_crown_properties.rs"]
-mod kani_moonshot_crown_properties;
-
-#[cfg(kani)]
-#[path = "kani_cost_model_proofs.rs"]
-mod kani_cost_model_proofs;
-
-#[cfg(kani)]
-#[path = "kani_moonshot_proofs.rs"]
-mod kani_moonshot_proofs;
-
-#[cfg(kani)]
-#[path = "kani_pipeline_dispatch_proofs.rs"]
-mod kani_pipeline_dispatch_proofs;
-
-#[cfg(kani)]
-#[path = "kani_fairness_extended.rs"]
-mod kani_fairness_extended;
-
-#[cfg(kani)]
-#[path = "kani_stats_extended.rs"]
-mod kani_stats_extended;
-
-#[cfg(kani)]
-#[path = "kani_quality_bound_extended.rs"]
-mod kani_quality_bound_extended;
-
-#[cfg(kani)]
-#[path = "kani_moonshot_crown_props_extended.rs"]
-mod kani_moonshot_crown_props_extended;
-
-#[cfg(kani)]
-#[path = "kani_contracts_moonshot_proofs.rs"]
-mod kani_contracts_moonshot_proofs;
-
-#[cfg(kani)]
-#[path = "kani_config.rs"]
-mod kani_config;
-
-#[cfg(kani)]
-#[path = "kani_certificate_streaming_contracts.rs"]
-mod kani_certificate_streaming_contracts;
-
-#[cfg(kani)]
-#[path = "kani_tts_extra_proofs.rs"]
-mod kani_tts_extra_proofs;
 
 #[cfg(test)]
 #[path = "tts_verify_tests.rs"]

@@ -59,16 +59,18 @@ fn validate_raw_len(raw: &[u8], expected: usize) -> Result<(), ReftestError> {
 /// f32 can represent integers exactly up to 2^24 (16,777,216).
 /// Beyond this, the mantissa cannot hold all significant bits.
 const F32_INT_PRECISION_LIMIT: i64 = 1 << 24;
+const F32_INT_PRECISION_FLOOR: i64 = -F32_INT_PRECISION_LIMIT;
 
 /// Guard against silent precision loss when casting integers to f32.
 ///
 /// Returns an error if `|value| > 2^24`, where f32's 23-bit mantissa
-/// can no longer represent the integer exactly.
+/// can no longer represent the integer exactly. A range match, not `|value|`:
+/// `i64::MIN` has no `i64` absolute value, and `abs` overflowed on it.
 fn check_int_precision(value: i64, index: usize) -> Result<(), ReftestError> {
-    if value.abs() > F32_INT_PRECISION_LIMIT {
-        return Err(ReftestError::IntPrecisionLoss { value, index });
+    match value {
+        F32_INT_PRECISION_FLOOR..=F32_INT_PRECISION_LIMIT => Ok(()),
+        _ => Err(ReftestError::IntPrecisionLoss { value, index }),
     }
-    Ok(())
 }
 
 fn convert_f32_le(raw: &[u8], numel: usize) -> Result<Vec<f32>, ReftestError> {
@@ -184,130 +186,4 @@ fn convert_i8(raw: &[u8], numel: usize) -> Result<Vec<f32>, ReftestError> {
 fn convert_u8(raw: &[u8], numel: usize) -> Result<Vec<f32>, ReftestError> {
     validate_raw_len(raw, numel)?;
     Ok(raw[..numel].iter().map(|&b| f32::from(b)).collect())
-}
-
-// ---------------------------------------------------------------------------
-// Kani proof harnesses for NPY dtype conversion safety (#3593)
-// ---------------------------------------------------------------------------
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    // -- Harness 1: checked_byte_count detects overflow --
-
-    /// Proves that `checked_byte_count` returns `Err` when `numel * bytes_per_element`
-    /// overflows `usize`.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn checked_byte_count_detects_overflow() {
-        let numel: usize = kani::any();
-        let bpe: usize = kani::any();
-
-        // Only consider cases where multiplication would overflow.
-        kani::assume(bpe > 0);
-        kani::assume(numel > usize::MAX / bpe);
-
-        let result = checked_byte_count(numel, bpe);
-        assert!(
-            result.is_err(),
-            "checked_byte_count must return Err on overflow"
-        );
-    }
-
-    // -- Harness 2: checked_byte_count correct for valid inputs --
-
-    /// Proves that `checked_byte_count` returns the correct product when
-    /// no overflow occurs.
-    #[kani::unwind(5)]
-    #[kani::proof]
-    fn checked_byte_count_correct_for_valid() {
-        let numel: usize = kani::any();
-        let bpe: usize = kani::any();
-
-        // Constrain to values that won't overflow.
-        kani::assume(bpe > 0 && bpe <= 8);
-        kani::assume(numel <= 1_000_000);
-
-        let result = checked_byte_count(numel, bpe);
-        let expected = numel * bpe;
-        assert!(
-            result.is_ok(),
-            "checked_byte_count must succeed for small inputs"
-        );
-        assert!(
-            result.unwrap() == expected,
-            "checked_byte_count must return numel * bpe"
-        );
-    }
-
-    // -- Harness 3: check_int_precision boundary at 2^24 --
-
-    /// Proves that `check_int_precision` accepts values with |v| <= 2^24
-    /// and rejects values with |v| > 2^24.
-    ///
-    /// f32 has a 23-bit mantissa, so integers up to 2^24 (16,777,216)
-    /// are exactly representable. Beyond that, precision is lost.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn int_precision_boundary_exact() {
-        let value: i64 = kani::any();
-
-        // Restrict to near the boundary to keep the search tractable.
-        kani::assume(value >= -(1i64 << 25) && value <= (1i64 << 25));
-
-        let result = check_int_precision(value, 0);
-        let limit: i64 = 1 << 24;
-
-        if value.abs() > limit {
-            assert!(result.is_err(), "values with |v| > 2^24 must be rejected");
-        } else {
-            assert!(result.is_ok(), "values with |v| <= 2^24 must be accepted");
-        }
-    }
-
-    // -- Harness 4: validate_raw_len rejects short buffers --
-
-    /// Proves that `validate_raw_len` returns `Err` when the buffer is
-    /// shorter than the expected byte count.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    fn validate_raw_len_rejects_short_buffer() {
-        let buf_len: usize = kani::any();
-        let expected: usize = kani::any();
-
-        kani::assume(buf_len < 256);
-        kani::assume(expected < 256);
-        kani::assume(buf_len < expected);
-
-        let buf = vec![0u8; buf_len];
-        let result = validate_raw_len(&buf, expected);
-
-        assert!(
-            result.is_err(),
-            "validate_raw_len must reject buffers shorter than expected"
-        );
-    }
-
-    // -- Harness 5: validate_raw_len accepts sufficient buffers --
-
-    /// Proves that `validate_raw_len` returns `Ok` when the buffer is
-    /// at least as long as the expected byte count.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    fn validate_raw_len_accepts_sufficient_buffer() {
-        let buf_len: usize = kani::any();
-        let expected: usize = kani::any();
-
-        kani::assume(buf_len <= 256);
-        kani::assume(expected <= buf_len);
-
-        let buf = vec![0u8; buf_len];
-        let result = validate_raw_len(&buf, expected);
-
-        assert!(
-            result.is_ok(),
-            "validate_raw_len must accept buffers >= expected length"
-        );
-    }
 }

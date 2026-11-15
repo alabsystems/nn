@@ -424,7 +424,3 @@ impl GptOssDecoderLayer {
         Ok(output)
     }
 }
-
-#[cfg(kani)]
-#[path = "kani_layers_proofs.rs"]
-mod kani_layers_proofs;

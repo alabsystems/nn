@@ -202,7 +202,7 @@ fn compute_diff_stats(a: &[f32], b: &[f32]) -> (f32, f32) {
 /// 3. **rsqrt vs sqrt+recip**: Compiled path uses GPU `rsqrt()` (hardware),
 ///    CPU reference uses `sqrt()` then `recip()`.
 ///
-/// Run with: `cargo test -p nn-metal --test compiled_model_kokoro_f0_precision
+/// Run with: `targo --unverified test -p nn-metal --test compiled_model_kokoro_f0_precision
 ///            -- --nocapture`
 #[test]
 fn test_f0_strict_vs_normal_precision() {

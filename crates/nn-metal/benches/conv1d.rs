@@ -10,7 +10,7 @@
 //! F16 provides 1.08-1.30x speedup via `simdgroup_multiply_accumulate`
 //! 2x ALU throughput.
 //!
-//! Run: `cargo bench -p nn-metal --bench conv1d --no-default-features`
+//! Run: `targo --unverified bench -p nn-metal --bench conv1d --no-default-features`
 //!
 //! Part of #2981.
 

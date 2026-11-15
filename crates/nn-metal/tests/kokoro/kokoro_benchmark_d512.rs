@@ -15,7 +15,7 @@
 //! 3. What is the actual GPU latency for production-scale dispatches?
 //! 4. How much memory does the buffer plan allocate at D=512?
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_benchmark_d512 -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_benchmark_d512 -- --nocapture`
 //!
 //! Part of #2468 (Production-scale Kokoro benchmark at D=512).
 //! Part of #2218 (Kokoro epic).

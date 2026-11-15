@@ -327,7 +327,7 @@ pub fn check_temporal_boundedness(timing_cert: &TimingCertificate) -> MoonshotPr
 /// ≈ 18 GB per voice pipeline.
 ///
 /// This is not a moonshot property per se (Property 7 "memory safety" refers
-/// to Kani-verified absence of UB), but it is a necessary condition for
+/// to absence of UB), but it is a necessary condition for
 /// Property 5 (temporal boundedness) — a model that exceeds physical memory
 /// will page-fault and violate the timing bound.
 ///

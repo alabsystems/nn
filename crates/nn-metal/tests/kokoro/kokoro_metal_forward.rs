@@ -16,7 +16,7 @@
 //!
 //! Run:
 //!   KOKORO_WEIGHTS=./nn/weights/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-metal --test kokoro_all -- kokoro_metal_forward --nocapture
+//!   targo --unverified test -p nn-metal --test kokoro_all -- kokoro_metal_forward --nocapture
 //!
 //! Part of #3351 (Absolutely Best Kokoro).
 

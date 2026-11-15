@@ -375,7 +375,3 @@ pub fn standard_quality_specs(
 #[cfg(test)]
 #[path = "quality_bound_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "quality_bound_kani.rs"]
-mod kani_proofs;

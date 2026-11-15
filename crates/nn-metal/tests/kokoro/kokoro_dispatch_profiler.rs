@@ -25,7 +25,7 @@
 //!
 //! Run:
 //!   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-metal --test kokoro_all kokoro_dispatch_profiler -- --nocapture
+//!   targo --unverified test -p nn-metal --test kokoro_all kokoro_dispatch_profiler -- --nocapture
 //!
 //! Part of #4264.
 

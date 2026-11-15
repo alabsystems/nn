@@ -14,8 +14,7 @@
 //! top-k -> top-p -> softmax -> weighted selection.
 //!
 //! For deterministic reproducibility without an RNG dependency, selection
-//! uses a caller-provided `seed` mapped to the candidate set. For Kani
-//! proofs, selection uses `kani::any()` with postcondition constraints.
+//! uses a caller-provided `seed` mapped to the candidate set.
 //!
 //! Part of #4271: beam search and advanced sampling for gpt-oss.
 

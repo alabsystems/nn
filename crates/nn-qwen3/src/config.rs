@@ -11,6 +11,11 @@ use nn_core::Result;
 
 use crate::Qwen3Error;
 
+/// Most decoder layers a configuration may declare. Real Qwen3 checkpoints
+/// have under 100; the bound keeps the per-layer allocation in the model
+/// loaders sized by a validated count.
+pub(crate) const MAX_NUM_LAYERS: usize = 4096;
+
 /// Qwen3 model configuration.
 ///
 /// Constants: `head_dim = 128`, `vocab_size = 151_936`, `rms_norm_eps = 1e-6`.
@@ -156,6 +161,15 @@ impl Qwen3Config {
         if self.max_position_embeddings == 0 {
             return Err(Qwen3Error::InvalidConfig {
                 reason: "max_position_embeddings must be > 0".into(),
+            }
+            .into());
+        }
+        if self.num_hidden_layers > MAX_NUM_LAYERS {
+            return Err(Qwen3Error::InvalidConfig {
+                reason: format!(
+                    "num_hidden_layers ({}) exceeds the limit of {MAX_NUM_LAYERS}",
+                    self.num_hidden_layers
+                ),
             }
             .into());
         }

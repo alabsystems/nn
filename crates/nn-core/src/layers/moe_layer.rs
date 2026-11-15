@@ -545,10 +545,6 @@ pub(super) fn compute_aux_loss(
     sum.broadcast_mul(&scale)
 }
 
-#[cfg(kani)]
-#[path = "moe_layer_kani.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "moe_layer_tests.rs"]
 mod tests;

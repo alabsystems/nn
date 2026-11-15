@@ -48,7 +48,7 @@ impl KernelPipeline {
         let total_u32 = self.total_u32(total)?;
 
         // Lazy batch (#2009): encode into the thread-local lazy batch.
-        crate::gpu_scope::get_or_create_batch()
+        crate::gpu_scope::get_or_create_batch_for_context(ctx)
             .map_err(|e| MetalError::DispatchFailed(e.to_string()))?;
         let scope_result =
             crate::gpu_scope::encode_into_lazy_batch(|batch| -> Result<(), MetalError> {
@@ -94,7 +94,7 @@ impl KernelPipeline {
         let mut retained_inputs: Vec<Vec<MetalBuffer>> = Vec::with_capacity(launches.len());
 
         // Lazy batch (#2009): encode all launches into the thread-local lazy batch.
-        crate::gpu_scope::get_or_create_batch()
+        crate::gpu_scope::get_or_create_batch_for_context(ctx)
             .map_err(|e| MetalError::DispatchFailed(e.to_string()))?;
 
         for inputs in launches {

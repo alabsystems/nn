@@ -27,7 +27,7 @@
 //!
 //! export GLM5_WEIGHTS=./nn/weights/glm4-tiny.safetensors
 //! export GLM5_REFERENCE=./nn/weights/glm4-tiny_reference.safetensors
-//! cargo test -p nn-glm5 --test real_weights -- --nocapture
+//! targo --unverified test -p nn-glm5 --test real_weights -- --nocapture
 //! ```
 
 use nn_core::DType;

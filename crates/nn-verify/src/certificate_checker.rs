@@ -405,10 +405,6 @@ pub fn check_bundle_file_with_key(
     ))
 }
 
-#[cfg(kani)]
-#[path = "kani_certificate_checker.rs"]
-mod kani_certificate_checker;
-
 #[cfg(test)]
 #[path = "certificate_checker_test_index.rs"]
 mod test_index;

@@ -8,6 +8,8 @@
 //! (or 0 for alias/runtime-dependent steps). These functions compute
 //! that size, with overflow protection via `checked_mul`.
 
+use nn_core::dyn_tensor::conv1d_out_len;
+
 use crate::ir::ScalarType;
 use crate::trace_compile::CompiledStep;
 
@@ -24,6 +26,39 @@ fn checked_shape_bytes(shape: &[usize]) -> usize {
         .try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
         .and_then(|product| product.checked_mul(F32_BYTES))
         .unwrap_or(0)
+}
+
+/// Bytes for an `[..batch, features]` output of an `[..batch, in]` input:
+/// every dim of `input_shape` but the last, times `features`. 0 for an empty
+/// shape or on overflow.
+fn checked_batch_features_bytes(input_shape: &[usize], features: usize) -> usize {
+    match input_shape.split_last() {
+        Some((_, batch_dims)) => batch_dims
+            .iter()
+            .try_fold(features, |acc, &dim| acc.checked_mul(dim))
+            .and_then(|numel| numel.checked_mul(F32_BYTES))
+            .unwrap_or(0),
+        None => 0,
+    }
+}
+
+/// Bytes for a Conv1d output `[batch, out_channels, L_out]`, with `L_out`
+/// from [`conv1d_out_len`]. 0 when the metadata is degenerate (zero
+/// kernel/stride/dilation, input shorter than the effective kernel) or a size
+/// overflows.
+fn conv1d_output_bytes(
+    batch: usize,
+    out_channels: usize,
+    l_in: usize,
+    kernel_size: usize,
+    stride: usize,
+    padding: usize,
+    dilation: usize,
+) -> usize {
+    match conv1d_out_len(l_in, kernel_size, padding, stride, dilation) {
+        Ok(l_out) => checked_shape_bytes(&[batch, out_channels, l_out]),
+        Err(_) => 0,
+    }
 }
 
 /// Compute the output byte size for a single compiled step.
@@ -160,50 +195,20 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             out_features,
             input_shape,
             ..
-        } => {
-            if input_shape.is_empty() {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
-        }
+        } => checked_batch_features_bytes(input_shape, *out_features),
         // NormLinear: output shape = input shape with last dim replaced by out_features.
         NativeOpKind::NormLinear {
             out_features,
             input_shape,
             ..
-        } => {
-            if input_shape.is_empty() {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
-        }
+        } => checked_batch_features_bytes(input_shape, *out_features),
         // AddNormLinear: same output shape as NormLinear (input shape with last dim
         // replaced by out_features). Part of #3351 T2.1.
         NativeOpKind::AddNormLinear {
             out_features,
             input_shape,
             ..
-        } => {
-            if input_shape.is_empty() {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
-        }
+        } => checked_batch_features_bytes(input_shape, *out_features),
         // BatchedLinearProjection: step buffer holds the first projection's
         // narrow output [..batch, projection_sizes[0]]. The full matmul
         // intermediate is in a thread-local temp, not in the buffer plan.
@@ -213,15 +218,7 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             ..
         } => {
             let first_out = projection_sizes.first().copied().unwrap_or(0);
-            if input_shape.is_empty() || first_out == 0 {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(first_out)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
+            checked_batch_features_bytes(input_shape, first_out)
         }
         // ProjectionSlice: output shape is the narrowed slice.
         NativeOpKind::ProjectionSlice { output_shape, .. } => checked_shape_bytes(output_shape),
@@ -239,17 +236,7 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             out_features,
             input_shape,
             ..
-        } => {
-            if input_shape.is_empty() {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
-        }
+        } => checked_batch_features_bytes(input_shape, *out_features),
         // Conv1dGemm: output shape [B, out_channels, L_out].
         // L_out = (L_in + 2*padding - dilation*(kernel_size-1) - 1) / stride + 1
         NativeOpKind::Conv1dGemm {
@@ -262,15 +249,15 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             ..
         } => {
             if input_shape.len() >= 3 {
-                let batch = input_shape[0];
-                let l_in = input_shape[2];
-                let effective_k = dilation * (kernel_size - 1) + 1;
-                let l_out = (l_in + 2 * padding).saturating_sub(effective_k) / stride + 1;
-                batch
-                    .checked_mul(*out_channels)
-                    .and_then(|v| v.checked_mul(l_out))
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
+                conv1d_output_bytes(
+                    input_shape[0],
+                    *out_channels,
+                    input_shape[2],
+                    *kernel_size,
+                    *stride,
+                    *padding,
+                    *dilation,
+                )
             } else {
                 0
             }
@@ -311,17 +298,7 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             out_features,
             input_shape,
             ..
-        } => {
-            if input_shape.is_empty() {
-                0
-            } else {
-                let batch: usize = input_shape[..input_shape.len() - 1].iter().product();
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            }
-        }
+        } => checked_batch_features_bytes(input_shape, *out_features),
         // BiLstmCat: output shape [seq_len, batch, 2 * hidden_size].
         NativeOpKind::BiLstmCat {
             hidden_size,
@@ -331,11 +308,7 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             if input_shape.len() >= 2 {
                 let seq_len = input_shape[0];
                 let batch = input_shape[1];
-                seq_len
-                    .checked_mul(batch)
-                    .and_then(|v| v.checked_mul(2 * hidden_size))
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
+                checked_shape_bytes(&[seq_len, batch, 2, *hidden_size])
             } else {
                 0
             }
@@ -353,18 +326,15 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             ..
         } => {
             if input_shape.len() >= 3 {
-                let batch = input_shape[0];
-                let l_in = input_shape[input_shape.len() - 1];
-                let l_out = (l_in + 2 * padding)
-                    .saturating_sub(dilation * (kernel_size - 1))
-                    .saturating_sub(1)
-                    / stride
-                    + 1;
-                batch
-                    .checked_mul(*out_channels)
-                    .and_then(|v| v.checked_mul(l_out))
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
+                conv1d_output_bytes(
+                    input_shape[0],
+                    *out_channels,
+                    input_shape[input_shape.len() - 1],
+                    *kernel_size,
+                    *stride,
+                    *padding,
+                    *dilation,
+                )
             } else {
                 0
             }
@@ -381,18 +351,15 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             ..
         } => {
             if input_shape.len() >= 3 {
-                let batch = input_shape[0];
-                let l_in = input_shape[input_shape.len() - 1];
-                let l_out = (l_in + 2 * padding)
-                    .saturating_sub(dilation * (kernel_size - 1))
-                    .saturating_sub(1)
-                    / stride
-                    + 1;
-                batch
-                    .checked_mul(*out_channels)
-                    .and_then(|v| v.checked_mul(l_out))
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
+                conv1d_output_bytes(
+                    input_shape[0],
+                    *out_channels,
+                    input_shape[input_shape.len() - 1],
+                    *kernel_size,
+                    *stride,
+                    *padding,
+                    *dilation,
+                )
             } else {
                 0
             }
@@ -573,14 +540,15 @@ pub(super) fn native_op_output_bytes(op: &crate::trace_compile::NativeOpKind) ->
             out_features,
             ..
         } => {
-            if !input_shape.is_empty() {
-                let batch: usize = input_shape.iter().rev().skip(1).product::<usize>().max(1);
-                batch
-                    .checked_mul(*out_features)
-                    .and_then(|v| v.checked_mul(F32_BYTES))
-                    .unwrap_or(0)
-            } else {
-                0
+            // Unlike the other linear arms, a zero batch still gets one row.
+            match input_shape.split_last() {
+                Some((_, batch_dims)) => batch_dims
+                    .iter()
+                    .try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
+                    .and_then(|batch| batch.max(1).checked_mul(*out_features))
+                    .and_then(|numel| numel.checked_mul(F32_BYTES))
+                    .unwrap_or(0),
+                None => 0,
             }
         }
         // FusedResBlockChain: chains 2-4 FusedResBlocks.

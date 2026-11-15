@@ -238,7 +238,7 @@ fn test_small_k_takes_priority_over_wide() {
 }
 
 // ---------------------------------------------------------------------------
-// Tile validity invariants (runtime counterparts of Kani proofs, #3549)
+// Tile validity invariants (#3549)
 // ---------------------------------------------------------------------------
 
 /// All returned tile configs have dimensions that are multiples of SIMDGROUP_ALIGN.

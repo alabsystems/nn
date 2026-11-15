@@ -10,8 +10,8 @@ use nn_core::DType;
 use super::{native_op_output_bytes, plan_buffers};
 use crate::edge_map::compute_edge_map;
 use crate::trace_compile::{
-    compile_trace_to_plan_with_fusion, CompiledStep, FusedNormKind, NativeOpKind,
-    NormActivConv1dParams, NormActivation,
+    compile_trace_to_plan_with_fusion, CompiledStep, ConvActivation, FusedNormKind, GemmActivation,
+    NativeOpKind, NormActivConv1dParams, NormActivation,
 };
 
 fn input_node(id: u64, shape: &[usize]) -> TraceNode {
@@ -479,6 +479,93 @@ fn test_native_op_output_bytes_max_pool1d_short_shape() {
         input_shape: vec![100],
     };
     assert_eq!(native_op_output_bytes(&op), 0);
+}
+
+/// Degenerate or overflowing NativeOp metadata sizes to 0 ("allocate at
+/// runtime") instead of panicking (debug) or wrapping to an under-sized
+/// buffer (release). The conv arms follow `nn_core::conv1d_out_len`.
+#[test]
+fn test_native_op_output_bytes_is_total_on_degenerate_metadata() {
+    let big = usize::MAX / 2 + 1;
+    let conv_ops = |kernel_size: usize, stride: usize, padding: usize, dilation: usize| {
+        let input_shape = vec![1, 8, 16];
+        [
+            NativeOpKind::Conv1dGemm {
+                input_shape: input_shape.clone(),
+                out_channels: 4,
+                kernel_size,
+                stride,
+                padding,
+                dilation,
+                groups: 1,
+                has_bias: false,
+            },
+            NativeOpKind::FusedConv1dActivation {
+                activation: ConvActivation::Relu,
+                out_channels: 4,
+                kernel_size,
+                stride,
+                padding,
+                dilation,
+                groups: 1,
+                has_bias: false,
+                input_shape: input_shape.clone(),
+                pre_activation: false,
+            },
+            NativeOpKind::FusedConv1dSnakeNorm {
+                out_channels: 4,
+                kernel_size,
+                stride,
+                padding,
+                dilation,
+                groups: 1,
+                has_bias: false,
+                eps: 1e-5,
+                input_shape,
+            },
+        ]
+    };
+    // Valid: L_out = (16 + 2*1 - 2*(3-1) - 1) / 1 + 1 = 14.
+    for op in conv_ops(3, 1, 1, 2) {
+        assert_eq!(native_op_output_bytes(&op), 4 * 14 * 4, "{op:?}");
+    }
+    for (k, s, p, d) in [
+        (0, 1, 0, 1),         // kernel_size 0
+        (3, 0, 1, 1),         // stride 0
+        (3, 1, big, 1),       // 2*padding overflows
+        (3, 1, 1, big),       // dilation*(k-1) overflows
+        (3, 1, 0, 1_000_000), // effective kernel longer than the input
+    ] {
+        for op in conv_ops(k, s, p, d) {
+            assert_eq!(native_op_output_bytes(&op), 0, "{op:?}");
+        }
+    }
+
+    // Batch dims whose product overflows.
+    let linear = NativeOpKind::LinearActivation {
+        activation: GemmActivation::Gelu,
+        in_features: 8,
+        out_features: 8,
+        has_bias: false,
+        input_shape: vec![big, 2, 8],
+    };
+    assert_eq!(native_op_output_bytes(&linear), 0);
+    let fused_linear_ln = NativeOpKind::FusedLinearLayerNorm {
+        in_features: 8,
+        out_features: 8,
+        has_bias: false,
+        eps: 1e-5,
+        input_shape: vec![big, 2, 8],
+    };
+    assert_eq!(native_op_output_bytes(&fused_linear_ln), 0);
+    let bilstm = NativeOpKind::BiLstmCat {
+        hidden_size: big,
+        input_shape: vec![1, 1, 8],
+        h_shape: vec![1, big],
+        fwd_lstm_step: 0,
+        rev_lstm_step: 1,
+    };
+    assert_eq!(native_op_output_bytes(&bilstm), 0);
 }
 
 #[test]
@@ -962,4 +1049,80 @@ fn test_projection_slice_keeps_batched_linear_alive() {
 
     // Verify no memory-time overlap.
     assert_no_memory_time_overlap(&bp);
+}
+
+/// Every topologically ordered graph of five steps (each step reading at
+/// most two earlier steps) under every size assignment from `{0, 1, 3}`,
+/// run through the production `compute_last_use` and `linear_scan_alloc`:
+/// each allocation lies inside the high-water mark, only sized steps are
+/// allocated, the plan never needs more than the naive sum, and no two
+/// buffers that are live at the same time share bytes.
+#[test]
+fn test_linear_scan_alloc_exhaustive_small_graphs() {
+    const STEPS: usize = 5;
+    const SIZES: [usize; 3] = [0, 1, 3];
+
+    // Input sets per step: {}, {a} and {a, b} for a < b < step.
+    let input_choices: Vec<Vec<Vec<usize>>> = (0..STEPS)
+        .map(|step| {
+            let mut choices = vec![Vec::new()];
+            for a in 0..step {
+                choices.push(vec![a]);
+                for b in (a + 1)..step {
+                    choices.push(vec![a, b]);
+                }
+            }
+            choices
+        })
+        .collect();
+    let graph_count: usize = input_choices.iter().map(Vec::len).product();
+    let size_count = SIZES.len().pow(STEPS as u32);
+
+    for graph_idx in 0..graph_count {
+        let mut rest = graph_idx;
+        let edge_map: Vec<Vec<usize>> = input_choices
+            .iter()
+            .map(|choices| {
+                let pick = choices[rest % choices.len()].clone();
+                rest /= choices.len();
+                pick
+            })
+            .collect();
+        let last_use = super::compute_last_use(&edge_map, STEPS);
+        for (step, &last) in last_use.iter().enumerate() {
+            assert!(step <= last && last < STEPS, "last_use[{step}] = {last}");
+        }
+        for (consumer, inputs) in edge_map.iter().enumerate() {
+            for &producer in inputs {
+                assert!(last_use[producer] >= consumer, "{edge_map:?}");
+            }
+        }
+
+        for size_idx in 0..size_count {
+            let mut rest = size_idx;
+            let step_sizes: Vec<usize> = (0..STEPS)
+                .map(|_| {
+                    let size = SIZES[rest % SIZES.len()];
+                    rest /= SIZES.len();
+                    size
+                })
+                .collect();
+            let (step_offsets, total_bytes) = super::linear_scan_alloc(&step_sizes, &last_use);
+            let naive_total: usize = step_sizes.iter().sum();
+            assert!(total_bytes <= naive_total, "{edge_map:?} {step_sizes:?}");
+            for (step, offset) in step_offsets.iter().enumerate() {
+                assert_eq!(offset.is_some(), step_sizes[step] > 0);
+                if let Some(offset) = offset {
+                    assert!(offset + step_sizes[step] <= total_bytes);
+                }
+            }
+            assert_no_memory_time_overlap(&super::BufferPlan {
+                total_bytes,
+                step_offsets,
+                step_sizes,
+                naive_total,
+                last_use: last_use.clone(),
+            });
+        }
+    }
 }

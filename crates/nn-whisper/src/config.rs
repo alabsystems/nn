@@ -336,11 +336,3 @@ impl Default for WhisperConfig {
         Self::large_v3_turbo()
     }
 }
-
-#[cfg(kani)]
-#[path = "kani_config_proofs.rs"]
-mod kani_config_proofs;
-
-#[cfg(kani)]
-#[path = "kani_config_proofs_ext.rs"]
-mod kani_config_proofs_ext;

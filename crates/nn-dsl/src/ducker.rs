@@ -64,7 +64,7 @@ impl Default for DuckerState {
 /// Tracks `sidechain` envelope and reduces `x` gain when envelope exceeds
 /// threshold.
 ///
-/// Invariants (proved by Kani):
+/// Invariants:
 /// - `envelope >= 0`
 /// - `gain in [0, 1]`
 /// - `|output| <= |input|`
@@ -167,100 +167,3 @@ pub fn validate_ducker_config(config: &DuckerCoeffs) -> Result<(), KernelError> 
 #[cfg(test)]
 #[path = "ducker_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Proof: envelope is always non-negative.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn ducker_envelope_non_negative() {
-        let x: f32 = kani::any();
-        let sc: f32 = kani::any();
-        let env: f32 = kani::any();
-        let ac: f32 = kani::any();
-        let rc: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x.abs() <= 10.0);
-        kani::assume(sc.is_finite() && sc.abs() <= 10.0);
-        kani::assume(env.is_finite() && env >= 0.0 && env <= 10.0);
-        kani::assume(ac.is_finite() && ac > 0.0 && ac < 1.0);
-        kani::assume(rc.is_finite() && rc > 0.0 && rc < 1.0);
-
-        let state = DuckerState {
-            envelope: env,
-            gain: 1.0,
-        };
-        let config = DuckerCoeffs {
-            attack_coeff: ac,
-            release_coeff: rc,
-            threshold: 0.5,
-            ratio: 0.2,
-        };
-        let result = ducker_process_sample_scalar(x, sc, &state, &config);
-        if let Ok(out) = result {
-            assert!(out.envelope >= 0.0, "envelope must be non-negative");
-        }
-    }
-
-    /// Proof: gain is always in [0, 1].
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn ducker_gain_bounded() {
-        let x: f32 = kani::any();
-        let sc: f32 = kani::any();
-        let env: f32 = kani::any();
-        let threshold: f32 = kani::any();
-        let ratio: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x.abs() <= 10.0);
-        kani::assume(sc.is_finite() && sc.abs() <= 10.0);
-        kani::assume(env.is_finite() && env >= 0.0 && env <= 10.0);
-        kani::assume(threshold.is_finite() && threshold > 0.0 && threshold <= 10.0);
-        kani::assume(ratio.is_finite() && ratio >= 0.0 && ratio < 1.0);
-
-        let state = DuckerState {
-            envelope: env,
-            gain: 1.0,
-        };
-        let config = DuckerCoeffs {
-            attack_coeff: 0.1,
-            release_coeff: 0.01,
-            threshold,
-            ratio,
-        };
-        let result = ducker_process_sample_scalar(x, sc, &state, &config);
-        if let Ok(out) = result {
-            assert!(out.gain >= 0.0 && out.gain <= 1.0, "gain must be in [0, 1]");
-        }
-    }
-
-    /// Proof: ducker never amplifies — |output| <= |input|.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn ducker_never_amplifies() {
-        let x: f32 = kani::any();
-        let sc: f32 = kani::any();
-        let env: f32 = kani::any();
-
-        kani::assume(x.is_finite() && x.abs() <= 1.0);
-        kani::assume(sc.is_finite() && sc.abs() <= 1.0);
-        kani::assume(env.is_finite() && env >= 0.0 && env <= 1.0);
-
-        let state = DuckerState {
-            envelope: env,
-            gain: 1.0,
-        };
-        let config = DuckerCoeffs {
-            attack_coeff: 0.1,
-            release_coeff: 0.01,
-            threshold: 0.5,
-            ratio: 0.2,
-        };
-        let result = ducker_process_sample_scalar(x, sc, &state, &config);
-        if let Ok(out) = result {
-            assert!(out.y.abs() <= x.abs() + 1e-6, "ducker must never amplify");
-        }
-    }
-}

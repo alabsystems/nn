@@ -54,30 +54,6 @@ pub use gptq_loader::{
 mod awq_loader;
 pub use awq_loader::{load_awq_linear, unpack_awq_qweight, AwqFormat};
 
-#[cfg(kani)]
-#[path = "kani_mxfp4_extended_proofs.rs"]
-mod kani_mxfp4_extended_proofs;
-
-#[cfg(kani)]
-#[path = "kani_gptq_awq_proofs.rs"]
-mod kani_gptq_awq_proofs;
-
-#[cfg(kani)]
-#[path = "kani_quantized_extra.rs"]
-mod kani_quantized_extra;
-
-#[cfg(kani)]
-#[path = "kani_weight_quant_proofs.rs"]
-mod kani_weight_quant_proofs;
-
-#[cfg(kani)]
-#[path = "kani_rvq_proofs.rs"]
-mod kani_rvq_proofs;
-
-#[cfg(kani)]
-#[path = "kani_int8_extended_proofs.rs"]
-mod kani_int8_extended_proofs;
-
 #[cfg(test)]
 mod rvq_tests;
 

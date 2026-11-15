@@ -113,8 +113,7 @@ enum Commands {
         /// The populated report fields depend on which verification features
         /// this CLI build enables. `full` requests the fullest report path
         /// available in this build today: bounds when supported, plus optional
-        /// reference parity when `--reference` is provided. It does not run
-        /// inline Kani kernel-safety reporting.
+        /// reference parity when `--reference` is provided.
         #[arg(long, default_value = "bounds")]
         verify: Verify,
 
@@ -362,12 +361,19 @@ fn metal_required(subcommand: &str) -> anyhow::Error {
     )
 }
 
-fn main() {
-    let cli = Cli::parse();
-
-    if let Err(e) = run(cli) {
-        eprintln!("error: {e:#}");
-        process::exit(1);
+/// Runs the CLI; exits 1 with the error chain on stderr when `run` fails.
+///
+/// The failure path returns `ExitCode::FAILURE` (1 on every platform this
+/// tool ships on) rather than calling `process::exit(1)`: an ordinary return
+/// runs destructors, and the `Result` match stays an exhaustive two-arm match
+/// with no diverging call beside it, which the verified lane discharges.
+fn main() -> process::ExitCode {
+    match run(Cli::parse()) {
+        Ok(()) => process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            process::ExitCode::FAILURE
+        }
     }
 }
 
@@ -1685,7 +1691,7 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_help_describes_verify_full_without_inline_kani() {
+    fn test_convert_help_describes_verify_full_as_a_report_request() {
         let help = render_subcommand_help("convert");
         assert!(
             help.contains("fullest report path"),
@@ -1696,12 +1702,8 @@ mod tests {
             "convert help should mention optional reference parity for --verify full:\n{help}"
         );
         assert!(
-            help.contains("does not run inline Kani"),
-            "convert help should make the missing inline Kani path explicit:\n{help}"
-        );
-        assert!(
             !help.contains("kernel-safety reporting, and reference parity"),
-            "convert help should not claim --verify full includes inline Kani reporting:\n{help}"
+            "convert help should not claim --verify full includes kernel-safety reporting:\n{help}"
         );
     }
 

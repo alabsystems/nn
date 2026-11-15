@@ -15,7 +15,7 @@
 //!
 //! ```bash
 //! export WHISPER_WEIGHTS=./nn/weights/whisper-tiny
-//! cargo test -p nn-whisper --test real_weights -- --nocapture
+//! targo --unverified test -p nn-whisper --test real_weights -- --nocapture
 //! ```
 //!
 //! Required files in `$WHISPER_WEIGHTS/`:

@@ -9,7 +9,7 @@
 //! - Medium (n_fft=256, 32 frames): moderate workload
 //! - Production (n_fft=4096, 16 frames): HTDemucs actual parameters
 //!
-//! Run with `cargo test -p nn-metal --lib -- test_istft_bench -- --nocapture`
+//! Run with `targo --unverified test -p nn-metal --lib -- test_istft_bench -- --nocapture`
 
 use std::time::Instant;
 

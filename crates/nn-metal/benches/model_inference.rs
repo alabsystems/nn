@@ -23,7 +23,7 @@
 //! Run:
 //!   WHISPER_WEIGHTS=/path/to/whisper-tiny \
 //!   KOKORO_WEIGHTS=./nn/weights/kokoro_v1_0.safetensors \
-//!   cargo bench -p nn-metal --bench model_inference
+//!   targo --unverified bench -p nn-metal --bench model_inference
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

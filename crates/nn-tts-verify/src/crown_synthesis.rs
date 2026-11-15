@@ -24,7 +24,7 @@
 //! | no_clicks       | P6 (Streaming-safe proxy)   | Empirical      |
 //!
 //! Properties P3-P5 and P7-P8 require additional infrastructure (attention
-//! monotonicity, timing certificates, Kani/ay) and are left at their base
+//! monotonicity, timing certificates, ay) and are left at their base
 //! verification level from the artifact registry.
 //!
 //! When the `NY` feature is enabled, future extensions can run actual

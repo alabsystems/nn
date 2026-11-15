@@ -476,7 +476,8 @@ fn test_pipeline_flat_kv_cache_append_and_retrieve() {
     let num_heads = 4;
     let head_dim = 8;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, 16);
+    let mut cache =
+        kv_cache::KVCache::new(num_layers, num_heads, head_dim, 16).expect("valid KVCache sizes");
 
     let key: Vec<f32> = (0..token_size).map(|i| i as f32 * 0.1).collect();
     let val: Vec<f32> = (0..token_size).map(|i| i as f32 * 0.2).collect();
@@ -486,7 +487,7 @@ fn test_pipeline_flat_kv_cache_append_and_retrieve() {
     }
     assert_eq!(cache.len(), 1);
 
-    let retrieved_key = cache.get_keys(0);
+    let retrieved_key = cache.get_keys(0).unwrap();
     assert_eq!(retrieved_key.len(), token_size);
     for i in 0..token_size {
         assert!(
@@ -503,7 +504,8 @@ fn test_pipeline_flat_kv_cache_eviction_at_capacity() {
     let head_dim = 4;
     let max_seq = 3;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, max_seq);
+    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, max_seq)
+        .expect("valid KVCache sizes");
 
     let key: Vec<f32> = vec![1.0; token_size];
     let val: Vec<f32> = vec![2.0; token_size];
@@ -1474,7 +1476,8 @@ fn test_pipeline_flat_kv_cache_multi_layer_independence() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, 10);
+    let mut cache =
+        kv_cache::KVCache::new(num_layers, num_heads, head_dim, 10).expect("valid KVCache sizes");
 
     for layer in 0..num_layers {
         let key: Vec<f32> = (0..token_size).map(|i| (layer * 100 + i) as f32).collect();
@@ -1484,7 +1487,7 @@ fn test_pipeline_flat_kv_cache_multi_layer_independence() {
 
     // Each layer should have its own unique data
     for layer in 0..num_layers {
-        let keys = cache.get_keys(layer);
+        let keys = cache.get_keys(layer).unwrap();
         assert_eq!(
             keys[0],
             (layer * 100) as f32,
@@ -1499,7 +1502,8 @@ fn test_pipeline_flat_kv_cache_clone() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, 10);
+    let mut cache =
+        kv_cache::KVCache::new(num_layers, num_heads, head_dim, 10).expect("valid KVCache sizes");
 
     let key: Vec<f32> = vec![1.0; token_size];
     let val: Vec<f32> = vec![2.0; token_size];
@@ -1510,8 +1514,8 @@ fn test_pipeline_flat_kv_cache_clone() {
     let cloned = cache.clone();
     assert_eq!(cloned.len(), cache.len());
     assert_eq!(cloned.num_layers(), cache.num_layers());
-    assert_eq!(cloned.get_keys(0), cache.get_keys(0));
-    assert_eq!(cloned.get_values(0), cache.get_values(0));
+    assert_eq!(cloned.get_keys(0).unwrap(), cache.get_keys(0).unwrap());
+    assert_eq!(cloned.get_values(0).unwrap(), cache.get_values(0).unwrap());
 }
 
 // ===========================================================================

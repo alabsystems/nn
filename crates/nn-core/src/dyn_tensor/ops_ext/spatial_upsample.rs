@@ -536,43 +536,7 @@ fn bilinear_coord(dst: usize, in_size: usize, out_size: usize, align_corners: bo
 ///
 /// `src = (dst + 0.5) * scale - 0.5`, clamped to `[0, in_size - 1]`.
 /// `scale = in_size / out_size` (precomputed by caller).
-///
-/// This is a free function (not a method) so it can be used by the Kani harness.
 fn resize_bilinear_coord(dst: usize, scale: f64, in_size: usize) -> f64 {
     let src = (dst as f64 + 0.5) * scale - 0.5;
     src.clamp(0.0, (in_size - 1) as f64)
-}
-
-#[cfg(kani)]
-mod kani_proofs {
-    /// Proves the bilinear resize coordinate mapping produces finite values
-    /// and stays within `[0, in_size - 1]` for all valid dimension combinations.
-    ///
-    /// Domain: dst in [0, 8191], in_size in [1, 8192], out_size in [1, 8192].
-    /// Covers all practical image resize scenarios.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn resize_bilinear_coord_is_finite_and_bounded() {
-        let dst: usize = kani::any();
-        let in_size: usize = kani::any();
-        let out_size: usize = kani::any();
-
-        // Constrain to valid positive dimensions and dst < out_size.
-        kani::assume(in_size >= 1 && in_size <= 8192);
-        kani::assume(out_size >= 1 && out_size <= 8192);
-        kani::assume(dst < out_size);
-
-        let scale = in_size as f64 / out_size as f64;
-        let result = super::resize_bilinear_coord(dst, scale, in_size);
-
-        // Result must be finite.
-        assert!(result.is_finite(), "coordinate must be finite");
-        // Result must be in [0, in_size - 1].
-        assert!(result >= 0.0, "coordinate must be >= 0");
-        assert!(
-            result <= (in_size - 1) as f64,
-            "coordinate must be <= in_size - 1"
-        );
-    }
 }

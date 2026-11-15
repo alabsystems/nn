@@ -4,7 +4,7 @@
 
 //! Criterion benchmarks for core DynTensor operations at real-model tensor sizes.
 //!
-//! Run with: `cargo bench -p nn-core --bench dyn_tensor_ops`
+//! Run with: `targo --unverified bench -p nn-core --bench dyn_tensor_ops`
 //!
 //! These benchmarks measure CPU-only performance of the fundamental tensor
 //! operations used throughout nn model inference, using tensor shapes drawn

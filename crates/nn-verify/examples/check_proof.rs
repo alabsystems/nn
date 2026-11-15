@@ -4,7 +4,7 @@
 
 //! Independent certificate checker CLI for `.proof.json` files.
 //!
-//! Run with: `cargo run -p nn-verify --example check_proof -- <proof.json> [--weights <path>] [--source <path>]`
+//! Run with: `targo --unverified run -p nn-verify --example check_proof -- <proof.json> [--weights <path>] [--source <path>]`
 //!
 //! Validates proof certificates without access to NY or the original
 //! model. See `certificate_checker.rs` for the checks performed.

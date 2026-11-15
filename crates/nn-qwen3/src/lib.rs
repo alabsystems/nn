@@ -110,8 +110,15 @@ impl Qwen3Model {
             model_vb.get(&[cfg.vocab_size, cfg.hidden_size], "embed_tokens.weight")?;
         let embed_tokens = Embedding::new(embed_weight.clone())?;
 
-        let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
-        for i in 0..cfg.num_hidden_layers {
+        // `validate` bounds the layer count by `MAX_NUM_LAYERS`; a reservation
+        // is made only under that bound, where it is visible at this call.
+        let num_layers = cfg.num_hidden_layers;
+        let mut layers = if num_layers <= config::MAX_NUM_LAYERS {
+            Vec::with_capacity(num_layers)
+        } else {
+            Vec::new()
+        };
+        for i in 0..num_layers {
             let layer_vb = model_vb.pp(format!("layers.{i}"));
             layers.push(Qwen3DecoderLayer::load(&layer_vb, &cfg)?);
         }
@@ -341,8 +348,7 @@ impl Qwen3Model {
     fn model_fn_adapter(&self, input: &DynTensor, cache: &mut KvCache) -> Result<DynTensor> {
         let u32_data = input.to_flat_vec::<u32>()?;
         let ids: Vec<usize> = u32_data.iter().map(|&v| v as usize).collect();
-        let offset = cache.seq_len();
-        let positions: Vec<usize> = (0..ids.len()).map(|i| offset + i).collect();
+        let positions = forward_common::positions_after(cache.seq_len(), &ids)?;
         self.forward_cached(&ids, &positions, Some(cache))
     }
 }
@@ -414,39 +420,3 @@ mod qwen3_pipeline_extended_tests;
 #[cfg(test)]
 #[path = "qwen3_model_extended_tests.rs"]
 mod qwen3_model_extended_tests;
-
-#[cfg(kani)]
-#[path = "kani_qwen3.rs"]
-mod kani_proofs;
-
-#[cfg(kani)]
-#[path = "kani_moe_forward_proofs.rs"]
-mod kani_moe_forward_proofs;
-
-#[cfg(kani)]
-#[path = "kani_moe.rs"]
-mod kani_moe;
-
-#[cfg(kani)]
-#[path = "kani_forward_common.rs"]
-mod kani_forward_common;
-
-#[cfg(kani)]
-#[path = "kani_layers.rs"]
-mod kani_layers;
-
-#[cfg(kani)]
-#[path = "kani_lib.rs"]
-mod kani_lib;
-
-#[cfg(kani)]
-#[path = "kani_model_invariants.rs"]
-mod kani_model_invariants;
-
-#[cfg(kani)]
-#[path = "kani_qwen3_wave11.rs"]
-mod kani_qwen3_wave11;
-
-#[cfg(kani)]
-#[path = "kani_qwen3_vl_projection_proofs.rs"]
-mod kani_qwen3_vl_projection_proofs;

@@ -437,7 +437,3 @@ fn apply_rope_from_cos_sin(
 #[cfg(test)]
 #[path = "mla_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_mla_proofs.rs"]
-mod kani_mla_proofs;

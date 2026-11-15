@@ -5,7 +5,7 @@
 //! Generate a model-specific proof certificate bundle from the full
 //! `nn_verify.proof.json` bundle.
 //!
-//! Run with: `cargo run -p nn-verify --example generate_proof_bundle -- --model silero_vad --output silero_vad.proof.json`
+//! Run with: `targo --unverified run -p nn-verify --example generate_proof_bundle -- --model silero_vad --output silero_vad.proof.json`
 //!
 //! Reads the workspace-root `nn_verify.proof.json`, filters to the
 //! kernel certificates relevant to the specified model, validates the

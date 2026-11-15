@@ -301,7 +301,7 @@ pub fn crossfade_linear(tail: &[f32], head: &[f32]) -> Result<Vec<f32>, TtsVerif
         // Preserve existing behavior: single-sample returns head, empty
         // returns empty. This differs from crossfade_linear_blend's
         // single-sample average -- kept for backward compatibility with
-        // existing Kani proofs and tests.
+        // existing tests.
         return Ok(head.to_vec());
     }
     Ok(nn_core::audio::crossfade_linear_blend(tail, head, n))

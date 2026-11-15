@@ -1031,10 +1031,6 @@ pub fn mix_voices_stereo(
     Ok(stereo)
 }
 
-#[cfg(kani)]
-#[path = "kokoro_chorus_kani_tests.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "kokoro_chorus_tests.rs"]
 mod tests;

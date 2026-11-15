@@ -367,11 +367,3 @@ use byte_map::{build_byte_decoder, build_byte_encoder};
 #[cfg(test)]
 #[path = "tokenizer_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_tokenizer_proofs.rs"]
-mod kani_tokenizer_proofs;
-
-#[cfg(kani)]
-#[path = "kani_byte_map_proofs.rs"]
-mod kani_byte_map_proofs;

@@ -4,7 +4,7 @@
 
 //! E2E training tests for TrainableMultiHeadAttention and TrainableSwiGlu.
 //!
-//! Run: `cargo test -p nn --test training_mha_swiglu --features training`
+//! Run: `targo --unverified test -p nn --test training_mha_swiglu --features training`
 
 #![cfg(feature = "training")]
 

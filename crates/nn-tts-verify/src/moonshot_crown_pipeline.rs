@@ -23,7 +23,7 @@ use super::{
 /// `TimingCertificate` from `verify_pipeline_with_timing`.
 ///
 /// Properties 7, 8 require additional infrastructure:
-/// - Property 7 (memory safety): Kani-based, not CROWN
+/// - Property 7 (memory safety): not verified by this pipeline
 /// - Property 8 (correctness): ay-based, not CROWN
 ///
 /// For Property 4 (speaker consistency), use [`check_speaker_consistency`]
@@ -141,8 +141,8 @@ pub fn verify_properties_with_timing_and_memory(
 /// speaker consistency evidence (P4) into a single bundle. This is the
 /// most complete CROWN verification path available.
 ///
-/// Properties 7 (memory safety) and 8 (implementation correctness) are
-/// verified by Kani and ay respectively, not CROWN.
+/// Properties 7 (memory safety) and 8 (implementation correctness) are not
+/// CROWN properties; P8 is verified by ay.
 pub fn verify_all_crown_properties(
     bounds_cert: &PipelineCertificate,
     timing_cert: &TimingCertificate,

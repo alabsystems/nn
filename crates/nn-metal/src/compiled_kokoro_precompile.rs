@@ -618,7 +618,7 @@ pub struct PrecompileResult {
 /// to `.metal` files in `output_dir`. The files are named
 /// `{segment}_{shape}_{step}_{kernel}.metal`.
 ///
-/// After running this, `cargo build` will pick up the `.metal` files
+/// After running this, `targo --unverified build` will pick up the `.metal` files
 /// and compile them to a `.metallib` via `build.rs`.
 ///
 /// # Errors

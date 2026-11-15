@@ -28,15 +28,13 @@ members = [
 # nn-ane, nn-swift
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Andrew Yates <andrewyates.name@gmail.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/alabsystems/nn"
 
 [workspace.lints.rust]
-# Kani model checker sets the 'kani' cfg flag
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 unreachable_pub = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_qualifications = "warn"
@@ -197,8 +195,6 @@ tempfile = "3"
 # dependency graph transitively via the ny sibling)
 tracing = "0.1"
 
-# Build-script tooling (nn-models build.rs probes system libs)
-pkg-config = "0.3"
 
 # Proc-macro / AST
 syn = { version = "2", features = ["full", "parsing"] }
@@ -218,19 +214,36 @@ criterion = { version = "0.8", features = ["html_reports"] }
 # Audio I/O
 hound = "3.5"
 
-# Verification (ny — neural-network verifier, local sibling path dep at ../ny).
-# Successor to the deprecated gamma-crown; ny-{api,build,core,propagate} are the
-# direct analogs of the former gamma-{api,build,core,propagate} crates.
-ny-api = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
-ny-build = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
-ny-core = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
-ny-propagate = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
-ny-trace-bridge = { git = "https://github.com/alabsystems/ny", tag = "v0.4.0" }
+# First-party siblings: ny and ay. Each is a git dependency PINNED BY REV, and
+# the pin is what development builds: there is deliberately no committed
+# [patch] table redirecting these crates to ../ny or ../ay checkouts, so
+# Cargo.lock records every crate named here as that repository's git source
+# at `?rev=<pin>#<pin>`, and development builds, tests and the lock all
+# describe the pinned revision. To try a live sibling checkout, override it on the
+# command line for that one invocation, never in a committed file, e.g.
+#   targo --unverified check --config \
+#     'patch."https://github.com/alabsystems/ny".ny-core.path="../ny/crates/ny-core"'
+# That re-resolves Cargo.lock to a path package; restore the lock before
+# committing (publish/transforms.sh refuses an export whose Cargo.lock does not
+# record every pin at the manifest's rev). The public export keeps the pins and
+# publishes each one forward through the publication engine's ledger, onto the
+# sibling's newest publication and only when that publication descends from the
+# pin. Every crate from one sibling shares one rev; moving a pin is an edit here
+# plus `targo update -w`, and the lock change shows what moved.
+#
+# Verification (ny — neural-network verifier). Successor to the deprecated
+# gamma-crown; ny-{api,build,core,propagate} are the direct analogs of the former
+# gamma-{api,build,core,propagate} crates.
+ny-api = { git = "https://github.com/alabsystems/ny.git", rev = "f22c60bb99c49f919ab35a23417b63e2fc255087" }
+ny-build = { git = "https://github.com/alabsystems/ny.git", rev = "f22c60bb99c49f919ab35a23417b63e2fc255087" }
+ny-core = { git = "https://github.com/alabsystems/ny.git", rev = "f22c60bb99c49f919ab35a23417b63e2fc255087" }
+ny-propagate = { git = "https://github.com/alabsystems/ny.git", rev = "f22c60bb99c49f919ab35a23417b63e2fc255087" }
+ny-trace-bridge = { git = "https://github.com/alabsystems/ny.git", rev = "f22c60bb99c49f919ab35a23417b63e2fc255087" }
 
-# Verification (ay SMT solver — local sibling path dep at ../ay).
+# Verification (ay SMT solver).
 # `direct` feature enables in-process solving for non-UF programs;
 # UF programs (transcendental kernels using sin_approx, etc.) return Unexecuted.
-ay-bindings = { git = "https://github.com/alabsystems/ay", tag = "v0.18.0", features = ["direct"] }
+ay-bindings = { git = "https://github.com/alabsystems/ay.git", rev = "9dfa20b5790b03c8ffe57fbbe67316ece665c5be", features = ["direct"] }
 
 # Internal crates
 nn-core = { path = "crates/nn-core" }
@@ -260,7 +273,6 @@ overflow-checks = true
 lto = true
 codegen-units = 1
 
-# Local sibling overrides: redirect GitHub URLs to ../ny and ../ay.
 [workspace.metadata.atpkg]
 # The user-facing command for `nn` is the single `nn` bin (crate nn-cli): the
 # zero-input `nn device` report (added 4f6e50b), plus convert / compile / run /
@@ -269,14 +281,245 @@ codegen-units = 1
 # implementation IS `nn optimize`), nn_report / rss_measure / kokoro_synth
 # (nn-metal dev, perf and demo harnesses; the last two need an unshipped
 # $KOKORO_WEIGHTS), and nn_verify_cert / tighten (nn-verify proof tooling, which
-# drags the ../ny and ../ay sibling path deps into the build).
+# drags the ny and ay sibling dependencies into the build).
 #
 # This block is not optional decoration: without it aterm's atpkg-pack.sh falls
 # back to a LOUD name-token heuristic and ships that junk set onto the user's
 # PATH. The declaration is authoritative and versioned with the code that
 # defines the commands.
 expose = ["nn"]
-# Scope the release build to the one shipped bin. A bare `cargo build --release`
+# Scope the release build to the one shipped bin. A bare `targo --unverified build --release`
 # builds all 22 workspace members — including nn-verify (ny + ay), nn-cuda and
 # nn-vulkan — under this workspace's lto = true / codegen-units = 1 profile.
 build-args = ["-p", "nn-cli"]
+
+# What a package of main is held to before aterm's tip lane (`atpkg-publish lane run tip`)
+# stages it: the checks build 195 was cut under on 2026-11-12. The source steps run in the
+# frozen checkout, one crate and one binary at a time (CLAUDE.md: never a bare workspace
+# test); the build is the pack itself (`build-args` above); the packed steps run the packed
+# `nn` from a scratch directory outside the checkout. Each step passes only if it exits 0
+# within `within-secs` with at least `min-tests` libtest passes.
+[[workspace.metadata.atpkg.qualify]]
+name = "tippy-core"
+stage = "source"
+run = ["targo", "tippy", "-p", "nn-core", "--lib"]
+within-secs = 3600
+
+[[workspace.metadata.atpkg.qualify]]
+name = "core-generation"
+stage = "source"
+run = ["targo", "--unverified", "test", "-p", "nn-core", "--lib", "--", "layers::generation"]
+within-secs = 3600
+min-tests = 230
+
+[[workspace.metadata.atpkg.qualify]]
+name = "cli-integration"
+stage = "source"
+run = [
+    "targo", "--unverified", "test", "-p", "nn-cli",
+    "--test", "exit_status", "--test", "nnc_roundtrip", "--test", "compile_report_persistence",
+]
+within-secs = 3600
+min-tests = 6
+
+[[workspace.metadata.atpkg.qualify]]
+name = "build"
+stage = "build"
+within-secs = 3600
+
+[[workspace.metadata.atpkg.qualify]]
+name = "version"
+stage = "packed"
+run = ["{bin}/nn", "--version"]
+within-secs = 120
+
+[[workspace.metadata.atpkg.qualify]]
+name = "help"
+stage = "packed"
+run = ["{bin}/nn", "--help"]
+within-secs = 120
+
+# The Metal backend initializes on this Mac.
+[[workspace.metadata.atpkg.qualify]]
+name = "device"
+stage = "packed"
+run = ["/bin/sh", "-c", '''
+out=$("{bin}/nn" device --json </dev/null) || exit 1
+printf '%s\n' "$out" | grep -qF '"backend": "metal"'
+''']
+within-secs = 120
+
+[[workspace.metadata.atpkg.qualify]]
+name = "invalid-flag"
+stage = "packed"
+run = ["/bin/sh", "-c", '''
+out=$("{bin}/nn" device --unknown 2>&1 </dev/null); [ $? -eq 2 ] || exit 1
+printf '%s\n' "$out" | grep -qF 'unexpected argument'
+''']
+within-secs = 120
+
+[[workspace.metadata.atpkg.qualify]]
+name = "missing-graph"
+stage = "packed"
+run = ["/bin/sh", "-c", '''
+d=$(mktemp -d) || exit 1; trap 'rm -rf "$d"' EXIT
+out=$("{bin}/nn" compile "$d/absent.json" "$d/absent.safetensors" --output "$d/model.nnc" 2>&1 </dev/null); [ $? -eq 1 ] || exit 1
+printf '%s\n' "$out" | grep -qF 'graph file not found' || exit 1
+[ ! -e "$d/model.nnc" ]
+''']
+within-secs = 120
+
+# The cut's model controls on one two-layer MLP: `compile` persists a plan and its report, a
+# fresh run and a run of the persisted plan both give the reference output (exact in f32:
+# every weight is a small dyadic rational) and equal bytes, a plan that is not JSON and an
+# input of the wrong shape are refused. The graph is crates/nn-import/test_data/e2e_mlp.json,
+# written inline because a packed step has no path to the checkout.
+[[workspace.metadata.atpkg.qualify]]
+name = "mlp-compile-run"
+stage = "packed"
+run = ["/bin/sh", "-c", '''
+set -u
+d=$(mktemp -d) || exit 1; trap 'rm -rf "$d"' EXIT; cd "$d" || exit 1
+cat > graph.json <<'JSON'
+{"graph_module":{"graph":{"inputs":[{"as_tensor":{"name":"p_fc1_weight"}},{"as_tensor":{"name":"p_fc1_bias"}},{"as_tensor":{"name":"p_fc2_weight"}},
+{"as_tensor":{"name":"p_fc2_bias"}},{"as_tensor":{"name":"x"}}],"outputs":[{"as_tensor":{"name":"linear_1"}}],
+"nodes":[{"target":"torch.ops.aten.linear.default","inputs":[{"name":"input","arg":{"as_tensor":{"name":"x"}},"kind":1},{"name":"weight",
+"arg":{"as_tensor":{"name":"p_fc1_weight"}},"kind":1},{"name":"bias","arg":{"as_tensor":{"name":"p_fc1_bias"}},"kind":1}],
+"outputs":[{"as_tensor":{"name":"linear_0"}}],"metadata":{}},{"target":"torch.ops.aten.relu.default","inputs":[{"name":"input",
+"arg":{"as_tensor":{"name":"linear_0"}},"kind":1}],"outputs":[{"as_tensor":{"name":"relu"}}],"metadata":{}},{"target":"torch.ops.aten.linear.default",
+"inputs":[{"name":"input","arg":{"as_tensor":{"name":"relu"}},"kind":1},{"name":"weight","arg":{"as_tensor":{"name":"p_fc2_weight"}},"kind":1},
+{"name":"bias","arg":{"as_tensor":{"name":"p_fc2_bias"}},"kind":1}],"outputs":[{"as_tensor":{"name":"linear_1"}}],"metadata":{}}],
+"tensor_values":{"x":{"dtype":7,"sizes":[{"as_int":1},{"as_int":4}],"requires_grad":false,"strides":[{"as_int":4},{"as_int":1}]},
+"p_fc1_weight":{"dtype":7,"sizes":[{"as_int":8},{"as_int":4}],"requires_grad":true,"strides":[{"as_int":4},{"as_int":1}]},"p_fc1_bias":{"dtype":7,
+"sizes":[{"as_int":8}],"requires_grad":true,"strides":[{"as_int":1}]},"p_fc2_weight":{"dtype":7,"sizes":[{"as_int":3},{"as_int":8}],
+"requires_grad":true,"strides":[{"as_int":8},{"as_int":1}]},"p_fc2_bias":{"dtype":7,"sizes":[{"as_int":3}],"requires_grad":true,
+"strides":[{"as_int":1}]},"linear_0":{"dtype":7,"sizes":[{"as_int":1},{"as_int":8}],"requires_grad":false,"strides":[{"as_int":8},{"as_int":1}]},
+"relu":{"dtype":7,"sizes":[{"as_int":1},{"as_int":8}],"requires_grad":false,"strides":[{"as_int":8},{"as_int":1}]},"linear_1":{"dtype":7,
+"sizes":[{"as_int":1},{"as_int":3}],"requires_grad":false,"strides":[{"as_int":3},{"as_int":1}]}},"is_single_tensor_return":true},
+"signature":{"input_specs":[{"parameter":{"arg":{"name":"p_fc1_weight"},"parameter_name":"fc1.weight"}},{"parameter":{"arg":{"name":"p_fc1_bias"},
+"parameter_name":"fc1.bias"}},{"parameter":{"arg":{"name":"p_fc2_weight"},"parameter_name":"fc2.weight"}},{"parameter":{"arg":{"name":"p_fc2_bias"},
+"parameter_name":"fc2.bias"}},{"user_input":{"arg":{"as_tensor":{"name":"x"}}}}],
+"output_specs":[{"user_output":{"arg":{"as_tensor":{"name":"linear_1"}}}}]},"module_call_graph":[]},"schema_version":{"major":8,"minor":15},
+"opset_version":{"aten":10},"range_constraints":{}}
+JSON
+python3.14 -I - "{bin}/nn" <<'PY'
+import json, struct, subprocess, sys
+nn = sys.argv[1]
+def st(path, tensors):
+    head, body, at = {}, b"", 0
+    for name, shape, values in tensors:
+        raw = struct.pack("<%df" % len(values), *values)
+        head[name] = {"dtype": "F32", "shape": shape, "data_offsets": [at, at + len(raw)]}
+        body += raw; at += len(raw)
+    h = json.dumps(head, separators=(",", ":")).encode()
+    h += b" " * (-len(h) % 8)
+    open(path, "wb").write(struct.pack("<Q", len(h)) + h + body)
+def rd(path):
+    b = open(path, "rb").read(); n = struct.unpack("<Q", b[:8])[0]
+    head = json.loads(b[8:8 + n]); (name, t), = head.items()
+    lo, hi = t["data_offsets"]
+    return name, t["dtype"], t["shape"], list(struct.unpack("<%df" % ((hi - lo) // 4), b[8 + n + lo:8 + n + hi]))
+w1 = [[((i + j) % 3 - 1) * 0.25 for j in range(4)] for i in range(8)]
+b1 = [0.125 * i - 0.25 for i in range(8)]
+w2 = [[0.5 * ((k + i) % 2) - 0.125 * k for i in range(8)] for k in range(3)]
+b2 = [0.5, -0.25, 1.0]
+x = [1.0, 2.0, 3.0, 4.0]
+hid = [max(0.0, sum(w * v for w, v in zip(row, x)) + b) for row, b in zip(w1, b1)]
+want = [sum(w * v for w, v in zip(row, hid)) + b for row, b in zip(w2, b2)]
+assert any(h == 0.0 for h in hid) and any(h > 0.0 for h in hid) and len(set(want)) == 3, (hid, want)
+st("weights.safetensors", [("fc1.weight", [8, 4], sum(w1, [])), ("fc1.bias", [8], b1),
+                           ("fc2.weight", [3, 8], sum(w2, [])), ("fc2.bias", [3], b2)])
+st("input.safetensors", [("x", [1, 4], x)])
+st("bad-input.safetensors", [("x", [1, 3], x[:3])])
+open("invalid.nnc", "w").write("{invalid-json")
+def run(args, code=0, contains=None):
+    p = subprocess.run([nn] + args, stdin=subprocess.DEVNULL, capture_output=True, timeout=100)
+    both = p.stdout + p.stderr
+    assert p.returncode == code, (args, p.returncode, both[-2000:])
+    assert contains is None or contains.encode() in both, (args, contains, both[-2000:])
+    return p
+model = ["graph.json", "weights.safetensors"]
+p = run(["compile"] + model + ["--output", "model.nnc", "--report-output", "report.json", "--json"])
+for report in (json.loads(p.stdout), json.load(open("report.json"))):
+    assert report["artifact_kind"] == "compiled_metal_artifact" and report["num_weights_loaded"] == 4, report
+    assert report["op_count"] == 3 and report["unmapped_ops"] == [], report
+assert len(open("model.nnc", "rb").read()) > 1000
+run(["run"] + model + ["--input", "input.safetensors", "--output", "fresh.safetensors"])
+run(["run"] + model + ["--compiled", "model.nnc", "--input", "input.safetensors", "--output", "loaded.safetensors"],
+    contains="Loading pre-compiled plan")
+fresh = rd("fresh.safetensors")
+assert fresh[:3] == ("linear_1", "F32", [1, 3]), fresh
+assert all(abs(a - b) <= 1e-5 for a, b in zip(fresh[3], want)), (fresh, want)
+assert open("fresh.safetensors", "rb").read() == open("loaded.safetensors", "rb").read()
+run(["run"] + model + ["--compiled", "invalid.nnc", "--input", "input.safetensors"], 1, "failed to load compiled plan")
+run(["run"] + model + ["--compiled", "model.nnc", "--input", "bad-input.safetensors"], 1,
+    "shape mismatch: expected [1, 4], got [1, 3]")
+PY
+''']
+within-secs = 120
+
+# The cut's four `generalize` controls: a certificate calculated over seven artifact
+# identities and the example transcript is saved sealed with an HMAC key, replays with that
+# key, and is refused with no key and with the wrong key. The transcript and corpus manifest
+# are examples/generalization-transcript.json and examples/generalization-corpus.json,
+# written inline; the six other artifacts are one 10763-byte file, the size of the LICENSE
+# the cut used for them.
+[[workspace.metadata.atpkg.qualify]]
+name = "generalize"
+stage = "packed"
+run = ["/bin/sh", "-c", '''
+set -u
+d=$(mktemp -d) || exit 1; trap 'rm -rf "$d"' EXIT; cd "$d" || exit 1
+cat > transcript.json <<'JSON'
+{"schema_version":1,"training_prompt_count":2,"reward_lower":0.0,"reward_upper":1.0,"sampling":{"kind":"full_training_set"},
+"assumptions":{"training_prompts_iid_from_deployment_distribution":true,"deployment_distribution_matches_training_distribution":true,
+"generation_noise_iid_and_independent_of_prompts_training_and_hypothesis":true,"generation_noise_distribution_matches_deployment":true,
+"generation_deterministic_given_prompt_noise_and_hypothesis":true,"reward_function_deterministic_and_globally_bounded":true,
+"generation_and_deployment_specs_fixed_before_training_sample":true,"reward_spec_bounds_and_failure_probability_fixed_before_training_sample":true,
+"hypothesis_encoding_scheme_fixed_before_training_sample":true,"hypothesis_encoding_scheme_is_prefix_free":true,
+"encoded_code_reconstructs_final_hypothesis":true,"base_model_and_zero_cost_decoder_fixed_before_training_sample":true},
+"prompts":[{"training_index":0,"prompt_sha256":"0000000000000000000000000000000000000000000000000000000000000001",
+"generations":[{"noise_sha256":"0000000000000000000000000000000000000000000000000000000000000011",
+"generation_sha256":"0000000000000000000000000000000000000000000000000000000000000021","reward":1.0},
+{"noise_sha256":"0000000000000000000000000000000000000000000000000000000000000012",
+"generation_sha256":"0000000000000000000000000000000000000000000000000000000000000022","reward":0.0}]},{"training_index":1,
+"prompt_sha256":"0000000000000000000000000000000000000000000000000000000000000002",
+"generations":[{"noise_sha256":"0000000000000000000000000000000000000000000000000000000000000013",
+"generation_sha256":"0000000000000000000000000000000000000000000000000000000000000023","reward":1.0},
+{"noise_sha256":"0000000000000000000000000000000000000000000000000000000000000014",
+"generation_sha256":"0000000000000000000000000000000000000000000000000000000000000024","reward":1.0}]}]}
+JSON
+cat > corpus.json <<'JSON'
+{"schema_version":1,"prompt_sha256":["0000000000000000000000000000000000000000000000000000000000000001","0000000000000000000000000000000000000000000000000000000000000002"]}
+JSON
+python3.14 -I - "{bin}/nn" <<'PY'
+import subprocess, sys
+nn = sys.argv[1]
+open("artifact.bin", "wb").write(bytes(i % 251 for i in range(10763)))
+open("key", "wb").write(b"cli-e2e-generalization-key-32bytes")
+open("wrong-key", "wb").write(b"wrong-generalization-key-at-least-32")
+roles = ["base-model", "encoded-hypothesis", "hypothesis-decoder-spec", "generation-spec", "reward-spec",
+         "prompt-distribution-manifest"]
+evidence = sum((["--" + r, "artifact.bin"] for r in roles), []) + ["--training-corpus-manifest", "corpus.json"]
+def run(args, ok=True, contains=()):
+    p = subprocess.run([nn, "generalize"] + args, stdin=subprocess.DEVNULL, capture_output=True, timeout=100)
+    both = (p.stdout + p.stderr).decode()
+    assert (p.returncode == 0) == ok and (ok or p.returncode in (1, 2)), (args, p.returncode, both[-2000:])
+    for c in contains:
+        assert c in both, (args, c, both[-2000:])
+run(["calculate", "transcript.json"] + evidence + ["--encoding-scheme", "cli-e2e-prefix-v1", "--description-bits", "86104",
+     "--delta", "0.05", "--output", "reward.cert.json", "--hmac-key-file", "key"],
+    contains=("arXiv:2607.14506v1", "empirical:   0.750000000", "certified:   0.000000000 at 95.00% confidence", "VACUOUS"))
+check = ["check", "reward.cert.json", "transcript.json"] + evidence
+run(check + ["--hmac-key-file", "key"], contains=("replay: PASS", "7 artifacts + transcript", "VERIFIED"))
+run(check, ok=False, contains=("pass --hmac-key-file",))
+run(check + ["--hmac-key-file", "wrong-key"], ok=False, contains=("HMAC verification failed",))
+PY
+''']
+within-secs = 120
+
+# Trust: policy for `targo trust` over this workspace.
+[trust]
+# No budget key: Trust retired `function_budget_ms` (its DECISION_QUEUE
+# BUDGET-1a; Trust 0.11.0 refuses the key here as an unknown field), so a
+# `targo trust` run of this workspace uses the toolchain's builtin clocks.

@@ -8,7 +8,7 @@
 //! correct gradients when tensors live on Metal GPU. These tests compare
 //! GPU backward gradients against CPU backward gradients element-by-element.
 //!
-//! Run: `cargo test -p nn --test training_conv_gpu --features training`
+//! Run: `targo --unverified test -p nn --test training_conv_gpu --features training`
 
 #![cfg(feature = "training")]
 

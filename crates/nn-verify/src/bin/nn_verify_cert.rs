@@ -9,31 +9,31 @@
 //!
 //! ```bash
 //! # Validate a Kokoro certificate:
-//! cargo run -p nn-verify --bin nn_verify_cert -- verify kokoro.proof.json
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- verify kokoro.proof.json
 //!
 //! # Validate with model hash check:
-//! cargo run -p nn-verify --bin nn_verify_cert -- verify kokoro.proof.json \
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- verify kokoro.proof.json \
 //!   --model-hash abc123...
 //!
 //! # Show certificate summary:
-//! cargo run -p nn-verify --bin nn_verify_cert -- summary kokoro.proof.json
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- summary kokoro.proof.json
 //!
 //! # Generate a certificate from the status file:
-//! cargo run -p nn-verify --bin nn_verify_cert -- generate \
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- generate \
 //!   --status nn_verify_status_kokoro.json \
 //!   --model-hash abc123... \
 //!   --output kokoro.proof.json
 //!
 //! # Compare tightening reports:
-//! cargo run -p nn-verify --bin tighten -- kokoro report-diff \
+//! targo --unverified run -p nn-verify --bin tighten -- kokoro report-diff \
 //!   --baseline previous_report.json \
 //!   --candidate current_report.json
 //!
 //! # Validate a constructive proof certificate:
-//! cargo run -p nn-verify --bin nn_verify_cert -- check-proof model.constructive.json
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- check-proof model.constructive.json
 //!
 //! # Show constructive proof summary:
-//! cargo run -p nn-verify --bin nn_verify_cert -- proof-summary model.constructive.json
+//! targo --unverified run -p nn-verify --bin nn_verify_cert -- proof-summary model.constructive.json
 //! ```
 //!
 //! Part of #4254, #4315.

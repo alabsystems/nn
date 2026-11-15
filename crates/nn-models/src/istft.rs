@@ -366,7 +366,3 @@ impl From<IstftError> for nn_core::TensorError {
 #[cfg(test)]
 #[path = "istft_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "istft_kani_tests.rs"]
-mod kani_proofs;

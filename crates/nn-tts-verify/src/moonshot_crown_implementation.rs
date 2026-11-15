@@ -18,7 +18,7 @@
 //! via `ay_kernel_category()`.
 //!
 //! Operations without ay proofs (matmul, embedding, conv, softmax, reduce)
-//! rely on Kani + CROWN for correctness. The fraction of ay-covered
+//! rely on CROWN bound composition only. The fraction of ay-covered
 //! operations determines whether P8 reaches SmtProven or Empirical.
 
 use crate::moonshot::{VerificationLevel, PROPERTY_NAMES};
@@ -83,7 +83,7 @@ const AY_PROVEN_KERNELS: &[&str] = &[
 ///   bounds in BOUNDS_REGISTRY (#2917)
 /// - `Elementwise` → check kernel_name for known patterns (snake, silu_mul)
 /// - `Linear`, `MatMul`, `Conv1d`, `Conv2d`, `ConvTranspose1d` → no ay proof
-///   (correctness verified by Kani + CROWN composition, not per-kernel SMT)
+///   (covered by CROWN composition only, not per-kernel SMT)
 /// - `Softmax`, `Reduce`, `Embedding` → no ay proof
 /// - `Reshape`, `Narrow`, `Transpose`, `AxisSelect` → metadata-only ops,
 ///   considered trivially correct (no computation, just view changes)
@@ -137,7 +137,7 @@ pub fn ay_kernel_category(step: &nn_dsl::DispatchStep) -> Option<&'static str> {
             None
         }
 
-        // Linear algebra ops: Kani + CROWN verified, no per-kernel ay proof
+        // Linear algebra ops: CROWN composition only, no per-kernel ay proof
         DispatchStep::Linear { .. }
         | DispatchStep::MatMul { .. }
         | DispatchStep::Conv1d(_)
@@ -254,9 +254,9 @@ fn dispatch_step_category(step: &nn_dsl::DispatchStep) -> String {
 /// # Verification levels
 ///
 /// - `SmtProven`: All numerical operations have ay-proven kernels (rare for
-///   pipelines with matmul/conv, which use CROWN+Kani instead of ay).
+///   pipelines with matmul/conv, which rely on CROWN instead of ay).
 /// - `CrownPartial`: ≥50% of numerical operations have ay-proven kernels
-///   (the remaining ops are verified by CROWN+Kani, not ay).
+///   (the remaining ops are covered by CROWN only, not ay).
 /// - `Empirical`: <50% ay coverage.
 pub fn check_implementation_correctness(
     evidence: &ImplementationCorrectnessEvidence,
@@ -270,7 +270,7 @@ pub fn check_implementation_correctness(
     let level = if evidence.all_proven {
         VerificationLevel::SmtProven
     } else if fraction >= 0.5 {
-        // ≥50% ay coverage + remaining ops verified by CROWN+Kani
+        // ≥50% ay coverage + remaining ops covered by CROWN
         VerificationLevel::CrownPartial
     } else {
         VerificationLevel::Empirical

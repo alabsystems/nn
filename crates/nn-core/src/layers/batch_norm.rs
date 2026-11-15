@@ -412,10 +412,6 @@ impl Module for BatchNorm2d {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_norm_proofs.rs"]
-mod kani_norm_proofs;
-
 #[cfg(test)]
 mod tests {
     use super::*;

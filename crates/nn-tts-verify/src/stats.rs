@@ -376,7 +376,3 @@ pub(crate) fn fold_min_propagate_nan(iter: impl Iterator<Item = f64>, init: f64)
 #[cfg(test)]
 #[path = "stats_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "stats_kani.rs"]
-mod kani_proofs;

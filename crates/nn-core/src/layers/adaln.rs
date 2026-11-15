@@ -374,7 +374,3 @@ impl LowRankAdaLn {
 #[cfg(test)]
 #[path = "adaln_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_adaln_proofs.rs"]
-mod kani_adaln_proofs;

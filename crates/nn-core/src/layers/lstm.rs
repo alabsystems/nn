@@ -385,10 +385,6 @@ pub type LstmCell = Lstm;
 mod bilstm_impl;
 pub use bilstm_impl::BiLstm;
 
-#[cfg(kani)]
-#[path = "kani_lstm_proofs.rs"]
-mod kani_lstm_proofs;
-
 #[cfg(test)]
 #[path = "lstm_tests.rs"]
 mod tests;

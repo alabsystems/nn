@@ -198,7 +198,7 @@ fn test_compiled_model_d512_ffn_uses_simdgroup() {
 
 /// Benchmark: simdgroup vs naive at D=512 production dimensions.
 ///
-/// Run with: `cargo test -p nn-metal --test compiled_model_simdgroup_e2e --release
+/// Run with: `targo --unverified test -p nn-metal --test compiled_model_simdgroup_e2e --release
 ///            -- test_simdgroup_benchmark_d512 --nocapture`
 #[test]
 fn test_simdgroup_benchmark_d512() {

@@ -8,7 +8,7 @@
 //! dispatch) vs decomposed (multi-dispatch DynTensor op chain) normalization
 //! kernels at Kokoro's specific tensor shapes.
 //!
-//! Run: `cargo test -p nn-metal --test gpu_ops_all --release
+//! Run: `targo --unverified test -p nn-metal --test gpu_ops_all --release
 //!       -- fused_norm_shape_benchmark --nocapture`
 
 use nn_core::dyn_tensor::DynTensor;

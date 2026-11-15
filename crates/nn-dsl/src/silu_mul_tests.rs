@@ -31,14 +31,6 @@ fn test_silu_mul_kernel_msl_codegen() {
     );
 }
 
-#[test]
-fn test_silu_mul_kernel_kani_harness_codegen() {
-    let kernel = build_silu_mul_kernel().expect("build must succeed");
-    let harness = crate::emit_kani_harness(&kernel).expect("kani codegen");
-    assert!(harness.contains("#[kani::proof]"));
-    assert!(harness.contains("kani::any"));
-}
-
 // --- Scalar reference ---
 
 #[test]

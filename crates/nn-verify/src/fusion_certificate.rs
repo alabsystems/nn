@@ -398,7 +398,7 @@ use crate::certificate::now_iso8601;
 ///
 /// Kept under `#[cfg(test)]` — production code uses [`now_iso8601`] from
 /// `certificate_pipeline.rs`. Tests exercise this implementation directly.
-#[cfg(any(test, kani))]
+#[cfg(test)]
 fn unix_secs_to_iso8601(secs: u64) -> String {
     let day_secs = 86_400_u64;
     let total_days = (secs / day_secs) as i64;
@@ -448,7 +448,3 @@ fn is_iso8601_utc(s: &str) -> bool {
 #[cfg(test)]
 #[path = "fusion_certificate_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "kani_fusion_certificate.rs"]
-mod kani_proofs;

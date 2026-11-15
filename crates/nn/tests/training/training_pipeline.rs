@@ -13,7 +13,7 @@
 //!
 //! Checkpoint/resume and TrainableModule tests are in `training_pipeline_checkpoint.rs`.
 //!
-//! Run: `cargo test -p nn --test training_pipeline --features training`
+//! Run: `targo --unverified test -p nn --test training_pipeline --features training`
 
 #![cfg(feature = "training")]
 

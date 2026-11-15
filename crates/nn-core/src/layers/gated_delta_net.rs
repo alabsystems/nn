@@ -355,10 +355,6 @@ impl GatedDeltaNet {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_gated_delta_net_proofs.rs"]
-mod kani_gated_delta_net_proofs;
-
 #[cfg(test)]
 #[path = "gated_delta_net_tests.rs"]
 mod tests;

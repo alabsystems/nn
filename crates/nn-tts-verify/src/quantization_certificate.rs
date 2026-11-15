@@ -223,7 +223,3 @@ pub fn build_quantization_certificate(
 #[cfg(test)]
 #[path = "quantization_certificate_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-#[path = "quantization_certificate_kani.rs"]
-mod kani_proofs;

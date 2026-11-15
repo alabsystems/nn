@@ -360,7 +360,7 @@ fn test_kv_cache_grows_by_one_per_decode() {
 /// Flat KVCache clear + reuse cycle.
 #[test]
 fn test_flat_kv_cache_clear_and_reuse() {
-    let mut cache = KVCache::new(2, 4, 8, 16);
+    let mut cache = KVCache::new(2, 4, 8, 16).expect("valid KVCache sizes");
     let token = vec![1.0_f32; 4 * 8];
 
     // Append to all layers for 3 tokens
@@ -385,7 +385,7 @@ fn test_flat_kv_cache_clear_and_reuse() {
 /// Flat KVCache clone produces independent copy.
 #[test]
 fn test_flat_kv_cache_clone_independence() {
-    let mut original = KVCache::new(1, 2, 4, 10);
+    let mut original = KVCache::new(1, 2, 4, 10).expect("valid KVCache sizes");
     let token = vec![1.0_f32; 2 * 4];
     original.append(0, &token, &token).unwrap();
 
@@ -398,7 +398,7 @@ fn test_flat_kv_cache_clone_independence() {
 
     // Clone unaffected
     assert_eq!(cloned.len(), 1);
-    assert_eq!(cloned.get_keys(0).len(), 8);
+    assert_eq!(cloned.get_keys(0).unwrap().len(), 8);
 }
 
 // ===========================================================================
@@ -739,7 +739,7 @@ fn test_new_cache_layer_count() {
 /// KVCache rejects layer index out of range.
 #[test]
 fn test_flat_kv_cache_layer_bounds_check() {
-    let mut cache = KVCache::new(3, 2, 4, 10);
+    let mut cache = KVCache::new(3, 2, 4, 10).expect("valid KVCache sizes");
     let token = vec![0.0_f32; 2 * 4];
     let result = cache.append(3, &token, &token);
     assert!(result.is_err(), "layer=3 with num_layers=3 should fail");
@@ -751,7 +751,7 @@ fn test_flat_kv_cache_layer_bounds_check() {
 /// KVCache rejects wrong key size.
 #[test]
 fn test_flat_kv_cache_wrong_key_size() {
-    let mut cache = KVCache::new(1, 2, 4, 10);
+    let mut cache = KVCache::new(1, 2, 4, 10).expect("valid KVCache sizes");
     let correct_size = 2 * 4;
     let wrong_key = vec![0.0_f32; correct_size + 1];
     let correct_val = vec![0.0_f32; correct_size];
@@ -762,7 +762,7 @@ fn test_flat_kv_cache_wrong_key_size() {
 /// KVCache rejects wrong value size.
 #[test]
 fn test_flat_kv_cache_wrong_value_size() {
-    let mut cache = KVCache::new(1, 2, 4, 10);
+    let mut cache = KVCache::new(1, 2, 4, 10).expect("valid KVCache sizes");
     let correct_size = 2 * 4;
     let correct_key = vec![0.0_f32; correct_size];
     let wrong_val = vec![0.0_f32; correct_size - 1];
@@ -773,7 +773,7 @@ fn test_flat_kv_cache_wrong_value_size() {
 /// KVCache accessors return correct values at construction.
 #[test]
 fn test_flat_kv_cache_accessors() {
-    let cache = KVCache::new(5, 8, 16, 512);
+    let cache = KVCache::new(5, 8, 16, 512).expect("valid KVCache sizes");
     assert_eq!(cache.num_layers(), 5);
     assert_eq!(cache.num_heads(), 8);
     assert_eq!(cache.head_dim(), 16);

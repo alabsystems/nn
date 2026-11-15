@@ -440,9 +440,6 @@ impl ConvertReport {
         if let Some(rtf) = self.estimated_rtf {
             lines.push(format!("| Estimated RTF | {rtf:.3} |"));
         }
-        if let Some(kani) = self.verification.kani_harnesses_applicable {
-            lines.push(format!("| Kani harnesses | {kani} |"));
-        }
         if self.verification.gamma_crown_layers_total > 0 {
             lines.push(format!(
                 "| NY coverage | {}/{} ({:.0}%) |",
@@ -570,11 +567,6 @@ impl fmt::Display for ConvertReport {
 
         // Verification section.
         writeln!(f, "Verification:")?;
-        if let Some(kani) = self.verification.kani_harnesses_applicable {
-            writeln!(f, "  Kani: {kani} harnesses applicable")?;
-        } else {
-            writeln!(f, "  Kani: not checked")?;
-        }
         if self.verification.gamma_crown_layers_total > 0 {
             writeln!(
                 f,
@@ -640,9 +632,6 @@ pub struct FusionReport {
 #[derive(Clone, Debug, Default, Serialize)]
 #[non_exhaustive]
 pub struct VerificationCoverage {
-    /// Number of Kani harnesses applicable to this model's ops.
-    /// `None` if Kani was not checked.
-    pub kani_harnesses_applicable: Option<usize>,
     /// NY layers covered (translated successfully).
     pub gamma_crown_layers_covered: usize,
     /// NY layers total (in the model graph).
@@ -665,8 +654,8 @@ pub struct VerificationCoverage {
     /// Proof-strength classification for the current composition-bounds result.
     ///
     /// This is currently derived from the composition-bounds run when the
-    /// verifier can classify it. It does not imply inline Kani or a complete
-    /// end-to-end proof-powered compiler certificate.
+    /// verifier can classify it. It does not imply a complete end-to-end
+    /// proof-powered compiler certificate.
     pub composition_proof_strength: Option<ConvertProofStrength>,
     /// Whether reference parity check passed. `None` if not run.
     pub reference_parity_passed: Option<bool>,
@@ -727,7 +716,6 @@ mod tests {
             fused_ops: 54,
             dispatches_saved: 36,
         };
-        report.verification.kani_harnesses_applicable = Some(754);
         report.verification.gamma_crown_layers_covered = 45;
         report.verification.gamma_crown_layers_total = 52;
         report.verification.composition_bounds_ok = true;
@@ -778,7 +766,6 @@ mod tests {
             "should show dispatch reduction"
         );
         assert!(text.contains("50% reduction"), "should show reduction %");
-        assert!(text.contains("754 harnesses"), "should show Kani count");
         assert!(text.contains("45/52"), "should show NY coverage");
         assert!(text.contains("87%"), "should show coverage %");
         assert!(
@@ -960,7 +947,6 @@ mod tests {
             fused_ops: 54,
             dispatches_saved: 36,
         };
-        report.verification.kani_harnesses_applicable = Some(754);
         report.verification.gamma_crown_layers_covered = 45;
         report.verification.gamma_crown_layers_total = 52;
         report.verification.composition_bounds_ok = true;
@@ -989,7 +975,6 @@ mod tests {
         // Check nested structures.
         assert_eq!(val["peephole_stats"]["native_ops"], 6);
         assert_eq!(val["fusion_stats"]["fused_chains"], 18);
-        assert_eq!(val["verification"]["kani_harnesses_applicable"], 754);
         assert_eq!(val["verification"]["gamma_crown_layers_covered"], 45);
         assert_eq!(val["verification"]["composition_bounds_ok"], true);
         assert_eq!(val["verification"]["composition_method"], "IBP");
@@ -1066,7 +1051,6 @@ mod tests {
         report.native_op_count = 4;
         report.compile_time_ms = 123;
         report.estimated_rtf = Some(0.280);
-        report.verification.kani_harnesses_applicable = Some(754);
         report.verification.gamma_crown_layers_covered = 45;
         report.verification.gamma_crown_layers_total = 52;
         report.verification.composition_method = Some(ConvertCompositionMethod::Ibp);
@@ -1095,7 +1079,6 @@ mod tests {
         assert!(table.contains("| Fused ops | 12 |"), "fused ops");
         assert!(table.contains("| Compile time | 123ms |"), "compile time");
         assert!(table.contains("| Estimated RTF | 0.280 |"), "rtf");
-        assert!(table.contains("| Kani harnesses | 754 |"), "kani");
         assert!(table.contains("45/52"), "NY");
         assert!(
             table.contains("| Composition method | IBP |"),

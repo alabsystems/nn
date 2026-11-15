@@ -423,10 +423,6 @@ impl VerifyStatus {
 mod status_types;
 pub use status_types::LockedStatus;
 
-#[cfg(kani)]
-#[path = "kani_status.rs"]
-mod kani_status;
-
 #[cfg(all(test, feature = "ny"))]
 #[path = "status_recording_tests.rs"]
 mod status_recording_tests;

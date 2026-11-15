@@ -447,27 +447,3 @@ mod tests_sort_roll;
 
 #[cfg(test)]
 mod tests_resize_bilinear;
-
-#[cfg(kani)]
-#[path = "kani_ops_ext_proofs.rs"]
-mod kani_ops_ext_proofs;
-
-#[cfg(kani)]
-#[path = "kani_ops_ext_extended_proofs.rs"]
-mod kani_ops_ext_extended_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dpdf_grid_sample_proofs.rs"]
-mod kani_dpdf_grid_sample_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dpdf_topk_sort_proofs.rs"]
-mod kani_dpdf_topk_sort_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dpdf_roll_proofs.rs"]
-mod kani_dpdf_roll_proofs;
-
-#[cfg(kani)]
-#[path = "kani_dpdf_pixel_shuffle_upsample_proofs.rs"]
-mod kani_dpdf_pixel_shuffle_upsample_proofs;

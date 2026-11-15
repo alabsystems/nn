@@ -12,7 +12,7 @@
 //!
 //! Run:
 //!   KOKORO_WEIGHTS=path/to/kokoro_v1_0.safetensors \
-//!   cargo test -p nn-metal --test kokoro_all kokoro_gpu_profile -- --nocapture
+//!   targo --unverified test -p nn-metal --test kokoro_all kokoro_gpu_profile -- --nocapture
 //!
 //! Part of #4264.
 

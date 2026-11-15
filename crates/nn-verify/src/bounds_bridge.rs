@@ -42,48 +42,6 @@ pub fn to_bounded_tensor(ib: IntervalBounds) -> Result<BoundedTensor, VerifyErro
     })
 }
 
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-    use ndarray::{ArrayD, IxDyn};
-
-    /// Proves bounds_bridge roundtrip preserves values for a single-element
-    /// IntervalBounds → BoundedTensor → IntervalBounds conversion.
-    ///
-    /// For any pair of finite f32 values where lower <= upper, the roundtrip
-    /// must produce identical bit patterns.
-    #[kani::unwind(64)]
-    #[kani::proof]
-    fn bounds_bridge_scalar_roundtrip_lossless() {
-        let lower_val: f32 = kani::any();
-        let upper_val: f32 = kani::any();
-
-        kani::assume(lower_val.is_finite());
-        kani::assume(upper_val.is_finite());
-        kani::assume(lower_val <= upper_val);
-
-        let lower = ArrayD::from_elem(IxDyn(&[1]), lower_val);
-        let upper = ArrayD::from_elem(IxDyn(&[1]), upper_val);
-
-        let ib = IntervalBounds::new(lower, upper).expect("finite lower <= upper must succeed");
-
-        let bt = to_bounded_tensor(ib).expect("IntervalBounds -> BoundedTensor must succeed");
-        let ib2 = to_interval_bounds(bt).expect("BoundedTensor -> IntervalBounds must succeed");
-
-        let (rt_lower, rt_upper) = ib2.lower_upper();
-        assert_eq!(
-            rt_lower[[0]].to_bits(),
-            lower_val.to_bits(),
-            "lower must round-trip exactly"
-        );
-        assert_eq!(
-            rt_upper[[0]].to_bits(),
-            upper_val.to_bits(),
-            "upper must round-trip exactly"
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

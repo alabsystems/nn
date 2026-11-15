@@ -452,31 +452,3 @@ impl super::DynTensor {
 #[cfg(test)]
 #[path = "trace_test_index.rs"]
 mod test_index;
-
-#[cfg(kani)]
-#[path = "kani_trace_types_proofs.rs"]
-mod kani_trace_types_proofs;
-
-#[cfg(kani)]
-#[path = "kani_trace_op_class_proofs.rs"]
-mod kani_trace_op_class_proofs;
-
-#[cfg(kani)]
-#[path = "kani_trace.rs"]
-mod kani_trace;
-
-#[cfg(kani)]
-#[path = "kani_trace_types_extended.rs"]
-mod kani_trace_types_extended;
-
-#[cfg(kani)]
-#[path = "kani_trace_graph_proofs.rs"]
-mod kani_trace_graph_proofs;
-
-#[cfg(kani)]
-#[path = "kani_trace_variants_proofs.rs"]
-mod kani_trace_variants_proofs;
-
-#[cfg(kani)]
-#[path = "kani_trace_recorder_proofs.rs"]
-mod kani_trace_recorder_proofs;

@@ -20,7 +20,7 @@
 //!
 //! All tests gated behind `KOKORO_WEIGHTS` env var. Skips gracefully when unset.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all -- streaming_chorus_production --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all -- streaming_chorus_production --nocapture`
 
 use std::fs;
 use std::path::Path;

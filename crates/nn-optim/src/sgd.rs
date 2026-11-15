@@ -61,7 +61,8 @@ impl Sgd {
     /// # Errors
     ///
     /// Returns `InvalidParam` if `lr` is negative or not finite, `momentum`
-    /// is negative or not finite, or `weight_decay` is negative or not finite.
+    /// is negative or not finite, `weight_decay` is negative or not finite, or
+    /// `vars` holds more than 2^18 parameter tensors.
     #[must_use = "optimizer must be stored to perform training steps"]
     pub fn new(vars: Vec<Var>, config: SgdConfig) -> Result<Self> {
         crate::error::validate_lr(config.lr)?;
@@ -73,6 +74,9 @@ impl Sgd {
         }
         crate::error::validate_weight_decay(config.weight_decay)?;
         let n = vars.len();
+        if n > crate::error::MAX_PARAM_TENSORS {
+            return Err(crate::error::too_many_params(n));
+        }
         Ok(Self {
             vars,
             velocities: vec![None; n],

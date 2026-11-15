@@ -9,12 +9,12 @@
 //! on model crates directly.
 //!
 //! Run all:
-//!   cargo test -p nn --test model_feature_gates --features whisper,qwen3,glm5
+//!   targo --unverified test -p nn --test model_feature_gates --features whisper,qwen3,glm5
 //!
 //! Run per-feature:
-//!   cargo test -p nn --test model_feature_gates --features whisper
-//!   cargo test -p nn --test model_feature_gates --features qwen3
-//!   cargo test -p nn --test model_feature_gates --features glm5
+//!   targo --unverified test -p nn --test model_feature_gates --features whisper
+//!   targo --unverified test -p nn --test model_feature_gates --features qwen3
+//!   targo --unverified test -p nn --test model_feature_gates --features glm5
 
 // ---------------------------------------------------------------------------
 // Whisper

@@ -97,12 +97,6 @@ pub fn hann_window(n: usize) -> Vec<f64> {
 /// # Panics
 ///
 /// Panics if `tail.len() < count` or `head.len() < count`.
-///
-/// # Kani coverage
-///
-/// `crossfade_alpha_in_unit_interval` and `crossfade_convex_combination_bounded`
-/// (nn-models Kani harnesses) prove the alpha and output bounds for this
-/// formula.
 pub fn crossfade_linear_blend(tail: &[f32], head: &[f32], count: usize) -> Vec<f32> {
     debug_assert!(
         tail.len() >= count,

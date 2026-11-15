@@ -24,7 +24,6 @@ fn sample_certificate() -> BoundCertificate {
 fn sample_bundle() -> ProofBundle {
     ProofBundleBuilder::new("test_model", TEST_HASH)
         .add_bound_certificate(sample_certificate())
-        .set_kani_summary(754, 754, 0, 0)
         .set_crown_summary(51, 26, 14, 11)
         .build()
         .expect("valid bundle")
@@ -42,7 +41,6 @@ fn test_round_trip_json() {
     assert_eq!(bundle.model_hash, restored.model_hash);
     assert_eq!(bundle.model_name, restored.model_name);
     assert_eq!(bundle.bound_certificates, restored.bound_certificates);
-    assert_eq!(bundle.kani_summary, restored.kani_summary);
     assert_eq!(bundle.gamma_crown_summary, restored.gamma_crown_summary);
     assert_eq!(bundle.nn_version, restored.nn_version);
 }
@@ -86,7 +84,6 @@ fn test_round_trip_file_save_load() {
         bundle.bound_certificates.len(),
         loaded.bound_certificates.len()
     );
-    assert_eq!(bundle.kani_summary, loaded.kani_summary);
     assert_eq!(bundle.gamma_crown_summary, loaded.gamma_crown_summary);
 
     // Cleanup
@@ -101,12 +98,10 @@ fn test_round_trip_without_optional_summaries() {
         .build()
         .expect("valid bundle");
 
-    assert!(bundle.kani_summary.is_none());
     assert!(bundle.gamma_crown_summary.is_none());
 
     let json = bundle.to_json().expect("serialize");
     let restored = ProofBundle::from_json(&json).expect("deserialize");
-    assert!(restored.kani_summary.is_none());
     assert!(restored.gamma_crown_summary.is_none());
 }
 
@@ -131,7 +126,6 @@ fn test_builder_basic() {
             method: VerificationMethod::AlphaCrown,
             is_tight: true,
         })
-        .set_kani_summary(100, 95, 3, 2)
         .set_crown_summary(40, 30, 8, 2)
         .build()
         .expect("valid bundle");
@@ -140,7 +134,6 @@ fn test_builder_basic() {
     assert_eq!(bundle.model_hash, TEST_HASH);
     assert_eq!(bundle.certificate_count(), 2);
     assert_eq!(bundle.tight_count(), 2);
-    assert!(bundle.kani_summary.is_some());
     assert!(bundle.gamma_crown_summary.is_some());
 }
 
@@ -327,22 +320,6 @@ fn test_validate_empty_kernel_name() {
 }
 
 #[test]
-fn test_validate_inconsistent_kani_summary() {
-    let result = ProofBundleBuilder::new("test", TEST_HASH)
-        .add_bound_certificate(sample_certificate())
-        .set_kani_summary(10, 8, 5, 3) // 8+5+3=16 > 10
-        .build();
-
-    match result.unwrap_err() {
-        ProofBundleError::InconsistentKaniSummary { total, sum } => {
-            assert_eq!(total, 10);
-            assert_eq!(sum, 16);
-        }
-        other => panic!("expected InconsistentKaniSummary, got {other:?}"),
-    }
-}
-
-#[test]
 fn test_validate_inconsistent_crown_summary() {
     let result = ProofBundleBuilder::new("test", TEST_HASH)
         .add_bound_certificate(sample_certificate())
@@ -369,26 +346,6 @@ fn test_validate_equal_bounds_ok() {
             method: VerificationMethod::Analytical,
             is_tight: true,
         })
-        .build();
-    assert!(bundle.is_ok());
-}
-
-#[test]
-fn test_validate_kani_exact_sum_ok() {
-    // passed + failed + timeout == total should be valid
-    let bundle = ProofBundleBuilder::new("test", TEST_HASH)
-        .add_bound_certificate(sample_certificate())
-        .set_kani_summary(10, 7, 2, 1) // 7+2+1=10 == 10
-        .build();
-    assert!(bundle.is_ok());
-}
-
-#[test]
-fn test_validate_kani_under_sum_ok() {
-    // passed + failed + timeout < total is OK (some harnesses may be pending)
-    let bundle = ProofBundleBuilder::new("test", TEST_HASH)
-        .add_bound_certificate(sample_certificate())
-        .set_kani_summary(10, 5, 2, 1) // 5+2+1=8 < 10
         .build();
     assert!(bundle.is_ok());
 }
@@ -484,7 +441,6 @@ fn test_json_contains_expected_fields() {
     assert!(json.contains("\"model_hash\""));
     assert!(json.contains("\"model_name\""));
     assert!(json.contains("\"bound_certificates\""));
-    assert!(json.contains("\"kani_summary\""));
     assert!(json.contains("\"gamma_crown_summary\""));
     assert!(json.contains("\"created_at\""));
     assert!(json.contains("\"nn_version\""));
@@ -495,7 +451,6 @@ fn test_json_contains_expected_fields() {
     assert!(json.contains("\"output_bounds\""));
     assert!(json.contains("\"method\""));
     assert!(json.contains("\"is_tight\""));
-    assert!(json.contains("\"total_harnesses\""));
     assert!(json.contains("\"total_entries\""));
     assert!(json.contains("\"sound\""));
     assert!(json.contains("\"heuristic\""));

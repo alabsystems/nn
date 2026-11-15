@@ -8,7 +8,7 @@
 //! These tests verify tensor operations (cat, stack, broadcast, maximum/minimum,
 //! selection ops, narrow, transpose, error handling) match candle's API.
 //!
-//! Run: `cargo test -p nn --test candle_migration_ops`
+//! Run: `targo --unverified test -p nn --test candle_migration_ops`
 
 use nn::{DType, Device, DynTensor, Result, Shape, TensorError};
 

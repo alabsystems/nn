@@ -899,9 +899,6 @@ mod tests {
     // Regression: both conv length formulas are reached with metadata read from
     // a model file (`kernel_size` is a weight's spatial dim, the rest are node
     // attributes), and both used to panic under `-C overflow-checks=on`.
-    //
-    // The pre-existing Kani harnesses did not catch this: they assume
-    // `kernel_size >= 1` and `padding <= 16`, which no caller establishes.
 
     #[test]
     fn conv1d_output_length_is_total_on_degenerate_metadata() {

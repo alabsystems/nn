@@ -226,8 +226,15 @@ impl Qwen3MoeModel {
         )?;
         let embed_tokens = Embedding::new(embed_weight.clone())?;
 
-        let mut layers = Vec::with_capacity(cfg.base.num_hidden_layers);
-        for i in 0..cfg.base.num_hidden_layers {
+        // `validate` bounds the layer count by `MAX_NUM_LAYERS`; a reservation
+        // is made only under that bound, where it is visible at this call.
+        let num_layers = cfg.base.num_hidden_layers;
+        let mut layers = if num_layers <= crate::config::MAX_NUM_LAYERS {
+            Vec::with_capacity(num_layers)
+        } else {
+            Vec::new()
+        };
+        for i in 0..num_layers {
             let layer_vb = model_vb.pp(format!("layers.{i}"));
             layers.push(Qwen3MoeDecoderLayer::load(&layer_vb, &cfg)?);
         }

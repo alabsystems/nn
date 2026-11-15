@@ -4,7 +4,7 @@
 
 //! Integration test: verify `nn::metal` re-exports are wired correctly.
 //!
-//! Run with: `cargo test -p nn --features metal --test metal_facade`
+//! Run with: `targo --unverified test -p nn --features metal --test metal_facade`
 //!
 //! This test catches facade wiring regressions — missing `pub use`, feature
 //! gate typos, or type visibility changes that would silently break consumers

@@ -9,7 +9,7 @@
 //! filters. Both are stateful per-sample kernels whose stability depends
 //! on feedback coefficient bounds.
 //!
-//! Invariants (proved by Kani):
+//! Invariants:
 //! - Comb: `|feedback| < 1` and `|damp| ≤ 1` → no divergence
 //! - Allpass: `|feedback| < 1` → output bounded for bounded input
 //!
@@ -206,91 +206,3 @@ pub fn validate_allpass_config(coeffs: &AllpassCoeffs) -> Result<(), KernelError
 #[cfg(test)]
 #[path = "reverb_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Proof: comb filterstore remains bounded when |feedback| < 1 and |damp| ≤ 1.
-    ///
-    /// The one-pole lowpass `fs_new = (1-d)*dr + d*fs` is a convex combination
-    /// when d ∈ [0,1], so |fs_new| ≤ max(|dr|, |fs|). The feedback path
-    /// multiplies by |feedback| < 1, so energy contracts each iteration.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn comb_filterstore_bounded() {
-        let input: f32 = kani::any();
-        let delay_read: f32 = kani::any();
-        let fs: f32 = kani::any();
-        let feedback: f32 = kani::any();
-        let damp: f32 = kani::any();
-
-        kani::assume(input.is_finite() && input.abs() <= 10.0);
-        kani::assume(delay_read.is_finite() && delay_read.abs() <= 10.0);
-        kani::assume(fs.is_finite() && fs.abs() <= 10.0);
-        kani::assume(feedback.is_finite() && feedback.abs() < 1.0);
-        kani::assume(damp.is_finite() && damp >= 0.0 && damp <= 1.0);
-
-        let state = CombState { filterstore: fs };
-        let coeffs = CombCoeffs { feedback, damp };
-        let result = comb_process_sample_scalar(input, delay_read, &state, &coeffs);
-        if let Ok(out) = result {
-            // Filterstore is a convex combination → bounded by inputs
-            assert!(
-                out.filterstore.is_finite(),
-                "filterstore must remain finite"
-            );
-        }
-    }
-
-    /// Proof: comb write_back is finite for bounded inputs and |feedback| < 1.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn comb_write_back_finite() {
-        let input: f32 = kani::any();
-        let delay_read: f32 = kani::any();
-        let fs: f32 = kani::any();
-        let feedback: f32 = kani::any();
-        let damp: f32 = kani::any();
-
-        kani::assume(input.is_finite() && input.abs() <= 10.0);
-        kani::assume(delay_read.is_finite() && delay_read.abs() <= 10.0);
-        kani::assume(fs.is_finite() && fs.abs() <= 10.0);
-        kani::assume(feedback.is_finite() && feedback.abs() < 1.0);
-        kani::assume(damp.is_finite() && damp >= 0.0 && damp <= 1.0);
-
-        let state = CombState { filterstore: fs };
-        let coeffs = CombCoeffs { feedback, damp };
-        let result = comb_process_sample_scalar(input, delay_read, &state, &coeffs);
-        if let Ok(out) = result {
-            assert!(out.write_back.is_finite(), "write_back must be finite");
-        }
-    }
-
-    /// Proof: allpass output bounded for bounded input when |feedback| < 1.
-    ///
-    /// The allpass transfer function has magnitude response = 1 at all
-    /// frequencies, so it preserves energy. For bounded discrete inputs,
-    /// the output is bounded.
-    #[kani::unwind(1)]
-    #[kani::proof]
-    fn allpass_output_bounded() {
-        let input: f32 = kani::any();
-        let delay_read: f32 = kani::any();
-        let feedback: f32 = kani::any();
-
-        kani::assume(input.is_finite() && input.abs() <= 10.0);
-        kani::assume(delay_read.is_finite() && delay_read.abs() <= 10.0);
-        kani::assume(feedback.is_finite() && feedback.abs() < 1.0);
-
-        let coeffs = AllpassCoeffs { feedback };
-        let result = allpass_process_sample_scalar(input, delay_read, &coeffs);
-        if let Ok(out) = result {
-            assert!(out.y.is_finite(), "allpass output must be finite");
-            assert!(
-                out.write_back.is_finite(),
-                "allpass write_back must be finite"
-            );
-        }
-    }
-}

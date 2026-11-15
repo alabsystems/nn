@@ -44,6 +44,17 @@ pub enum Conv2dError {
     InvalidBiasLength { got: usize, expected: usize },
     /// Output length mismatch.
     InvalidOutputLength { got: usize, expected: usize },
+    /// A dimension product (`batch * in_ch * h * w`, `out_ch * in_ch * kh * kw`
+    /// or `batch * out_ch * oh * ow`) does not fit in a `usize`.
+    ///
+    /// SAFETY boundary, not convenience: those products are the only thing
+    /// tying the caller's dimensions to the slice lengths, and the SIMD kernels
+    /// below offset raw pointers against the same dimensions. A wrapped product
+    /// can match a short slice, pass validation, and be read out of bounds.
+    /// This workspace's `overflow-checks = true` release profile does NOT apply
+    /// when nn is compiled as someone else's dependency, so the check lives in
+    /// the code.
+    DimensionOverflow { what: &'static str },
     /// Padded spatial dim too small for kernel.
     PaddedTooSmall {
         padded: usize,
@@ -79,6 +90,9 @@ impl fmt::Display for Conv2dError {
                 dim,
             } => {
                 write!(f, "padded {dim} ({padded}) < kernel {dim} ({kernel})")
+            }
+            Self::DimensionOverflow { what } => {
+                write!(f, "{what} dimension product overflows usize")
             }
         }
     }
@@ -152,14 +166,22 @@ fn validate(
         });
     }
 
-    let expected_input = batch * in_ch * h * w;
+    let expected_input = batch
+        .checked_mul(in_ch)
+        .and_then(|v| v.checked_mul(h))
+        .and_then(|v| v.checked_mul(w))
+        .ok_or(Conv2dError::DimensionOverflow { what: "input" })?;
     if input.len() != expected_input {
         return Err(Conv2dError::InvalidInputLength {
             got: input.len(),
             expected: expected_input,
         });
     }
-    let expected_weight = out_ch * in_ch * kh * kw;
+    let expected_weight = out_ch
+        .checked_mul(in_ch)
+        .and_then(|v| v.checked_mul(kh))
+        .and_then(|v| v.checked_mul(kw))
+        .ok_or(Conv2dError::DimensionOverflow { what: "weight" })?;
     if weight.len() != expected_weight {
         return Err(Conv2dError::InvalidWeightLength {
             got: weight.len(),
@@ -176,7 +198,11 @@ fn validate(
     }
     let oh = out_dim(h, kh, stride_h, pad_h);
     let ow = out_dim(w, kw, stride_w, pad_w);
-    let expected_output = batch * out_ch * oh * ow;
+    let expected_output = batch
+        .checked_mul(out_ch)
+        .and_then(|v| v.checked_mul(oh))
+        .and_then(|v| v.checked_mul(ow))
+        .ok_or(Conv2dError::DimensionOverflow { what: "output" })?;
     if output.len() != expected_output {
         return Err(Conv2dError::InvalidOutputLength {
             got: output.len(),

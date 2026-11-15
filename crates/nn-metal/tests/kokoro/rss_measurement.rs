@@ -15,7 +15,7 @@
 //!
 //! Run:
 //! ```bash
-//! cargo test -p nn-metal --test kokoro_all -- rss_measurement --nocapture
+//! targo --unverified test -p nn-metal --test kokoro_all -- rss_measurement --nocapture
 //! ```
 //!
 //! Part of #3211.

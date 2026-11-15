@@ -12,9 +12,8 @@ use nn_verify::gap_detector::{
     detect_gaps, format_gap_report, kokoro_pipeline_stages, PipelineStage, StageGapResult,
 };
 use nn_verify::{
-    CertificateError, InputBoundsRecord, KaniOutcome, KaniProofRecord, KernelVerification,
-    LayerBoundRecord, OutputTensorBounds, ParamInputRecord, PrecisionModel, PropMethod,
-    SmtProofVerdict, VerificationSoundnessMode,
+    CertificateError, InputBoundsRecord, KernelVerification, LayerBoundRecord, OutputTensorBounds,
+    ParamInputRecord, PrecisionModel, PropMethod, SmtProofVerdict, VerificationSoundnessMode,
 };
 
 // ---------------------------------------------------------------------------
@@ -599,24 +598,6 @@ fn test_certificate_with_precision_model() {
     }
 }
 
-/// with_kani_status populates the kani_status field.
-#[test]
-fn test_certificate_with_kani_status() {
-    let result = make_verification();
-    let kani = KaniProofRecord {
-        harness_count: 5,
-        status: KaniOutcome::Passed,
-        properties: vec!["no_overflow".to_string(), "no_nan".to_string()],
-        cbmc_version: Some("6.1.0".to_string()),
-    };
-    let cert =
-        ProofCertificate::from_verification(&result, make_input_spec()).with_kani_status(kani);
-    let ks = cert.kani_status.as_ref().unwrap();
-    assert_eq!(ks.harness_count, 5);
-    assert_eq!(ks.status, KaniOutcome::Passed);
-    assert_eq!(ks.properties.len(), 2);
-}
-
 // ===========================================================================
 // CertificateBundle tests
 // ===========================================================================
@@ -724,12 +705,6 @@ fn test_certificate_json_roundtrip_all_fields() {
         .with_weight_hash(valid_hash.clone())
         .with_source_hash(valid_hash)
         .with_verifier_version("gc-2.0".to_string())
-        .with_kani_status(KaniProofRecord {
-            harness_count: 2,
-            status: KaniOutcome::Passed,
-            properties: vec!["no_nan".to_string()],
-            cbmc_version: None,
-        })
         .with_precision_model(PrecisionModel::F32Only)
         .with_layer_bounds(vec![LayerBoundRecord {
             layer_index: 0,
@@ -772,39 +747,6 @@ mod certify_config_tests {
         assert!(!config.signing_key.is_none());
         assert_eq!(config.signing_key.as_bytes().unwrap().len(), 32);
     }
-}
-
-// ===========================================================================
-// KaniOutcome and KaniProofRecord tests
-// ===========================================================================
-
-/// KaniOutcome serde roundtrip.
-#[test]
-fn test_kani_outcome_serde_roundtrip() {
-    for outcome in [
-        KaniOutcome::Passed,
-        KaniOutcome::Failed,
-        KaniOutcome::NotRun,
-        KaniOutcome::Timeout,
-    ] {
-        let json = serde_json::to_string(&outcome).expect("serialize");
-        let parsed: KaniOutcome = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(outcome, parsed);
-    }
-}
-
-/// KaniProofRecord serde roundtrip.
-#[test]
-fn test_kani_proof_record_serde_roundtrip() {
-    let record = KaniProofRecord {
-        harness_count: 10,
-        status: KaniOutcome::Passed,
-        properties: vec!["no_overflow".to_string(), "bounds_preservation".to_string()],
-        cbmc_version: Some("6.2.0".to_string()),
-    };
-    let json = serde_json::to_string_pretty(&record).expect("serialize");
-    let parsed: KaniProofRecord = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(record, parsed);
 }
 
 // ===========================================================================

@@ -441,10 +441,6 @@ impl PlBert {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_plbert.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "plbert_tests.rs"]
 mod tests;

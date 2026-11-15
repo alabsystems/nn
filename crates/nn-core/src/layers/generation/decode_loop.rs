@@ -359,10 +359,6 @@ fn is_eos(token: usize, config: &GenerationConfig) -> bool {
     config.eos_token_id.is_some_and(|eos| token == eos)
 }
 
-#[cfg(kani)]
-#[path = "kani_decode_loop.rs"]
-mod kani_decode_loop;
-
 #[cfg(test)]
 #[path = "decode_loop_tests.rs"]
 mod tests;

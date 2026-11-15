@@ -25,7 +25,7 @@ fn test_kokoro_operational_state_counts_match_status_file() {
     let state_path = ws.join("operational_state.json");
 
     // Both artifacts are generated, gitignored outputs of the verification run
-    // (`cargo run --example verify_all` + operational-state writer); a bare
+    // (`targo --unverified run --example verify_all` + operational-state writer); a bare
     // `cargo test`/`nextest` run does not produce them. Skip cleanly when either
     // is absent — mirrors the convention in
     // gap_detector_tests::test_detect_gaps_real_status_file — rather than
@@ -34,7 +34,7 @@ fn test_kokoro_operational_state_counts_match_status_file() {
     if !status_path.exists() || !state_path.exists() {
         eprintln!(
             "Skipping: missing {} and/or {}. Run \
-             `cargo run -p nn-verify --example verify_all` to generate them.",
+             `targo --unverified run -p nn-verify --example verify_all` to generate them.",
             status_path.display(),
             state_path.display()
         );

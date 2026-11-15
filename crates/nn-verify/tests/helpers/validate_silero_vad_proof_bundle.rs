@@ -32,9 +32,9 @@ fn proof_bundle_path() -> std::path::PathBuf {
 ///
 /// The bundle is a generated artifact (#1680). It is produced centrally by a
 /// two-step, fully self-contained chain and committed to the repo:
-///   1) `cargo run -p nn-verify --example verify_all`
+///   1) `targo --unverified run -p nn-verify --example verify_all`
 ///        (writes `nn_verify.proof.json` at the workspace root)
-///   2) `cargo run -p nn-verify --example generate_proof_bundle -- \
+///   2) `targo --unverified run -p nn-verify --example generate_proof_bundle -- \
 ///         --model silero_vad --output silero_vad.proof.json`
 ///        (filters the full bundle down to the 7-certificate Silero VAD bundle)
 ///
@@ -48,8 +48,8 @@ fn load_proof_bundle() -> Option<CertificateBundle> {
     if !path.exists() {
         eprintln!(
             "SKIP: silero_vad.proof.json not present at {} — generate it with \
-             `cargo run -p nn-verify --example verify_all` then \
-             `cargo run -p nn-verify --example generate_proof_bundle -- \
+             `targo --unverified run -p nn-verify --example verify_all` then \
+             `targo --unverified run -p nn-verify --example generate_proof_bundle -- \
              --model silero_vad --output silero_vad.proof.json`, then commit it (#1680)",
             path.display()
         );

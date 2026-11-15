@@ -13,7 +13,7 @@
 //!   4. Adjacent Dispatch pair fusion opportunities
 //!
 //! This is a diagnostic test -- it prints a report, not a hard gate.
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_segment_dispatch_profile -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_segment_dispatch_profile -- --nocapture`
 
 use std::collections::BTreeMap;
 

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Tests require espeak-ng to be installed. Run with:
-//   cargo test -p nn-models --features espeak -- espeak
+//   targo --unverified test -p nn-models --features espeak -- espeak
 
 use super::*;
 

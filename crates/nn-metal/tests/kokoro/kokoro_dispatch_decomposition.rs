@@ -11,7 +11,7 @@
 //! individually using `reset_counters()` / `dispatch_stats()` to decompose
 //! the total into per-step actuals.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_dispatch_decomposition -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_dispatch_decomposition -- --nocapture`
 //!
 //! Part of #3192 (extracted from #1815 epic).
 

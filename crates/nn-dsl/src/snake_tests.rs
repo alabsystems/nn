@@ -58,7 +58,7 @@ fn test_snake_ref_f16_path_is_finite() {
 }
 
 #[test]
-fn test_snake_finite_for_kani_domain() {
+fn test_snake_finite_for_tested_domain() {
     let xs = [-1.0e4f32, -1.0e3, -10.0, 0.0, 10.0, 1.0e3, 1.0e4];
     let alphas = [1.0e-8f32, 1.0e-6, 1.0e-3, 1.0e-1, 1.0, 10.0, 1.0e3];
 

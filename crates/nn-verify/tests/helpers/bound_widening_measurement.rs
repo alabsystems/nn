@@ -8,7 +8,7 @@
 //! CROWN bounds for an MLP at D=64. This data supports the per-layer
 //! certificate composition approach in #1762 (design doc Direction 1).
 //!
-//! Run: `cargo test -p nn-verify --test bound_widening_measurement`
+//! Run: `targo --unverified test -p nn-verify --test bound_widening_measurement`
 //! Report: `reports/research/2026-03-10-bound-widening-measurement-methodology.md`
 
 use ny_propagate::layers::{LinearLayer, ReLULayer, SigmoidLayer};

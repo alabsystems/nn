@@ -41,10 +41,6 @@ pub fn log_softmax(x: &DynTensor, dim: impl Dim) -> Result<DynTensor> {
     x.log_softmax(dim)
 }
 
-#[cfg(kani)]
-#[path = "kani_ops_proofs.rs"]
-mod kani_ops_proofs;
-
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {

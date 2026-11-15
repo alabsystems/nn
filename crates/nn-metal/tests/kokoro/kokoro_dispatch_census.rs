@@ -8,7 +8,7 @@
 //! all compiled steps, then asserts per-segment dispatch limits.
 //! Also prints an optimization-focused report showing fusion candidates.
 //!
-//! Run: `cargo test -p nn-metal --test kokoro_all kokoro_dispatch_census -- --nocapture`
+//! Run: `targo --unverified test -p nn-metal --test kokoro_all kokoro_dispatch_census -- --nocapture`
 //!
 //! Part of #4264.
 

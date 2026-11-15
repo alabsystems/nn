@@ -70,10 +70,6 @@ pub use verified_search::{
     LogitBounds, SearchQuery, SearchVerificationReport, VerificationStatus, VerifiedSearchResult,
 };
 
-#[cfg(kani)]
-#[path = "kani_quantize_proofs.rs"]
-mod kani_quantize_proofs;
-
 use layers::GptOssDecoderLayer;
 use nn_core::dyn_tensor::DynTensor;
 use nn_core::layers::attention::sliding_window_mask;
@@ -461,106 +457,6 @@ pub(crate) fn validate_cache(cache: Option<&KvCache>, num_layers: usize) -> Resu
     }
     Ok(())
 }
-
-#[cfg(kani)]
-#[path = "kani_kv_cache_proofs.rs"]
-mod kani_kv_cache_proofs;
-
-#[cfg(kani)]
-#[path = "kani_kv_cache_advanced_proofs.rs"]
-mod kani_kv_cache_advanced_proofs;
-
-#[cfg(kani)]
-#[path = "kani_device_proofs.rs"]
-mod kani_device_proofs;
-
-#[cfg(kani)]
-#[path = "kani_moe_dispatch_proofs.rs"]
-mod kani_moe_dispatch_proofs;
-
-#[cfg(kani)]
-#[path = "kani_rope_sinks_proofs.rs"]
-mod kani_rope_sinks_proofs;
-
-#[cfg(kani)]
-#[path = "kani_gpu_dispatch_proofs.rs"]
-mod kani_gpu_dispatch_proofs;
-
-#[cfg(kani)]
-#[path = "kani_attention_proofs.rs"]
-mod kani_attention_proofs;
-
-#[cfg(kani)]
-#[path = "kani_generate_proofs.rs"]
-mod kani_generate_proofs;
-
-#[cfg(kani)]
-#[path = "kani_error_proofs.rs"]
-mod kani_error_proofs;
-
-#[cfg(kani)]
-#[path = "kani_quantize_advanced_proofs.rs"]
-mod kani_quantize_advanced_proofs;
-
-#[cfg(kani)]
-#[path = "kani_streaming_proofs.rs"]
-mod kani_streaming_proofs;
-
-#[cfg(kani)]
-#[path = "kani_sampling_proofs.rs"]
-mod kani_sampling_proofs;
-
-#[cfg(kani)]
-#[path = "kani_tool_parser_proofs.rs"]
-mod kani_tool_parser_proofs;
-
-#[cfg(kani)]
-#[path = "kani_agent_proofs.rs"]
-mod kani_agent_proofs;
-
-#[cfg(kani)]
-#[path = "kani_bench_proofs.rs"]
-mod kani_bench_proofs;
-
-#[cfg(kani)]
-#[path = "kani_gguf_proofs.rs"]
-mod kani_gguf_proofs;
-
-#[cfg(kani)]
-#[path = "kani_fused_moe_proofs.rs"]
-mod kani_fused_moe_proofs;
-
-#[cfg(kani)]
-#[path = "kani_yarn_rope_proofs.rs"]
-mod kani_yarn_rope_proofs;
-
-#[cfg(kani)]
-#[path = "kani_gguf_mapping_proofs.rs"]
-mod kani_gguf_mapping_proofs;
-
-#[cfg(kani)]
-#[path = "kani_metal_dispatch_proofs.rs"]
-mod kani_metal_dispatch_proofs;
-
-#[cfg(kani)]
-#[path = "kani_integration_proofs.rs"]
-mod kani_integration_proofs;
-
-#[cfg(kani)]
-#[path = "kani_context_window_proofs.rs"]
-mod kani_context_window_proofs;
-
-#[cfg(kani)]
-#[path = "kani_perf_model_proofs.rs"]
-mod kani_perf_model_proofs;
-
-#[cfg(kani)]
-#[path = "kani_speculative_proofs.rs"]
-mod kani_speculative_proofs;
-
-#[cfg(kani)]
-#[path = "kani_batch_inference_proofs.rs"]
-mod kani_batch_inference_proofs;
 
 #[cfg(test)]
 mod tests {

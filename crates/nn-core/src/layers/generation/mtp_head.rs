@@ -378,10 +378,6 @@ impl MtpHead {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_mtp_head.rs"]
-mod kani_mtp_head;
-
 #[cfg(test)]
 #[path = "mtp_head_tests.rs"]
 mod tests;

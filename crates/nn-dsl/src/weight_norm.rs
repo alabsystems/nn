@@ -27,11 +27,11 @@
 //!
 //! Part of #749 (dvoice weight normalization).
 
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use crate::ir::{BinOpKind, UnaryFnKind};
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use crate::kernel_error::KernelError;
-#[cfg(any(test, kani))]
+#[cfg(test)]
 use crate::kernel_util::{
     checked_slice_output, validate_eps, validate_finite_inputs, validate_finite_slice,
     validate_nonzero_dims, F32_PRECISION_LIMIT,
@@ -199,7 +199,7 @@ pub(crate) fn weight_norm_ref(
 ///
 /// Returns [`KernelError::NonFiniteInput`] if any input is NaN or infinite.
 /// Returns [`KernelError::NonFiniteOutput`] if the result is non-finite.
-#[cfg(any(test, kani))]
+#[cfg(test)]
 #[must_use = "returns a Result that may contain an error"]
 pub(crate) fn weight_norm_scalar(v: f32, g: f32, norm_inv: f32) -> Result<f32, KernelError> {
     validate_finite_inputs(&[("v", v), ("g", g), ("norm_inv", norm_inv)])?;
@@ -207,89 +207,6 @@ pub(crate) fn weight_norm_scalar(v: f32, g: f32, norm_inv: f32) -> Result<f32, K
     let result = g * v * norm_inv;
 
     crate::kernel_util::checked_scalar_output(result)
-}
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-    use crate::kani_stubs::sqrt_stub;
-
-    /// Proves `weight_norm_scalar` produces finite output for bounded inputs.
-    ///
-    /// Domain: v ∈ [-1e3, 1e3], g ∈ [-10, 10], norm_inv ∈ (0, 1e3].
-    /// `norm_inv` is always positive (it's `1/sqrt(sum(v²)+eps)`).
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn weight_norm_scalar_finite_for_bounded_inputs() {
-        let v: f32 = kani::any();
-        let g: f32 = kani::any();
-        let norm_inv: f32 = kani::any();
-
-        kani::assume(v.is_finite());
-        kani::assume(g.is_finite());
-        kani::assume(norm_inv.is_finite());
-
-        kani::assume(v >= -1.0e3 && v <= 1.0e3);
-        kani::assume(g >= -10.0 && g <= 10.0);
-        kani::assume(norm_inv >= 0.0 && norm_inv <= 1.0e3);
-
-        let y = weight_norm_scalar(v, g, norm_inv)
-            .expect("weight_norm_scalar must succeed for bounded finite inputs");
-        assert!(
-            y.is_finite(),
-            "weight_norm_scalar must produce finite output"
-        );
-        assert!(!y.is_nan(), "weight_norm_scalar must not produce NaN");
-    }
-
-    /// Proves that zero weight vector element produces zero output.
-    ///
-    /// `g * 0 * norm_inv = 0` regardless of g and norm_inv.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn weight_norm_scalar_zero_v_is_zero() {
-        let g: f32 = kani::any();
-        let norm_inv: f32 = kani::any();
-
-        kani::assume(g.is_finite());
-        kani::assume(norm_inv.is_finite());
-        kani::assume(g >= -1.0e4 && g <= 1.0e4);
-        kani::assume(norm_inv >= 0.0 && norm_inv <= 1.0e4);
-
-        let y = weight_norm_scalar(0.0, g, norm_inv)
-            .expect("weight_norm_scalar must succeed for bounded finite inputs");
-        assert!(y == 0.0, "weight_norm_scalar(0, _, _) must be exactly 0");
-    }
-
-    /// Proves output is bounded: `|y| <= |v| * |g| * norm_inv`.
-    #[kani::unwind(8)]
-    #[kani::proof]
-    #[kani::stub(f32::sqrt, sqrt_stub)]
-    fn weight_norm_scalar_output_bounded() {
-        let v: f32 = kani::any();
-        let g: f32 = kani::any();
-        let norm_inv: f32 = kani::any();
-
-        kani::assume(v.is_finite());
-        kani::assume(g.is_finite());
-        kani::assume(norm_inv.is_finite());
-
-        kani::assume(v >= -100.0 && v <= 100.0);
-        kani::assume(g >= -10.0 && g <= 10.0);
-        kani::assume(norm_inv >= 0.0 && norm_inv <= 100.0);
-
-        let y = weight_norm_scalar(v, g, norm_inv)
-            .expect("weight_norm_scalar must succeed for bounded finite inputs");
-        assert!(y.is_finite(), "output must be finite");
-
-        // |y| <= |v| * |g| * norm_inv <= 100 * 10 * 100 = 100000
-        assert!(
-            y.abs() <= 1.0e5 + 1.0,
-            "weight_norm_scalar output must be bounded"
-        );
-    }
 }
 
 #[cfg(test)]

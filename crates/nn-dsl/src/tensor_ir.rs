@@ -86,7 +86,3 @@ mod remap_tests;
 #[cfg(test)]
 #[path = "tensor_ir_validate_tests.rs"]
 mod validate_tests;
-
-#[cfg(kani)]
-#[path = "tensor_ir_kani.rs"]
-mod kani_proofs;

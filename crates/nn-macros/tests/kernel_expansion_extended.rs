@@ -13,8 +13,6 @@
 //! - MSL structural checks (thread_position_in_grid, kernel attribute)
 //! - Numerical edge-case sweeps
 
-#![allow(unexpected_cfgs)]
-
 use nn_dsl::KernelOps;
 
 // ---------------------------------------------------------------------------

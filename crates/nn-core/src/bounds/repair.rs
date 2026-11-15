@@ -18,7 +18,7 @@ use ndarray::ArrayD;
 pub const FALLBACK_BOUND: f32 = 1.0e10;
 
 /// Repair non-finite lower endpoint to `-FALLBACK_BOUND`.
-#[cfg(any(test, kani))]
+#[cfg(test)]
 #[inline]
 pub(crate) fn repair_non_finite_lower(value: f32) -> f32 {
     if value.is_finite() {
@@ -29,7 +29,7 @@ pub(crate) fn repair_non_finite_lower(value: f32) -> f32 {
 }
 
 /// Repair non-finite upper endpoint to `+FALLBACK_BOUND`.
-#[cfg(any(test, kani))]
+#[cfg(test)]
 #[inline]
 pub(crate) fn repair_non_finite_upper(value: f32) -> f32 {
     if value.is_finite() {
@@ -46,7 +46,7 @@ pub(crate) fn repair_non_finite_upper(value: f32) -> f32 {
 /// Also catches NaN endpoints that survived upstream repair — per IEEE 754,
 /// `NaN > x` returns false, which would silently pass NaN through a bare
 /// relational comparison. The explicit `!is_finite()` check prevents this.
-#[cfg(any(test, kani))]
+#[cfg(test)]
 #[must_use]
 pub(crate) fn enforce_bound_ordering(lower: &mut ArrayD<f32>, upper: &mut ArrayD<f32>) -> usize {
     let mut count = 0usize;

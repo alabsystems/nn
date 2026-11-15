@@ -352,7 +352,6 @@ fn test_verification_coverage_default_is_zero() {
     let vc = nn_import::VerificationCoverage::default();
     assert_eq!(vc.gamma_crown_layers_covered, 0);
     assert_eq!(vc.gamma_crown_layers_total, 0);
-    assert!(vc.kani_harnesses_applicable.is_none());
     assert!(!vc.composition_bounds_ok);
     assert!(vc.composition_bound_width.is_none());
     assert!(vc.composition_method.is_none());
@@ -394,7 +393,6 @@ fn test_verification_coverage_serializable() {
     let mut vc = nn_import::VerificationCoverage::default();
     vc.gamma_crown_layers_covered = 5;
     vc.gamma_crown_layers_total = 10;
-    vc.kani_harnesses_applicable = Some(7);
     vc.composition_bounds_ok = true;
     vc.composition_method = Some(nn_import::ConvertCompositionMethod::Ibp);
     vc.composition_soundness_mode = Some(nn_import::ConvertSoundnessMode::Sound);
@@ -403,7 +401,6 @@ fn test_verification_coverage_serializable() {
     let val: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(val["gamma_crown_layers_covered"], 5);
     assert_eq!(val["gamma_crown_layers_total"], 10);
-    assert_eq!(val["kani_harnesses_applicable"], 7);
     assert_eq!(val["composition_bounds_ok"], true);
     assert_eq!(val["composition_method"], "IBP");
     assert_eq!(val["composition_soundness_mode"], "sound");
@@ -413,8 +410,7 @@ fn test_verification_coverage_serializable() {
 #[test]
 fn test_equivalence_proof_construction() {
     // EquivalenceProof should be constructible via ::new() and inspectable.
-    let proof = nn_import::EquivalenceProof::new(None, None, None);
-    assert!(proof.kernel_safety.is_none());
+    let proof = nn_import::EquivalenceProof::new(None, None);
     assert!(proof.composition_bounds.is_none());
     assert!(proof.reference_parity.is_none());
 }

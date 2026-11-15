@@ -6,7 +6,7 @@
 //!
 //! A DAG of typed nodes representing a scalar kernel function. Each node
 //! produces exactly one scalar value. The graph is built by the lowering pass
-//! (see `lower.rs`) and consumed by codegen backends (MSL, Kani, etc.).
+//! (see `lower.rs`) and consumed by codegen backends (MSL, differential tests).
 
 #[path = "ir_error.rs"]
 mod ir_error;

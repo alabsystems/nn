@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Verification integration for nn — ny bounds + Kani harnesses"
+description = "Verification integration for nn — ny bounds + ay SMT proofs"
 
 [lints]
 workspace = true
@@ -71,5 +71,4 @@ ny-cert = ["ny", "ny-api/cert"]
 # Consume ny's complete MIP verification terminal (pulls ny-mip + HiGHS).
 ny-complete = ["ny", "ny-api/complete"]
 ay-smt = ["dep:ay-bindings", "dep:num-traits"]
-kani-stubbing = []
 production-weights = []

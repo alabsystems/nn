@@ -95,11 +95,11 @@ fn test_conv_transpose1d_large_padding_returns_error() {
     );
 }
 
-// -- Regression: conv_transpose1d_out_len zero-length output (#1243 Kani counterexample) --
+// -- Regression: conv_transpose1d_out_len zero-length output (#1243) --
 // Fixed: changed `>` to `>=` in the padding guard to reject zero-length output.
 #[test]
 fn test_conv_transpose1d_zero_output_len_returns_error() {
-    // Kani counterexample: input_len=1, kernel_size=2, padding=1, output_padding=0,
+    // Counterexample: input_len=1, kernel_size=2, padding=1, output_padding=0,
     // stride=1, dilation=1.
     // positive = (1-1)*1 + 1*(2-1) + 0 + 1 = 2
     // 2*padding = 2*1 = 2

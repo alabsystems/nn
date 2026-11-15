@@ -48,18 +48,12 @@ pub struct ConvertResult {
     pub graph: ImportedGraph,
 }
 
-/// Historical name for the current three-layer report scaffold returned by
-/// `convert()`.
+/// Historical name for the current report scaffold returned by `convert()`.
 ///
 /// Present fields summarize checks that ran; `None` means that layer was not
 /// executed or did not produce a report.
 #[non_exhaustive]
 pub struct EquivalenceProof {
-    /// L1: Offline Kani/prover kernel-safety summary, if one was attached.
-    ///
-    /// `convert()` / `ConvertBuilder::build()` do not run Kani inline today,
-    /// so this is typically `None` unless another tool populates it.
-    pub kernel_safety: Option<KaniSafetyReport>,
     /// L2: NY composition-bounds summary when `verify` ran.
     /// `None` if NY was not run.
     pub composition_bounds: Option<CompositionBoundsReport>,
@@ -71,38 +65,12 @@ pub struct EquivalenceProof {
 impl EquivalenceProof {
     /// Create a new equivalence proof.
     pub fn new(
-        kernel_safety: Option<KaniSafetyReport>,
         composition_bounds: Option<CompositionBoundsReport>,
         reference_parity: Option<ParityReport>,
     ) -> Self {
         Self {
-            kernel_safety,
             composition_bounds,
             reference_parity,
-        }
-    }
-}
-
-/// L1: Summary of externally produced Kani/prover kernel checks.
-///
-/// This is not generated inline by `convert()` today.
-#[non_exhaustive]
-pub struct KaniSafetyReport {
-    /// Total harnesses checked.
-    pub harness_count: usize,
-    /// Number that passed.
-    pub passed: usize,
-    /// Number that failed or timed out.
-    pub failed: usize,
-}
-
-impl KaniSafetyReport {
-    /// Create a new Kani safety report.
-    pub fn new(harness_count: usize, passed: usize, failed: usize) -> Self {
-        Self {
-            harness_count,
-            passed,
-            failed,
         }
     }
 }
@@ -229,7 +197,6 @@ pub fn import_model(graph_json: &Path, weights: &Path) -> Result<ImportedGraph, 
 ///
 /// Returns a `ConvertResult` with the compiled model plus currently available
 /// report fields:
-/// - L1 stays `None`; inline Kani is not run here.
 /// - L2 is populated only when built with `verify`.
 /// - L3 is populated only when built with `reftest` and a reference trace.
 ///
@@ -282,11 +249,7 @@ pub fn convert(
     // L2: NY composition bounds (IBP propagation).
     let composition_bounds = check_composition_bounds(&imported);
 
-    let proof = EquivalenceProof::new(
-        None, // L1: Populated by Prover via Kani
-        composition_bounds,
-        reference_parity,
-    );
+    let proof = EquivalenceProof::new(composition_bounds, reference_parity);
 
     Ok(ConvertResult {
         model,
@@ -470,8 +433,8 @@ pub(crate) fn check_reference_parity(
 /// Returns `None` if translation or propagation fails (non-fatal).
 ///
 /// The current machine-readable classification reflects only this
-/// composition-bounds pass. It does not claim inline Kani coverage or a
-/// complete proof-powered compiler certificate.
+/// composition-bounds pass. It does not claim a complete proof-powered
+/// compiler certificate.
 #[cfg(feature = "verify")]
 pub fn check_composition_bounds(imported: &ImportedGraph) -> Option<CompositionBoundsReport> {
     use ndarray::{ArrayD, IxDyn};

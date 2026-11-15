@@ -20,7 +20,6 @@ syn = { workspace = true }
 
 [features]
 test-utils = []
-kani-stubbing = []
 plan-serde = []
 
 [dev-dependencies]

@@ -384,8 +384,5 @@ mod weight_name_mapper;
 
 pub use weight_name_mapper::{verify_mapper_coverage, HfToNnMapper, WeightNameMapper};
 
-#[cfg(kani)]
-mod kani_proofs;
-
 #[cfg(test)]
 mod tests;

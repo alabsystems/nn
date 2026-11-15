@@ -13,9 +13,7 @@
 use crate::certificate::{
     CertificateBundle, CertificateError, ProofCertificate, CERTIFICATE_VERSION,
 };
-use crate::certificate_types::{
-    compute_bytes_hash, KaniOutcome, KaniProofRecord, LayerBoundRecord, PrecisionModel,
-};
+use crate::certificate_types::{compute_bytes_hash, LayerBoundRecord, PrecisionModel};
 use crate::gap_detector::{
     classify_entry, count_gaps_and_vacuous, detect_gaps, format_gap_report, kokoro_pipeline_stages,
     method_is_crown, StageGapResult,
@@ -78,12 +76,6 @@ fn test_certificate_builder_chain() {
             node_name: Some("n0".to_string()),
             input_sources: Some(vec![]),
         }])
-        .with_kani_status(KaniProofRecord {
-            harness_count: 2,
-            status: KaniOutcome::Passed,
-            properties: vec!["no_overflow".to_string()],
-            cbmc_version: None,
-        })
         .with_weight_hash(valid_sha256())
         .with_source_hash(valid_sha256())
         .with_verifier_version("NY 0.9.0".to_string())
@@ -99,7 +91,6 @@ fn test_certificate_builder_chain() {
     );
     assert_eq!(cert.smt_outcome.as_deref(), Some("Proven"));
     assert_eq!(cert.layer_bounds.as_ref().unwrap().len(), 1);
-    assert_eq!(cert.kani_status.as_ref().unwrap().harness_count, 2);
     assert_eq!(cert.weight_hash.as_deref(), Some(valid_sha256().as_str()));
     assert_eq!(cert.source_hash.as_deref(), Some(valid_sha256().as_str()));
     assert_eq!(cert.verifier_version.as_deref(), Some("NY 0.9.0"));
@@ -118,7 +109,6 @@ fn test_certificate_builder_defaults_are_none() {
 
     assert!(cert.smt_outcome.is_none());
     assert!(cert.layer_bounds.is_none());
-    assert!(cert.kani_status.is_none());
     assert!(cert.weight_hash.is_none());
     assert!(cert.source_hash.is_none());
     assert!(cert.verifier_version.is_none());
@@ -902,33 +892,6 @@ fn test_default_soundness_mode_is_heuristic() {
     // are treated as Heuristic.
     let mode = crate::soundness_compat::default_soundness_mode();
     assert_eq!(mode, VerificationSoundnessMode::Heuristic);
-}
-
-// ===========================================================================
-// 12. KaniOutcome and KaniProofRecord
-// ===========================================================================
-
-#[test]
-fn test_kani_outcome_variants() {
-    assert_ne!(KaniOutcome::Passed, KaniOutcome::Failed);
-    assert_ne!(KaniOutcome::Passed, KaniOutcome::NotRun);
-    assert_ne!(KaniOutcome::Passed, KaniOutcome::Timeout);
-}
-
-#[test]
-fn test_kani_proof_record_serde_roundtrip() {
-    let record = KaniProofRecord {
-        harness_count: 42,
-        status: KaniOutcome::Passed,
-        properties: vec!["no_overflow".to_string(), "bounds_preservation".to_string()],
-        cbmc_version: Some("6.1.0".to_string()),
-    };
-    let json = serde_json::to_string(&record).expect("serialize");
-    let back: KaniProofRecord = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(back.harness_count, 42);
-    assert_eq!(back.status, KaniOutcome::Passed);
-    assert_eq!(back.properties.len(), 2);
-    assert_eq!(back.cbmc_version.as_deref(), Some("6.1.0"));
 }
 
 // ===========================================================================

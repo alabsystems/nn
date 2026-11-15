@@ -338,7 +338,8 @@ fn test_flat_kv_cache_capacity_enforcement() {
     let num_heads = 2;
     let head_dim = 4;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, 3);
+    let mut cache =
+        kv_cache::KVCache::new(num_layers, num_heads, head_dim, 3).expect("valid KVCache sizes");
 
     let key: Vec<f32> = vec![1.0; token_size];
     let val: Vec<f32> = vec![2.0; token_size];
@@ -363,7 +364,8 @@ fn test_flat_kv_cache_clear_allows_reuse_to_capacity() {
     let head_dim = 4;
     let max_seq = 2;
     let token_size = num_heads * head_dim;
-    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, max_seq);
+    let mut cache = kv_cache::KVCache::new(num_layers, num_heads, head_dim, max_seq)
+        .expect("valid KVCache sizes");
 
     let key: Vec<f32> = vec![1.0; token_size];
     let val: Vec<f32> = vec![2.0; token_size];

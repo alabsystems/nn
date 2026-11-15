@@ -283,10 +283,6 @@ impl super::KvCacheLayerBackend for PreallocKvCacheLayer {
     }
 }
 
-#[cfg(kani)]
-#[path = "kani_prealloc_kv_cache.rs"]
-mod kani_prealloc_kv_cache;
-
 #[cfg(test)]
 #[path = "prealloc_kv_cache_tests.rs"]
 mod tests;

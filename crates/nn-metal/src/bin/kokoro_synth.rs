@@ -6,7 +6,7 @@
 //!
 //! Usage:
 //!   KOKORO_WEIGHTS=/path/to/kokoro_v1_0.safetensors \
-//!   cargo run -p nn-metal --bin kokoro_synth -- [--voice af_heart] [--speed 1.0] [--out output.wav]
+//!   targo --unverified run -p nn-metal --bin kokoro_synth -- [--voice af_heart] [--speed 1.0] [--out output.wav]
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -38,8 +38,8 @@ fn main() {
         let mut line = String::new();
         if std::io::stdin().is_terminal() {
             eprintln!("No --ids provided and stdin is a terminal.");
-            eprintln!("Usage: python3 scripts/kokoro_phonemize.py \"Hello\" | cargo run -p nn-metal --bin kokoro_synth");
-            eprintln!("   or: cargo run -p nn-metal --bin kokoro_synth -- --ids 0,50,83,54,57,156,65,86,123,54,46,0");
+            eprintln!("Usage: python3 scripts/kokoro_phonemize.py \"Hello\" | targo --unverified run -p nn-metal --bin kokoro_synth");
+            eprintln!("   or: targo --unverified run -p nn-metal --bin kokoro_synth -- --ids 0,50,83,54,57,156,65,86,123,54,46,0");
             std::process::exit(1);
         }
         std::io::stdin().read_line(&mut line).expect("read stdin");
@@ -114,11 +114,9 @@ fn main() {
     );
 }
 
+/// The argument after the first occurrence of `flag`, if any.
 fn get_arg(args: &[String], flag: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1))
-        .cloned()
+    args.iter().skip_while(|a| *a != flag).nth(1).cloned()
 }
 
 fn find_voice_file(weights_path: &str, voice_name: &str) -> PathBuf {
@@ -202,33 +200,89 @@ fn load_voice_style(path: &PathBuf, seq_len: usize) -> nn_core::dyn_tensor::DynT
     );
 }
 
-fn write_wav(path: &str, pcm: &[f32], sample_rate: u32) {
-    let n = pcm.len() as u32;
-    let data_bytes = n * 2; // 16-bit PCM
-    let file_size = 36 + data_bytes;
+/// RIFF chunk size, data chunk size and byte rate of a 16-bit mono PCM WAV
+/// file holding `num_samples` samples at `sample_rate` Hz.
+///
+/// RIFF sizes are 32-bit, so `None` when the audio does not fit one WAV
+/// file (or the byte rate overflows) instead of a truncated or wrapped header.
+fn wav_sizes(num_samples: usize, sample_rate: u32) -> Option<(u32, u32, u32)> {
+    let data_bytes = u32::try_from(num_samples).ok()?.checked_mul(2)?; // 16-bit PCM
+    let file_size = data_bytes.checked_add(36)?;
+    let byte_rate = sample_rate.checked_mul(2)?;
+    Some((file_size, data_bytes, byte_rate))
+}
 
-    let mut buf = Vec::with_capacity(file_size as usize + 8);
+fn write_wav(path: &str, pcm: &[f32], sample_rate: u32) {
+    use std::io::Write;
+
+    let Some((file_size, data_bytes, byte_rate)) = wav_sizes(pcm.len(), sample_rate) else {
+        panic!(
+            "{} samples at {sample_rate} Hz do not fit a WAV file (32-bit RIFF sizes)",
+            pcm.len()
+        );
+    };
+
+    // Streamed through a buffered writer: the bytes are those of the whole
+    // file assembled in memory, without an allocation sized by the audio.
+    let file = std::fs::File::create(path).expect("Failed to write WAV file");
+    let mut w = std::io::BufWriter::new(file);
+    let mut put = |bytes: &[u8]| w.write_all(bytes).expect("Failed to write WAV file");
     // RIFF header
-    buf.extend_from_slice(b"RIFF");
-    buf.extend_from_slice(&file_size.to_le_bytes());
-    buf.extend_from_slice(b"WAVE");
+    put(b"RIFF");
+    put(&file_size.to_le_bytes());
+    put(b"WAVE");
     // fmt chunk
-    buf.extend_from_slice(b"fmt ");
-    buf.extend_from_slice(&16u32.to_le_bytes()); // chunk size
-    buf.extend_from_slice(&1u16.to_le_bytes()); // PCM format
-    buf.extend_from_slice(&1u16.to_le_bytes()); // mono
-    buf.extend_from_slice(&sample_rate.to_le_bytes());
-    buf.extend_from_slice(&(sample_rate * 2).to_le_bytes()); // byte rate
-    buf.extend_from_slice(&2u16.to_le_bytes()); // block align
-    buf.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
-                                                 // data chunk
-    buf.extend_from_slice(b"data");
-    buf.extend_from_slice(&data_bytes.to_le_bytes());
+    put(b"fmt ");
+    put(&16u32.to_le_bytes()); // chunk size
+    put(&1u16.to_le_bytes()); // PCM format
+    put(&1u16.to_le_bytes()); // mono
+    put(&sample_rate.to_le_bytes());
+    put(&byte_rate.to_le_bytes()); // byte rate
+    put(&2u16.to_le_bytes()); // block align
+    put(&16u16.to_le_bytes()); // bits per sample
+
+    // data chunk
+    put(b"data");
+    put(&data_bytes.to_le_bytes());
     for &s in pcm {
         let clamped = s.clamp(-1.0, 1.0);
         let i16_val = (clamped * 32767.0) as i16;
-        buf.extend_from_slice(&i16_val.to_le_bytes());
+        put(&i16_val.to_le_bytes());
+    }
+    w.flush().expect("Failed to write WAV file");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_arg, wav_sizes};
+
+    #[test]
+    fn get_arg_returns_value_after_first_flag() {
+        let args: Vec<String> = ["bin", "--voice", "a", "--voice", "b", "--out"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(get_arg(&args, "--voice").as_deref(), Some("a"));
+        assert_eq!(get_arg(&args, "--out"), None);
+        assert_eq!(get_arg(&args, "--speed"), None);
     }
 
-    std::fs::write(path, &buf).expect("Failed to write WAV file");
+    #[test]
+    fn wav_sizes_match_canonical_header() {
+        assert_eq!(wav_sizes(3, 24_000), Some((42, 6, 48_000)));
+        assert_eq!(wav_sizes(0, 24_000), Some((36, 0, 48_000)));
+    }
+
+    /// Regression: the sample count was cast with `as u32`, so 2^32 samples
+    /// wrote a header claiming 0 data bytes, and 2^31 samples overflowed
+    /// `n * 2`. Both are now rejected.
+    #[test]
+    fn wav_sizes_reject_audio_too_long_for_riff() {
+        assert_eq!(wav_sizes(1 << 32, 24_000), None);
+        assert_eq!(wav_sizes(1 << 31, 24_000), None);
+        let max = (u32::MAX as usize - 36) / 2;
+        assert!(wav_sizes(max, 24_000).is_some());
+        assert_eq!(wav_sizes(max + 1, 24_000), None);
+        assert_eq!(wav_sizes(1, u32::MAX), None);
+    }
 }

@@ -5,7 +5,7 @@
 //! Tests for `CompiledModel` auto-verification API (#3042).
 //!
 //! These tests require the `verify` feature:
-//! `cargo test -p nn-metal --features verify -- verify_test`
+//! `targo --unverified test -p nn-metal --features verify -- verify_test`
 
 use nn_core::dyn_tensor::trace::{record_input, trace_graph, ComputationGraph};
 use nn_core::dyn_tensor::DynTensor;

@@ -5,8 +5,7 @@
 //! Types and utilities for v2 proof certificates.
 //!
 //! Extracted from `certificate.rs` to keep it under 500 lines.
-//! Contains: `LayerBoundRecord`, `KaniProofRecord`, `KaniOutcome`,
-//! and SHA-256 fingerprinting functions.
+//! Contains: `LayerBoundRecord` and SHA-256 fingerprinting functions.
 
 use std::path::Path;
 
@@ -80,38 +79,6 @@ pub struct LayerBoundRecord {
     /// input (no predecessor layers in the graph).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub input_sources: Option<Vec<usize>>,
-}
-
-/// Kani formal verification outcome.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum KaniOutcome {
-    /// All harnesses passed verification.
-    Passed,
-    /// At least one harness failed.
-    Failed,
-    /// Harnesses exist but have not been run.
-    NotRun,
-    /// Verification timed out.
-    Timeout,
-}
-
-/// Kani proof status for a kernel.
-///
-/// Records how many Kani harnesses exist for this kernel, whether they passed,
-/// and what properties they verify. Populated from `kani_status.json` during
-/// certificate generation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KaniProofRecord {
-    /// Number of Kani proof harnesses for this kernel.
-    pub harness_count: usize,
-    /// Overall Kani verification outcome.
-    pub status: KaniOutcome,
-    /// Properties verified by the harnesses (e.g. "no_overflow", "no_nan").
-    pub properties: Vec<String>,
-    /// CBMC version used for verification, if available.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub cbmc_version: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

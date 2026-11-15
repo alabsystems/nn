@@ -87,7 +87,10 @@ fn test_submit_noop_when_no_batch() {
 
     assert!(!is_lazy_batch_active());
     let result = submit();
-    assert!(result.is_ok(), "submit with no batch should succeed (no-op)");
+    assert!(
+        result.is_ok(),
+        "submit with no batch should succeed (no-op)"
+    );
 }
 
 /// sync() when no pending submitted batch is a no-op.
@@ -165,13 +168,23 @@ fn test_discard_pending_batch_clears_state() {
     let a = DynTensor::full(&[4], 1.0, DType::F32, &device).unwrap();
     let _b = a.add_scalar(1.0).unwrap(); // Encode into lazy batch.
 
-    assert!(is_lazy_batch_active(), "batch should be active before discard");
-    assert!(pending_encoding_count() > 0, "should have pending encodings");
+    assert!(
+        is_lazy_batch_active(),
+        "batch should be active before discard"
+    );
+    assert!(
+        pending_encoding_count() > 0,
+        "should have pending encodings"
+    );
 
     discard_pending_batch();
 
     assert!(!is_lazy_batch_active(), "batch cleared after discard");
-    assert_eq!(pending_encoding_count(), 0, "encoding count reset after discard");
+    assert_eq!(
+        pending_encoding_count(),
+        0,
+        "encoding count reset after discard"
+    );
 }
 
 /// discard_pending_batch is a no-op when no batch exists.
@@ -265,7 +278,11 @@ fn test_mixed_compute_and_blit_tracking() {
     assert_eq!(stats.blits, 2, "blit count");
 
     // Both kinds count toward encoding_count (auto-flush threshold).
-    assert_eq!(pending_encoding_count(), 5, "total encoding count = compute + blits");
+    assert_eq!(
+        pending_encoding_count(),
+        5,
+        "total encoding count = compute + blits"
+    );
 
     // Clean up.
     flush().unwrap();
@@ -286,11 +303,19 @@ fn test_scope_exit_mode_raii_restores_on_normal_return() {
 
     with_scope_exit_mode(ScopeExitMode::Submit, || {
         let inner = SCOPE_EXIT_MODE.with(Cell::get);
-        assert_eq!(inner, ScopeExitMode::Submit, "mode should be Submit inside scope");
+        assert_eq!(
+            inner,
+            ScopeExitMode::Submit,
+            "mode should be Submit inside scope"
+        );
     });
 
     let restored = SCOPE_EXIT_MODE.with(Cell::get);
-    assert_eq!(restored, ScopeExitMode::Flush, "mode should be restored after scope");
+    assert_eq!(
+        restored,
+        ScopeExitMode::Flush,
+        "mode should be restored after scope"
+    );
 }
 
 /// with_scope_exit_mode restores previous mode on panic.
@@ -350,7 +375,10 @@ fn test_gpu_scope_submit_mode_calls_submit() {
     assert!(result.is_ok());
 
     let stats = dispatch_stats();
-    assert!(stats.submits >= 1, "Submit mode should increment submits counter");
+    assert!(
+        stats.submits >= 1,
+        "Submit mode should increment submits counter"
+    );
 
     // Must sync to wait for GPU completion before readback.
     sync().unwrap();
@@ -413,7 +441,10 @@ fn test_arena_stats_through_flush_boundaries() {
     let stats = dispatch_stats();
     // Arena should have been used for these intermediate buffers.
     let total_allocs = stats.arena.hits + stats.arena.misses;
-    assert!(total_allocs > 0, "arena should have served allocations: {stats:?}");
+    assert!(
+        total_allocs > 0,
+        "arena should have served allocations: {stats:?}"
+    );
 
     flush().unwrap();
 }

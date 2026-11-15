@@ -473,10 +473,6 @@ fn compute_aux_loss(
     sum.broadcast_mul(&scale)
 }
 
-#[cfg(kani)]
-#[path = "moe_dispatch_kani.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 #[path = "moe_dispatch_tests.rs"]
 mod tests;

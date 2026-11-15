@@ -145,7 +145,3 @@ pub fn check_output_finite(output: &DynTensor, layer_name: &str) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(kani)]
-#[path = "kani_nan_check_proofs.rs"]
-mod kani_proofs;

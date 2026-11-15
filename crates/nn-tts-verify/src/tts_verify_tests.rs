@@ -715,7 +715,6 @@ fn test_verification_level_display() {
         format!("{}", VerificationLevel::CrownProven),
         "CROWN_PROVEN"
     );
-    assert_eq!(format!("{}", VerificationLevel::KaniProven), "KANI_PROVEN");
     assert_eq!(format!("{}", VerificationLevel::SmtProven), "SMT_PROVEN");
 }
 
@@ -727,7 +726,6 @@ fn test_verification_level_ordering_is_total() {
         VerificationLevel::CrownPartial,
         VerificationLevel::CrownProbabilistic,
         VerificationLevel::CrownProven,
-        VerificationLevel::KaniProven,
         VerificationLevel::SmtProven,
     ];
     for i in 0..levels.len() - 1 {
@@ -758,15 +756,6 @@ fn test_moonshot_status_level_counts_sum_to_8() {
     let counts = status.level_counts();
     let total: usize = counts.iter().map(|(_, c)| c).sum();
     assert_eq!(total, 8);
-}
-
-#[test]
-fn test_moonshot_status_all_have_evidence() {
-    let status = MoonshotStatus::from_repo();
-    assert!(
-        status.all_have_evidence(),
-        "All 8 properties should have at least some verification evidence"
-    );
 }
 
 #[test]

@@ -15,8 +15,8 @@
 //!   3. Convert `BoundedTensor` bounds to `VerifiedStage` via `stage_from_bounds`
 //!   4. Compose 2-stage pipeline via `verify_pipeline`
 //!   5. Build `MoonshotCrownBundle` from pipeline certificate (P1-P6)
-//!   6. Build full 8-property `MoonshotCertificate` with real Kani scan (P7)
-//!      and ay BOUNDS_REGISTRY counts (P8)
+//!   6. Build the 8-property `MoonshotCertificate` with ay BOUNDS_REGISTRY
+//!      counts (P8)
 //!   7. Record results to `nn_verify_status_kokoro.json`
 //!
 //! **Requires:** `KOKORO_WEIGHTS=/path/to/kokoro_weights_rust.safetensors`
@@ -339,7 +339,7 @@ fn test_production_moonshot_all_6_properties_d512() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: Full 8-property certificate with real Kani + ay counts
+// Test 3: Full 8-property certificate with real ay counts
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "production-weights")]
@@ -403,22 +403,6 @@ fn test_production_moonshot_full_8_property_certificate() {
     let bundle =
         nn_tts_verify::moonshot_crown::verify_properties_from_pipeline(&clamped_cert, dim);
 
-    // P7: Real workspace Kani scan
-    let crates_dir = workspace_crates_dir();
-    let kani_evidence =
-        nn_tts_verify::KaniVerificationEvidence::from_workspace_scan(&crates_dir, true);
-    eprintln!(
-        "P7 Kani: {}/{} harnesses, {} files",
-        kani_evidence.harnesses_passed,
-        kani_evidence.harnesses_total,
-        kani_evidence.harness_files.len()
-    );
-    assert!(
-        kani_evidence.harnesses_total >= 400,
-        "workspace should have 400+ Kani harnesses, found {}",
-        kani_evidence.harnesses_total
-    );
-
     // P8: ay BOUNDS_REGISTRY counts (dynamic — avoid stale hardcoded counts)
     let ay_names = nn_tts_verify::moonshot_crown::ay_proven_kernel_names();
     let smt_evidence = nn_tts_verify::SmtVerificationEvidence {
@@ -449,7 +433,6 @@ fn test_production_moonshot_full_8_property_certificate() {
         &source_hash,
     )
     .crown_bundle(&bundle)
-    .kani(&kani_evidence)
     .smt(&smt_evidence)
     .dispatch_plan(&dispatch_evidence)
     .build();
@@ -474,16 +457,13 @@ fn test_production_moonshot_full_8_property_certificate() {
     assert_eq!(cert.model_name, "kokoro-82m-production");
     assert_eq!(cert.verification_dim, Some(dim));
 
-    // P7 must be KaniProven with real workspace scan
+    // P7 (memory safety) has no evidence source, so nothing is all-proven.
     assert_eq!(
         cert.properties[6].level,
-        nn_tts_verify::moonshot::VerificationLevel::KaniProven,
-        "P7 must be KaniProven with real workspace scan"
+        nn_tts_verify::moonshot::VerificationLevel::None,
+        "P7 has no memory-safety evidence"
     );
-    assert!(
-        cert.properties[6].bound_value.unwrap_or(0.0) >= 400.0,
-        "P7 bound_value should reflect 400+ harnesses"
-    );
+    assert!(!cert.all_proven, "an unevidenced P7 must block all_proven");
 
     // P8 must be SmtProven (20/20 AY_PROVEN_KERNELS)
     assert_eq!(
@@ -2110,7 +2090,6 @@ fn test_production_moonshot_8prop_from_precomputed_bounds() {
     assert!(p4.proven, "P4 (speaker consistency)");
     assert!(p5.proven, "P5 (temporal boundedness)");
 
-    // P7: Real workspace Kani scan.
     let crates_dir = {
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let ws = manifest
@@ -2119,18 +2098,6 @@ fn test_production_moonshot_8prop_from_precomputed_bounds() {
             .expect("workspace root");
         ws.join("crates")
     };
-    let kani_evidence =
-        nn_tts_verify::KaniVerificationEvidence::from_workspace_scan(&crates_dir, true);
-    eprintln!(
-        "P7 Kani: {}/{} harnesses",
-        kani_evidence.harnesses_passed, kani_evidence.harnesses_total
-    );
-    assert!(
-        kani_evidence.harnesses_total >= 400,
-        "workspace should have 400+ Kani harnesses, found {}",
-        kani_evidence.harnesses_total
-    );
-
     // P8: ay kernel coverage (dynamic).
     let ay_names = nn_tts_verify::moonshot_crown::ay_proven_kernel_names();
     let smt_evidence = nn_tts_verify::SmtVerificationEvidence {
@@ -2163,7 +2130,6 @@ fn test_production_moonshot_8prop_from_precomputed_bounds() {
         &source_hash,
     )
     .crown_bundle(&bundle)
-    .kani(&kani_evidence)
     .smt(&smt_evidence)
     .dispatch_plan(&dispatch_evidence)
     .build();
@@ -2183,12 +2149,13 @@ fn test_production_moonshot_8prop_from_precomputed_bounds() {
 
     assert_eq!(cert.properties.len(), 8, "must have 8 properties");
 
-    // P7 must be KaniProven.
+    // P7 (memory safety) has no evidence source, so nothing is all-proven.
     assert_eq!(
         cert.properties[6].level,
-        nn_tts_verify::moonshot::VerificationLevel::KaniProven,
-        "P7 must be KaniProven"
+        nn_tts_verify::moonshot::VerificationLevel::None,
+        "P7 has no memory-safety evidence"
     );
+    assert!(!cert.all_proven, "an unevidenced P7 must block all_proven");
     // P8 must be SmtProven.
     assert_eq!(
         cert.properties[7].level,

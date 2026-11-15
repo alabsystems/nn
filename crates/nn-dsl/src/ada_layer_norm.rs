@@ -118,10 +118,6 @@ pub fn ada_layer_norm_fused_scalar(
     checked_scalar_output(result)
 }
 
-#[cfg(kani)]
-#[path = "ada_layer_norm_kani_tests.rs"]
-mod kani_proofs;
-
 #[cfg(test)]
 mod tests {
     use super::*;

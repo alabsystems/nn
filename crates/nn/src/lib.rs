@@ -586,8 +586,8 @@ pub use nn_import::{
 // Root builder surface for already-exported `torch.export` + `safetensors`
 // artifacts. `nn::convert()` returns a ConvertBuilder for fluent
 // configuration; `VerifyLevel::Full` requests the fullest currently available
-// report path, but does not run Kani inline or turn this into a complete
-// proof-powered compiler.
+// report path, but does not turn this into a complete proof-powered
+// compiler.
 //
 // ```rust,ignore
 // let result = nn::convert(&graph_json, &weights, &cache)

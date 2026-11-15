@@ -6,8 +6,7 @@
 //!
 //! [`MetalBuffer`] wraps a Metal buffer allocated in shared storage mode,
 //! providing typed access via [`bytemuck::Pod`]. The [`contents_element_count`]
-//! helper computes safe element counts for typed buffer views and is verified
-//! by four Kani harnesses.
+//! helper computes safe element counts for typed buffer views.
 
 /// Shared CPU/GPU Metal buffer wrapper.
 ///
@@ -350,68 +349,3 @@ pub(crate) fn validate_buffer_offset(
 #[cfg(test)]
 #[path = "buffer_tests.rs"]
 mod tests;
-
-#[cfg(kani)]
-mod proofs {
-    use super::contents_element_count;
-
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn contents_count_never_overruns_buffer() {
-        let buf_len: usize = kani::any();
-        let type_size: usize = kani::any();
-        kani::assume(type_size > 0 && type_size <= 32);
-        kani::assume(buf_len > 0 && buf_len <= (1usize << 20));
-
-        if let Some(count) = contents_element_count(buf_len, type_size) {
-            assert!(count > 0, "Some implies at least one element");
-            assert!(count.checked_mul(type_size).is_some());
-            assert!(count * type_size <= buf_len);
-        }
-        // None is valid when buf_len < type_size (can't hold one element)
-    }
-
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn contents_zst_and_empty_return_none() {
-        let buf_len: usize = kani::any();
-        kani::assume(buf_len <= (1usize << 20));
-        assert!(contents_element_count(buf_len, 0).is_none());
-
-        let type_size: usize = kani::any();
-        kani::assume(type_size <= 32);
-        assert!(contents_element_count(0, type_size).is_none());
-    }
-
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn metal_alignment_sufficient_for_pod_types() {
-        let base_addr: usize = kani::any();
-        let type_align: usize = kani::any();
-
-        kani::assume(base_addr % 16 == 0);
-        kani::assume(base_addr <= (1usize << 20));
-        kani::assume(type_align > 0 && type_align <= 16);
-        kani::assume(type_align.is_power_of_two());
-
-        assert_eq!(base_addr % type_align, 0);
-    }
-
-    #[kani::unwind(1)]
-    #[kani::proof]
-    #[kani::unwind(1)]
-    fn contents_count_is_maximal() {
-        let buf_len: usize = kani::any();
-        let type_size: usize = kani::any();
-        kani::assume(type_size > 0 && type_size <= 32);
-        kani::assume(buf_len > 0 && buf_len <= (1usize << 20));
-
-        if let Some(count) = contents_element_count(buf_len, type_size) {
-            assert!((count + 1) * type_size > buf_len);
-        }
-        // None when buf_len < type_size — no elements fit
-    }
-}
